@@ -358,3 +358,22 @@ func (s *Scheduler) DivAPUBit() uint16 {
 	}
 	return 0x1000
 }
+
+func (s *Scheduler) Events() [][3]string {
+	events := make([][3]string, 0)
+
+	event := s.root
+	for event != nil {
+		if event.cycle == math.MaxUint64 {
+			break // last event in list
+		}
+		events = append(events, [3]string{
+			fmt.Sprintf("%-8d", event.cycle-s.Cycle()),
+			fmt.Sprintf("%-16d", event.cycle),
+			fmt.Sprintf("%s", event.eventType),
+		})
+		event = event.next
+	}
+
+	return events
+}
