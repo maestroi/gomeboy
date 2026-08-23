@@ -22,7 +22,7 @@ jobs:
       - name: install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev libegl-dev xorg-dev libsdl2-dev libwayland-dev wayland-protocols libxkbcommon-dev
       - name: build
         run: go build -trimpath -ldflags="-s -w" -o gomeboy-linux-amd64 .
       - name: release
