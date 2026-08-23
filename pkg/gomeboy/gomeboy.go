@@ -9,6 +9,11 @@
 // Multiple Emulator instances are independent and may be created and run in
 // the same process. A single Emulator instance is not safe for concurrent use
 // by multiple goroutines; the caller must synchronize access.
+//
+// An Emulator performs no disk I/O unless WithSaveDir is passed: by default,
+// battery-backed save files are neither read nor written, so any number of
+// instances may run the same ROM in parallel without sharing files. Pass
+// WithSaveDir to enable persistence into a per-instance directory.
 package gomeboy
 
 import (
@@ -61,8 +66,12 @@ type Emulator struct {
 
 type config struct {
 	romPath  string
+	romBytes []byte
+	romName  string
 	bootROM  string
 	headless bool
+	saveDir  string
+	saves    bool
 }
 
 // Option configures an Emulator at construction time.
@@ -74,10 +83,31 @@ func WithROM(path string) Option {
 	return func(c *config) { c.romPath = path }
 }
 
+// WithROMBytes loads an in-memory ROM image. It takes precedence over
+// WithROM if both are supplied.
+func WithROMBytes(rom []byte) Option {
+	return func(c *config) {
+		c.romBytes = rom
+		if c.romName == "" {
+			c.romName = "rom"
+		}
+	}
+}
+
 // WithBootROM sets the boot ROM (a .gbr file) to use instead of the built-in
 // hardware-level-emulated boot process.
 func WithBootROM(path string) Option {
 	return func(c *config) { c.bootROM = path }
+}
+
+// WithSaveDir enables battery-backed save file persistence and sets the
+// directory in which .sav and .state files are read from and written to.
+// Without it, the Emulator performs no disk I/O at all.
+func WithSaveDir(dir string) Option {
+	return func(c *config) {
+		c.saveDir = dir
+		c.saves = true
+	}
 }
 
 // Headless disables APU sample accumulation. The core is already headless
@@ -104,9 +134,21 @@ func New(opts ...Option) (*Emulator, error) {
 		gbOpts = append(gbOpts, gameboy.WithBootROM(bootROM))
 	}
 
+	if cfg.saves {
+		gbOpts = append(gbOpts, gameboy.WithSaveDir(cfg.saveDir))
+	} else {
+		gbOpts = append(gbOpts, gameboy.WithoutSaves())
+	}
+
 	e := &Emulator{gb: gameboy.NewGameBoy(gbOpts...)}
 
-	if cfg.romPath != "" {
+	// romName is only ever set by WithROMBytes, so it records whether an
+	// in-memory ROM was supplied (possibly empty, which is an error).
+	if cfg.romName != "" {
+		if err := e.gb.LoadROMBytes(cfg.romBytes, cfg.romName); err != nil {
+			return nil, err
+		}
+	} else if cfg.romPath != "" {
 		if err := e.LoadROM(cfg.romPath); err != nil {
 			return nil, err
 		}
@@ -122,6 +164,12 @@ func New(opts ...Option) (*Emulator, error) {
 // LoadROM loads a ROM from disk and (re)initializes the emulator.
 func (e *Emulator) LoadROM(path string) error {
 	return e.gb.LoadROM(path)
+}
+
+// LoadROMBytes loads an in-memory ROM image and (re)initializes the emulator.
+// name is used for save/state file naming and may be empty.
+func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
+	return e.gb.LoadROMBytes(rom, name)
 }
 
 // Press presses a joypad button.
@@ -146,12 +194,29 @@ func (e *Emulator) StepFrames(n int) {
 	}
 }
 
-// Read8 reads a single byte from the emulator's 16-bit address space.
+// FrameCount returns the number of frames this Emulator has advanced since
+// the ROM was loaded or the emulator was last Reset.
+func (e *Emulator) FrameCount() uint64 {
+	return e.gb.FrameCount()
+}
+
+// Cycle returns the emulator's current master clock cycle.
+func (e *Emulator) Cycle() uint64 {
+	return e.gb.Cycle()
+}
+
+// Read8 performs a CPU-accurate read of a single byte from the emulator's
+// 16-bit address space. The result can be affected by DMA conflicts and PPU
+// region locks, so it is not a pure observation of memory. Use Peek8 or
+// PeekInto to observe memory without side effects.
 func (e *Emulator) Read8(addr uint16) byte {
 	return e.gb.Bus.Read(addr)
 }
 
-// Read reads length bytes starting at addr from the emulator's address space.
+// Read performs CPU-accurate reads of length bytes starting at addr from the
+// emulator's address space. Each byte can be affected by DMA conflicts and
+// PPU region locks. Use Peek8 or PeekInto to observe memory without side
+// effects.
 func (e *Emulator) Read(addr uint16, length int) []byte {
 	out := make([]byte, length)
 	for i := range length {

@@ -1,5 +1,5 @@
 tests/roms/
 /roms
-gomeboy
+/gomeboy
 *.sav
 *.state

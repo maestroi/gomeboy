@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"os"
+	"path/filepath"
 
 	"github.com/thelolagemann/gomeboy/internal/apu"
 	"github.com/thelolagemann/gomeboy/internal/cpu"
@@ -30,6 +31,7 @@ type State struct {
 	Timer     timer.State
 	Serial    serial.State
 	Model     types.Model
+	Frames    uint64
 }
 
 // Snapshot captures the emulator's complete execution state.
@@ -43,6 +45,7 @@ func (g *GameBoy) Snapshot() State {
 		Timer:     g.Timer.Snapshot(),
 		Serial:    g.Serial.Snapshot(),
 		Model:     g.model,
+		Frames:    g.frames,
 	}
 }
 
@@ -58,6 +61,7 @@ func (g *GameBoy) Restore(s State) {
 	g.Timer.Restore(s.Timer)
 	g.Serial.Restore(s.Serial)
 	g.model = s.Model
+	g.frames = s.Frames
 }
 
 // SaveState serializes the emulator's complete execution state into a byte
@@ -82,8 +86,10 @@ func (g *GameBoy) LoadState(data []byte) error {
 	return nil
 }
 
-// QuickSave writes the complete emulator state to <romname>.state, where
-// romname is the loaded ROM's base name without its extension.
+// QuickSave writes the complete emulator state to <savedir>/<romname>.state,
+// where romname is the loaded ROM's base name without its extension and
+// savedir is the directory set by WithSaveDir (the working directory if none
+// was set).
 func (g *GameBoy) QuickSave() error {
 	if g.filename == "" {
 		return errors.New("gomeboy: no ROM loaded")
@@ -92,16 +98,17 @@ func (g *GameBoy) QuickSave() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(g.filename+".state", state, 0644)
+	return os.WriteFile(filepath.Join(g.saveDir, g.filename+".state"), state, 0644)
 }
 
-// QuickLoad restores the emulator state from <romname>.state, where romname
-// is the loaded ROM's base name without its extension.
+// QuickLoad restores the emulator state from <savedir>/<romname>.state, where
+// romname is the loaded ROM's base name without its extension and savedir is
+// the directory set by WithSaveDir (the working directory if none was set).
 func (g *GameBoy) QuickLoad() error {
 	if g.filename == "" {
 		return errors.New("gomeboy: no ROM loaded")
 	}
-	data, err := os.ReadFile(g.filename + ".state")
+	data, err := os.ReadFile(filepath.Join(g.saveDir, g.filename+".state"))
 	if err != nil {
 		return err
 	}

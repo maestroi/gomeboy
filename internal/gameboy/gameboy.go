@@ -32,10 +32,14 @@ type GameBoy struct {
 	save            *emulator.Save
 	filename        string
 	model           types.Model
+	frames          uint64
 	dontBoot        bool
 	rumbling        bool
 	paused, running bool
 	initialised     bool
+	saveDir         string
+	noSaves         bool
+	cheatsPath      string
 
 	ROM     []byte
 	options []Opt
@@ -43,6 +47,19 @@ type GameBoy struct {
 
 // NewGameBoy creates a new GameBoy with the provided Opt(s).
 func NewGameBoy(opts ...Opt) *GameBoy { return &GameBoy{options: opts} }
+
+// WithSaveDir sets the directory that save files (.sav) and quick-save state
+// files (.state) are read from and written to. An empty dir keeps the
+// historical behaviour of using the process' working directory.
+func WithSaveDir(dir string) Opt { return func(gb *GameBoy) { gb.saveDir = dir } }
+
+// WithoutSaves disables battery-backed save file I/O entirely: no save file
+// is read at initialisation and none is written on Save or Close.
+func WithoutSaves() Opt { return func(gb *GameBoy) { gb.noSaves = true } }
+
+// WithCheats sets the exact path of the cheats file to load at
+// initialisation, instead of probing the working directory for one.
+func WithCheats(path string) Opt { return func(gb *GameBoy) { gb.cheatsPath = path } }
 
 // LoadROM loads a ROM file from the specified path and initializes the Game Boy.
 //
@@ -59,6 +76,18 @@ func (g *GameBoy) LoadROM(romPath string) error {
 		return err
 	}
 	g.filename = strings.TrimSuffix(filepath.Base(romPath), filepath.Ext(romPath))
+	g.Init()
+	return nil
+}
+
+// LoadROMBytes initialises the Game Boy from an in-memory ROM image. name
+// is used for save/state file naming and may be empty.
+func (g *GameBoy) LoadROMBytes(rom []byte, name string) error {
+	if len(rom) == 0 {
+		return errors.New("gomeboy: empty ROM")
+	}
+	g.ROM = rom
+	g.filename = name
 	g.Init()
 	return nil
 }
@@ -96,13 +125,13 @@ func (g *GameBoy) Init() {
 	}
 
 	// does the cartridge have battery backed RAM? (and therefore a save file)
-	if b.Cartridge().Features.Battery {
+	if !g.noSaves && b.Cartridge().Features.Battery {
 		// only load the save file from disk on the first initialisation;
 		// on re-initialisation (Reset) the live cartridge RAM is preserved
 		if g.save == nil {
 			// try to load the save file
 			var err error
-			g.save, err = emulator.NewSave(g.filename, uint(b.Cartridge().RAMSize))
+			g.save, err = emulator.NewSave(filepath.Join(g.saveDir, g.filename), uint(b.Cartridge().RAMSize))
 
 			if err != nil {
 				// was there an error loading the save files?
@@ -118,38 +147,40 @@ func (g *GameBoy) Init() {
 		}
 	}
 
-	// try to find filename.cheats
-	cheatFile, err := os.Open(fmt.Sprintf("%s.cheats", g.filename))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Errorf("error opening %s.cheats file: %s", g.filename, err)
-	} else if err == nil {
-		cheats, err := io.ParseCheats(cheatFile)
-		if err != nil {
-			log.Errorf("error parsing %s.cheats: %s", g.filename, err)
-		} else {
-			g.Bus.LoadedCheats = cheats // so that gui can easily read/modify
+	// try to find the cheats file, if a path was configured
+	if g.cheatsPath != "" {
+		cheatFile, err := os.Open(g.cheatsPath)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Errorf("error opening %s file: %s", g.cheatsPath, err)
+		} else if err == nil {
+			cheats, err := io.ParseCheats(cheatFile)
+			if err != nil {
+				log.Errorf("error parsing %s: %s", g.cheatsPath, err)
+			} else {
+				g.Bus.LoadedCheats = cheats // so that gui can easily read/modify
 
-			// parse cheats according to type and load into bus
-			for _, c := range g.Bus.LoadedCheats {
-				if c.Enabled {
-					for _, code := range c.Codes {
-						switch len(code) {
-						case 8:
-							cheat, err := io.ParseGameSharkCode(code)
-							if err != nil {
-								log.Errorf("error parsing GameShark code %s: %s", code, err)
-							} else {
-								g.Bus.GameSharkCodes = append(g.Bus.GameSharkCodes, cheat)
+				// parse cheats according to type and load into bus
+				for _, c := range g.Bus.LoadedCheats {
+					if c.Enabled {
+						for _, code := range c.Codes {
+							switch len(code) {
+							case 8:
+								cheat, err := io.ParseGameSharkCode(code)
+								if err != nil {
+									log.Errorf("error parsing GameShark code %s: %s", code, err)
+								} else {
+									g.Bus.GameSharkCodes = append(g.Bus.GameSharkCodes, cheat)
+								}
+							case 11:
+								cheat, err := io.ParseGameGenieCode(code)
+								if err != nil {
+									log.Errorf("error parsing GameGenie code %s: %s", code, err)
+								} else {
+									g.Bus.GameGenieCodes = append(g.Bus.GameGenieCodes, cheat)
+								}
+							default:
+								log.Errorf("error parsing code: %s", code)
 							}
-						case 11:
-							cheat, err := io.ParseGameGenieCode(code)
-							if err != nil {
-								log.Errorf("error parsing GameGenie code %s: %s", code, err)
-							} else {
-								g.Bus.GameGenieCodes = append(g.Bus.GameGenieCodes, cheat)
-							}
-						default:
-							log.Errorf("error parsing code: %s", code)
 						}
 					}
 				}
@@ -222,6 +253,7 @@ func (g *GameBoy) Frame() [ppu.ScreenHeight][ppu.ScreenWidth][3]uint8 {
 		// utils.Rotate2DFrame(&g.PPU.PreparedFrame, -float64(g.Bus.Cartridge().AccelerometerX), float64(g.Bus.Cartridge().AccelerometerY)) // TODO make configurable
 	}
 	g.running = false
+	g.frames++
 	return g.PPU.PreparedFrame
 }
 
@@ -232,7 +264,15 @@ func (g *GameBoy) Step() {
 	g.running = true
 	g.CPU.Frame()
 	g.running = false
+	g.frames++
 }
+
+// FrameCount returns the number of frames the emulator has advanced since the
+// ROM was loaded or the emulator was last Reset.
+func (g *GameBoy) FrameCount() uint64 { return g.frames }
+
+// Cycle returns the emulator's current master clock cycle.
+func (g *GameBoy) Cycle() uint64 { return g.Scheduler.Cycle() }
 
 // FrameBuffer returns a pointer to the most recently rendered frame.
 // The contents are overwritten by the next call to Step or Frame.
@@ -255,6 +295,7 @@ func (g *GameBoy) Reset() error {
 	}
 
 	g.Init()
+	g.frames = 0
 
 	if batteryRAM != nil {
 		copy(g.Bus.Cartridge().RAM, batteryRAM)

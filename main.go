@@ -15,6 +15,8 @@ import (
 	"github.com/thelolagemann/gomeboy/pkg/utils"
 	"net/http"
 	_ "net/http/pprof"
+	"path/filepath"
+	"strings"
 )
 
 func main() {
@@ -65,6 +67,14 @@ func main() {
 	// has model been set?
 	if *asModel != "auto" {
 		opts = append(opts, gameboy.AsModel(types.StringToModel(*asModel)))
+	}
+
+	// keep the desktop frontend's historical save behaviour: the .cheats
+	// file (and the .sav file, via the default working-directory save dir)
+	// live next to wherever the process is run, named after the ROM
+	if *romFile != "" {
+		base := strings.TrimSuffix(filepath.Base(*romFile), filepath.Ext(*romFile))
+		opts = append(opts, gameboy.WithCheats(base+".cheats"))
 	}
 
 	// create a new gameboy

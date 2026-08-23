@@ -11,7 +11,6 @@ import (
 	"github.com/thelolagemann/gomeboy/internal/io"
 	"github.com/thelolagemann/gomeboy/internal/ppu"
 	"github.com/thelolagemann/gomeboy/pkg/display/fyne/themes"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
 	"image"
 	"image/color"
 	"strconv"
@@ -148,7 +147,7 @@ Address	0x8000`)
 	selectedActions.Add(widget.NewButton("Copy", func() {
 		img := image.NewRGBA(image.Rect(0, 0, 8, 8))
 		t.tiles[selectedTileBank][selectedTileIndex].Draw(img, 0, 0, *t.selectedPalette)
-		showError(utils.CopyImage(img), "Tile Viewer")
+		showError(CopyImage(img), "Tile Viewer")
 	}))
 	selectedActions.Add(widget.NewButton("Save", func() {
 		img := image.NewRGBA(image.Rect(0, 0, 8, 8))
@@ -161,7 +160,7 @@ Address	0x8000`)
 	actionBox.Add(allActions)
 
 	// add copy/export buttons to the all actions container
-	allActions.Add(widget.NewButton("Copy All", func() { showError(utils.CopyImage(t.getTiles(256, 192, true, true)), "Tile Viewer") }))
+	allActions.Add(widget.NewButton("Copy All", func() { showError(CopyImage(t.getTiles(256, 192, true, true)), "Tile Viewer") }))
 	allActions.Add(widget.NewButton("Save All", func() { saveImage(t.getTiles(256, 192, true, true), "all_tiles.png", "Tile Viewer") }))
 
 	// create bank 0 container
@@ -169,7 +168,7 @@ Address	0x8000`)
 	actionBox.Add(bank0Actions)
 
 	// add copy/export buttons to the bank 0 container
-	bank0Actions.Add(widget.NewButton("Copy Bank 0", func() { showError(utils.CopyImage(t.getTiles(128, 192, true, false)), "Tile Viewer") }))
+	bank0Actions.Add(widget.NewButton("Copy Bank 0", func() { showError(CopyImage(t.getTiles(128, 192, true, false)), "Tile Viewer") }))
 	bank0Actions.Add(widget.NewButton("Save Bank 0", func() { saveImage(t.getTiles(128, 192, true, false), "bank0_tiles.png", "Tile Viewer") }))
 
 	// create bank 1 container
@@ -177,7 +176,7 @@ Address	0x8000`)
 	actionBox.Add(bank1Actions)
 
 	// add copy/export buttons to the bank 1 container
-	bank1Actions.Add(widget.NewButton("Copy Bank 1", func() { showError(utils.CopyImage(t.getTiles(128, 192, false, true)), "Tile Viewer") }))
+	bank1Actions.Add(widget.NewButton("Copy Bank 1", func() { showError(CopyImage(t.getTiles(128, 192, false, true)), "Tile Viewer") }))
 	bank1Actions.Add(widget.NewButton("Save Bank 1", func() { saveImage(t.getTiles(128, 192, false, true), "bank1_tiles.png", "Tile Viewer") }))
 
 	// add the action box to the settings container
