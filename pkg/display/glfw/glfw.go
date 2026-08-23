@@ -4,7 +4,7 @@ package glfw
 
 import (
 	"github.com/go-gl/gl/v4.6-core/gl"
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/go-gl/glfw/v3.4/glfw"
 	"github.com/thelolagemann/gomeboy/internal/io"
 	"github.com/thelolagemann/gomeboy/pkg/display"
 	"github.com/thelolagemann/gomeboy/pkg/emulator"
@@ -172,6 +172,14 @@ func (g *glfwDriver) Start(c emulator.Controller, frames <-chan []byte, pressed,
 					c.Resume()
 				} else {
 					c.Pause()
+				}
+			case glfw.KeyF5:
+				if err := c.QuickSave(); err != nil {
+					log.Errorf("quick save: %v", err)
+				}
+			case glfw.KeyF6:
+				if err := c.QuickLoad(); err != nil {
+					log.Errorf("quick load: %v", err)
 				}
 			}
 		}

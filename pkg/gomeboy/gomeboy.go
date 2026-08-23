@@ -194,6 +194,17 @@ func (e *Emulator) LoadState(data []byte) error {
 	return e.gb.LoadState(data)
 }
 
+// QuickSave writes the complete emulator state to <romname>.state, where
+// romname is the loaded ROM's base name without its extension.
+func (e *Emulator) QuickSave() error {
+	return e.gb.QuickSave()
+}
+
+// QuickLoad restores the emulator state from <romname>.state.
+func (e *Emulator) QuickLoad() error {
+	return e.gb.QuickLoad()
+}
+
 // Close flushes any pending battery-backed save data to disk and releases
 // resources held by the emulator.
 func (e *Emulator) Close() error {

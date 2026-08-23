@@ -4,6 +4,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"golang.design/x/clipboard"
 	"image"
 	"image/png"
@@ -21,6 +22,6 @@ func CopyImage(img image.Image) error {
 		return err
 	}
 
-	clipboard.Write(clipboard.FmtImage, b.Bytes())
+	clipboard.Write(context.Background(), clipboard.FmtImage, b.Bytes())
 	return nil
 }

@@ -179,7 +179,12 @@ func (a *APU) Restore(s State) {
 	a.turningOn = s.TurningOn
 	a.turnedOn = s.TurnedOn
 	a.enableTimer = s.EnableTimer
-	a.buffer = append([]float32(nil), s.Buffer...)
+	bufLen := bufferSize
+	if l := len(s.Buffer); l > bufLen {
+		bufLen = l
+	}
+	a.buffer = make([]float32, bufLen)
+	copy(a.buffer, s.Buffer)
 	a.bufferPos = s.BufferPos
 	a.lastCatchup = s.LastCatchup
 	a.mute = s.Mute

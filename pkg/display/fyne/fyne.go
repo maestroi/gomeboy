@@ -180,6 +180,12 @@ func (f *fyneDriver) Start(c emulator.Controller, fb <-chan []byte, pressed chan
 			if k, isMapped := keyMap[e.Name]; isMapped {
 				pressed <- k
 			}
+			switch e.Name {
+			case fyne.KeyF5:
+				f.error(c.QuickSave())
+			case fyne.KeyF6:
+				f.error(c.QuickLoad())
+			}
 		})
 		desk.SetOnKeyUp(func(e *fyne.KeyEvent) {
 			if k, isMapped := keyMap[e.Name]; isMapped {
@@ -276,6 +282,9 @@ func (f *fyneDriver) createMainMenu() {
 		}, Gated(!f.gb.Initialised())),
 		fyne.NewMenuItemSeparator(),
 		NewCustomizedMenuItem("Cheats", func() { f.openWindowIfNotOpen("Cheats", views.NewCheats(f.gb.Bus)) }, Gated(!f.gb.Initialised())),
+		fyne.NewMenuItemSeparator(),
+		NewCustomizedMenuItem("Quick Save", func() { f.error(f.gb.QuickSave()) }, Gated(!f.gb.Initialised())),
+		NewCustomizedMenuItem("Quick Load", func() { f.error(f.gb.QuickLoad()) }, Gated(!f.gb.Initialised())),
 	)
 
 	audioChannels := NewCustomizedMenuItem("Audio Channels", func() {}, Gated(!f.gb.Initialised()))

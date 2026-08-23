@@ -2,6 +2,7 @@ package gomeboy
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -150,6 +151,39 @@ func TestSaveState(t *testing.T) {
 
 	if !bytes.Equal(path1, path2) {
 		t.Error("frame after restore+replay does not match the original continuation")
+	}
+}
+
+func TestQuickSaveLoad(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+	defer os.Remove("firstwhite.state")
+
+	const warmup, branch = 20, 15
+	for i := 0; i < warmup; i++ {
+		e.StepFrame()
+	}
+	if err := e.QuickSave(); err != nil {
+		t.Fatalf("QuickSave: %v", err)
+	}
+
+	// Path 1: continue from the saved point.
+	for i := 0; i < branch; i++ {
+		e.StepFrame()
+	}
+	path1 := e.snapshot()
+
+	// Restore and replay the same number of frames.
+	if err := e.QuickLoad(); err != nil {
+		t.Fatalf("QuickLoad: %v", err)
+	}
+	for i := 0; i < branch; i++ {
+		e.StepFrame()
+	}
+	path2 := e.snapshot()
+
+	if !bytes.Equal(path1, path2) {
+		t.Error("frame after quick load+replay does not match the original continuation")
 	}
 }
 

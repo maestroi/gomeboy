@@ -9,4 +9,6 @@ type Controller interface {
 	Resume()
 	Paused() bool
 	Initialised() bool
+	QuickSave() error
+	QuickLoad() error
 }

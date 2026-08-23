@@ -3,6 +3,8 @@ package gameboy
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
+	"os"
 
 	"github.com/thelolagemann/gomeboy/internal/apu"
 	"github.com/thelolagemann/gomeboy/internal/cpu"
@@ -78,4 +80,30 @@ func (g *GameBoy) LoadState(data []byte) error {
 	}
 	g.Restore(s)
 	return nil
+}
+
+// QuickSave writes the complete emulator state to <romname>.state, where
+// romname is the loaded ROM's base name without its extension.
+func (g *GameBoy) QuickSave() error {
+	if g.filename == "" {
+		return errors.New("gomeboy: no ROM loaded")
+	}
+	state, err := g.SaveState()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(g.filename+".state", state, 0644)
+}
+
+// QuickLoad restores the emulator state from <romname>.state, where romname
+// is the loaded ROM's base name without its extension.
+func (g *GameBoy) QuickLoad() error {
+	if g.filename == "" {
+		return errors.New("gomeboy: no ROM loaded")
+	}
+	data, err := os.ReadFile(g.filename + ".state")
+	if err != nil {
+		return err
+	}
+	return g.LoadState(data)
 }

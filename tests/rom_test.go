@@ -103,29 +103,18 @@ func Test_All(t *testing.T) {
 			panic(err)
 		}
 
-		// now open the main readme
-		newF, err := os.OpenFile("../README.md", os.O_RDWR, 0755)
-		if err != nil {
-			panic(err)
-		}
-		b, err := io.ReadAll(newF)
+		// update the test results table in the main readme
+		b, err := os.ReadFile("../README.md")
 		if err != nil {
 			panic(err)
 		}
 
-		// calc difference between new table and old
 		newResults := testTable.createTestResultsTable()
 
 		b = findTableRE.ReplaceAll(b, []byte(newResults))
 		b = progressRE.ReplaceAll(b, []byte(testTable.createProgressBar()))
 
-		// write new b to file
-		newF.Seek(0, 0)
-		if _, err := newF.Write(b); err != nil {
-			panic(err)
-		}
-
-		if err := newF.Close(); err != nil {
+		if err := os.WriteFile("../README.md", b, 0644); err != nil {
 			panic(err)
 		}
 	})

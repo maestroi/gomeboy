@@ -2,3 +2,4 @@ tests/roms/
 /roms
 gomeboy
 *.sav
+*.state
