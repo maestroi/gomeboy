@@ -2,12 +2,14 @@
 package ppu
 
 import (
+	"fmt"
+	"math/bits"
+	"sort"
+
 	"github.com/thelolagemann/gomeboy/internal/io"
 	"github.com/thelolagemann/gomeboy/internal/scheduler"
 	"github.com/thelolagemann/gomeboy/internal/types"
 	"github.com/thelolagemann/gomeboy/pkg/utils"
-	"math/bits"
-	"sort"
 )
 
 const (
@@ -170,6 +172,21 @@ type Object struct {
 	attr  uint8
 	id    uint8
 	index uint8
+}
+
+// GobEncode implements encoding/gob's Encoder interface so that Object can be
+// serialized as part of a save state.
+func (o Object) GobEncode() ([]byte, error) {
+	return []byte{o.x, o.y, o.attr, o.id, o.index}, nil
+}
+
+// GobDecode implements encoding/gob's Decoder interface.
+func (o *Object) GobDecode(data []byte) error {
+	if len(data) != 5 {
+		return fmt.Errorf("ppu: invalid Object encoding: got %d bytes, want 5", len(data))
+	}
+	o.x, o.y, o.attr, o.id, o.index = data[0], data[1], data[2], data[3], data[4]
+	return nil
 }
 
 // New creates and initializes a PPU instance ready to be used.

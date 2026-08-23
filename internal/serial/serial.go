@@ -155,3 +155,27 @@ func (c *Controller) Receive(bit bool) {
 		c.checkTransfer()
 	}
 }
+
+// State is a snapshot of the serial controller's execution state.
+// The attached device is external and is not part of the state.
+type State struct {
+	Count           uint8
+	InternalClock   bool
+	TransferRequest bool
+}
+
+// Snapshot captures the serial controller's execution state.
+func (c *Controller) Snapshot() State {
+	return State{
+		Count:           c.count,
+		InternalClock:   c.InternalClock,
+		TransferRequest: c.TransferRequest,
+	}
+}
+
+// Restore rebuilds the serial controller's execution state from a snapshot.
+func (c *Controller) Restore(s State) {
+	c.count = s.Count
+	c.InternalClock = s.InternalClock
+	c.TransferRequest = s.TransferRequest
+}

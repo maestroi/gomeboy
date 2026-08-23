@@ -111,7 +111,14 @@ type APU struct {
 	s                       *scheduler.Scheduler
 	lastCatchup             uint64
 	mute                    bool
+	headless                bool // when true, sample output is discarded (no audio consumer)
 }
+
+// SetHeadless controls whether generated audio samples are accumulated.
+// When headless is true, the APU keeps evolving its internal state but
+// does not grow its sample buffer, so long-running headless emulation
+// does not leak memory.
+func (a *APU) SetHeadless(headless bool) { a.headless = headless }
 
 func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 	a := &APU{
@@ -430,13 +437,15 @@ func (a *APU) sample() {
 		fLeft = 0
 		fRight = 0
 	}
-	if a.bufferPos < bufferSize {
-		a.buffer[a.bufferPos] = fLeft
-		a.buffer[a.bufferPos+1] = fRight
-	} else {
-		a.buffer = append(a.buffer, fLeft, fRight)
+	if !a.headless {
+		if a.bufferPos < bufferSize {
+			a.buffer[a.bufferPos] = fLeft
+			a.buffer[a.bufferPos+1] = fRight
+		} else {
+			a.buffer = append(a.buffer, fLeft, fRight)
+		}
+		a.bufferPos += 2
 	}
-	a.bufferPos += 2
 
 	a.s.ScheduleEvent(scheduler.APUSample, samplePeriod)
 }

@@ -21,6 +21,47 @@ type CPU struct {
 	haltBug bool
 }
 
+// State is a snapshot of the CPU's execution state.
+type State struct {
+	PC, SP                 uint16
+	A, F, B, C, D, E, H, L uint8
+	Debug                  bool
+	DebugBreakpoint        bool
+	DoubleSpeed            bool
+	Halted                 bool
+	SkippingHalt           bool
+	HasInt                 bool
+	HasFrame               bool
+	HaltBug                bool
+}
+
+// Snapshot captures the CPU's execution state.
+func (c *CPU) Snapshot() State {
+	return State{
+		PC: c.PC, SP: c.SP,
+		A: c.A, F: c.F, B: c.B, C: c.C, D: c.D, E: c.E, H: c.H, L: c.L,
+		Debug: c.Debug, DebugBreakpoint: c.DebugBreakpoint,
+		DoubleSpeed: c.DoubleSpeed, Halted: c.Halted,
+		SkippingHalt: c.skippingHalt, HasInt: c.hasInt, HasFrame: c.hasFrame,
+		HaltBug: c.haltBug,
+	}
+}
+
+// Restore rebuilds the CPU's execution state from a snapshot.
+func (c *CPU) Restore(s State) {
+	c.PC, c.SP = s.PC, s.SP
+	c.A, c.F, c.B, c.C = s.A, s.F, s.B, s.C
+	c.D, c.E, c.H, c.L = s.D, s.E, s.H, s.L
+	c.Debug = s.Debug
+	c.DebugBreakpoint = s.DebugBreakpoint
+	c.DoubleSpeed = s.DoubleSpeed
+	c.Halted = s.Halted
+	c.skippingHalt = s.SkippingHalt
+	c.hasInt = s.HasInt
+	c.hasFrame = s.HasFrame
+	c.haltBug = s.HaltBug
+}
+
 func NewCPU(b *io.Bus, sched *scheduler.Scheduler) *CPU {
 	c := &CPU{
 		b: b,

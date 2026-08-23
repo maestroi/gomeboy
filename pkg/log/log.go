@@ -32,7 +32,7 @@ func (l *logger) Debugf(format string, args ...interface{}) {
 }
 
 func (l *logger) Fatal(str string) {
-	fmt.Printf("[FATAL]\t" + str + "\n")
+	fmt.Printf("[FATAL]\t%s\n", str)
 	os.Exit(1)
 }
 

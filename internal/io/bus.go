@@ -12,6 +12,10 @@ const (
 	OAM         = 0b1000_0000_0000_0000
 )
 
+// wRAMSeed is the fixed seed used to pseudo-randomize work RAM on boot.
+// Keeping it fixed makes headless execution deterministic.
+const wRAMSeed int64 = 0x6065626f79
+
 // Bus is the main component responsible for handling IO
 // operations on the Game Boy. The Game Boy has a 16-bit
 // address bus, allowing for a 64KiB memory space.
@@ -279,9 +283,11 @@ func (b *Bus) Boot() {
 	b.data[0x9910] = 0x19
 	b.VRAM[0][0x0910] = 0x19
 
-	// wRAM is randomized on boot (not accurate to hardware, but random enough to pass most anti-emu checks)
+	// wRAM is randomized on boot (not accurate to hardware, but random enough to pass most anti-emu checks).
+	// A fixed seed is used so that headless execution is deterministic across runs and instances.
+	rng := rand.New(rand.NewSource(wRAMSeed))
 	for i := 0; i < 0x2000; i++ {
-		v := byte(rand.Intn(256))
+		v := byte(rng.Intn(256))
 		b.data[0xC000+i] = v
 		if i <= 0x1dff {
 			b.data[0xE000+i] = v

@@ -93,3 +93,24 @@ func (f *FIFO[T]) Pop() *T {
 func (f *FIFO[T]) Cap() int { return f.capacity }
 
 func (f *FIFO[T]) Reset() { f.head, f.tail, f.Size = 0, 0, 0 }
+
+// FIFOState is a snapshot of a FIFO's contents.
+type FIFOState[T any] struct {
+	Data [8]T
+	Tail int
+	Head int
+	Size int
+}
+
+// Snapshot captures the FIFO's contents.
+func (f *FIFO[T]) Snapshot() FIFOState[T] {
+	return FIFOState[T]{Data: f.Data, Tail: f.tail, Head: f.head, Size: f.Size}
+}
+
+// Restore rebuilds the FIFO's contents from a snapshot.
+func (f *FIFO[T]) Restore(s FIFOState[T]) {
+	f.Data = s.Data
+	f.tail = s.Tail
+	f.head = s.Head
+	f.Size = s.Size
+}

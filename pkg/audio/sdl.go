@@ -8,7 +8,6 @@ import "C"
 import (
 	"github.com/thelolagemann/gomeboy/internal/gameboy"
 	"github.com/veandco/go-sdl2/sdl"
-	"reflect"
 	"time"
 	"unsafe"
 )
@@ -19,8 +18,7 @@ var frame [144][160][3]uint8
 //export AudioData
 func AudioData(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 	n := int(length)
-	hdr := reflect.SliceHeader{Data: uintptr(unsafe.Pointer(stream)), Len: n, Cap: n}
-	data := *(*[]C.Uint8)(unsafe.Pointer(&hdr))
+	data := unsafe.Slice(stream, n)
 
 	// if we already have a frame's worth of buffered samples then no need to step
 	if len(sampleBuffer) > n {

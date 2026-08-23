@@ -257,3 +257,32 @@ var timerBits = [4]uint16{
 	// bit 7
 	0b1000_0000,
 }
+
+// State is a snapshot of the timer controller's execution state.
+type State struct {
+	CurrentBit    uint8
+	Reloading     bool
+	ReloadPending bool
+	ReloadCancel  bool
+	Enabled       bool
+}
+
+// Snapshot captures the timer controller's execution state.
+func (c *Controller) Snapshot() State {
+	return State{
+		CurrentBit:    c.currentBit,
+		Reloading:     c.reloading,
+		ReloadPending: c.reloadPending,
+		ReloadCancel:  c.reloadCancel,
+		Enabled:       c.enabled,
+	}
+}
+
+// Restore rebuilds the timer controller's execution state from a snapshot.
+func (c *Controller) Restore(s State) {
+	c.currentBit = s.CurrentBit
+	c.reloading = s.Reloading
+	c.reloadPending = s.ReloadPending
+	c.reloadCancel = s.ReloadCancel
+	c.enabled = s.Enabled
+}

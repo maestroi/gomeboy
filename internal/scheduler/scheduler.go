@@ -53,6 +53,86 @@ func NewScheduler() *Scheduler {
 	return s
 }
 
+// State is a snapshot of the scheduler's execution state. It captures the
+// current cycle, the DIV timer, the speed mode, and the set of pending
+// events (by type and absolute cycle). Restoring a State rebuilds the
+// pending event list exactly.
+type State struct {
+	Cycles      uint64
+	DivTimer    uint64
+	DoubleSpeed bool
+	Halted      bool
+	// Events holds the absolute cycle at which each event type is
+	// pending. A value of 0 (or MaxUint64) means the event is not scheduled.
+	Events [len(_EventType_index) - 1]uint64
+}
+
+// Snapshot captures the scheduler's execution state.
+func (s *Scheduler) Snapshot() State {
+	st := State{
+		Cycles:      s.cycles,
+		DivTimer:    s.divTimer,
+		DoubleSpeed: s.doubleSpeed,
+		Halted:      s.Halted,
+	}
+	for e := s.root; e != nil; e = e.next {
+		// skip the empty-list sentinel
+		if e.cycle == math.MaxUint64 {
+			break
+		}
+		st.Events[e.eventType] = e.cycle
+	}
+	return st
+}
+
+// Restore rebuilds the scheduler's execution state from a snapshot.
+func (s *Scheduler) Restore(st State) {
+	s.cycles = st.Cycles
+	s.divTimer = st.DivTimer
+	s.doubleSpeed = st.DoubleSpeed
+	s.Halted = st.Halted
+
+	// reset the event list to the empty sentinel. The sentinel is the tail
+	// node of the current (valid) list, so walk to it and re-root there.
+	sentinel := s.root
+	for sentinel.next != nil {
+		sentinel = sentinel.next
+	}
+	s.root = sentinel
+	sentinel.next = nil
+	s.nextEventAt = math.MaxUint64
+
+	// re-insert the pending events in sorted order
+	for i, cycle := range st.Events {
+		if cycle == 0 || cycle == math.MaxUint64 {
+			continue
+		}
+		s.insertAbsolute(EventType(i), cycle)
+	}
+}
+
+// insertAbsolute inserts the pooled event node for eventType into the list
+// at the given absolute cycle, maintaining sort order. It bypasses the
+// double-speed cycle scaling that ScheduleEvent applies.
+func (s *Scheduler) insertAbsolute(eventType EventType, atCycle uint64) {
+	event := s.events[eventType]
+	event.cycle = atCycle
+
+	if atCycle <= s.nextEventAt {
+		event.next = s.root
+		s.root = event
+		s.nextEventAt = atCycle
+		return
+	}
+
+	var prev *Event = s.root
+	for prev.next != nil && prev.next.cycle <= atCycle {
+		prev = prev.next
+	}
+	event.next = prev.next
+	prev.next = event
+}
+
 func (s *Scheduler) Cycle() uint64 {
 	return s.cycles
 }

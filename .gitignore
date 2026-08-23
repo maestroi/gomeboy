@@ -1,1 +1,4 @@
 tests/roms/
+/roms
+gomeboy
+*.sav

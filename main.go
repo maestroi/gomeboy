@@ -67,8 +67,6 @@ func main() {
 		opts = append(opts, gameboy.AsModel(types.StringToModel(*asModel)))
 	}
 
-	// opts = append(opts, gameboy.SaveEvery(time.Second*10))
-	opts = append(opts)
 	// create a new gameboy
 	gb = gameboy.NewGameBoy(opts...)
 

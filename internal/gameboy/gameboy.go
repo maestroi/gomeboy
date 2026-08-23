@@ -97,20 +97,24 @@ func (g *GameBoy) Init() {
 
 	// does the cartridge have battery backed RAM? (and therefore a save file)
 	if b.Cartridge().Features.Battery {
-		// try to load the save file
-		var err error
-		g.save, err = emulator.NewSave(g.filename, uint(b.Cartridge().RAMSize))
+		// only load the save file from disk on the first initialisation;
+		// on re-initialisation (Reset) the live cartridge RAM is preserved
+		if g.save == nil {
+			// try to load the save file
+			var err error
+			g.save, err = emulator.NewSave(g.filename, uint(b.Cartridge().RAMSize))
 
-		if err != nil {
-			// was there an error loading the save files?
-			log.Errorf(fmt.Sprintf("error loading save files: %s", err))
-		} else {
-			copy(g.Bus.Cartridge().RAM, g.save.Bytes())
-			var length = len(g.save.Bytes())
-			if length > 0x2000 {
-				length = 0x2000
+			if err != nil {
+				// was there an error loading the save files?
+				log.Errorf(fmt.Sprintf("error loading save files: %s", err))
+			} else {
+				copy(g.Bus.Cartridge().RAM, g.save.Bytes())
+				var length = len(g.save.Bytes())
+				if length > 0x2000 {
+					length = 0x2000
+				}
+				g.Bus.CopyTo(0xA000, 0xC000, g.save.Bytes()[:length])
 			}
-			g.Bus.CopyTo(0xA000, 0xC000, g.save.Bytes()[:length])
 		}
 	}
 
@@ -219,6 +223,43 @@ func (g *GameBoy) Frame() [ppu.ScreenHeight][ppu.ScreenWidth][3]uint8 {
 	}
 	g.running = false
 	return g.PPU.PreparedFrame
+}
+
+// Step advances the emulator by exactly one frame. Unlike Frame, it does
+// not copy the rendered frame, so it avoids allocating on the hot path.
+// Use FrameBuffer to access the rendered frame.
+func (g *GameBoy) Step() {
+	g.running = true
+	g.CPU.Frame()
+	g.running = false
+}
+
+// FrameBuffer returns a pointer to the most recently rendered frame.
+// The contents are overwritten by the next call to Step or Frame.
+func (g *GameBoy) FrameBuffer() *[ppu.ScreenHeight][ppu.ScreenWidth][3]uint8 {
+	return &g.PPU.PreparedFrame
+}
+
+// Reset returns the emulator to its initial boot state, reusing the ROM
+// that is already loaded in memory (it is not re-read from disk).
+// Battery-backed cartridge RAM is preserved across the reset.
+func (g *GameBoy) Reset() error {
+	if g.ROM == nil {
+		return errors.New("gomeboy: cannot reset: no ROM loaded")
+	}
+
+	// preserve battery-backed cartridge RAM across the reset
+	var batteryRAM []byte
+	if g.Bus != nil && g.Bus.Cartridge().Features.Battery {
+		batteryRAM = append([]byte(nil), g.Bus.Cartridge().RAM...)
+	}
+
+	g.Init()
+
+	if batteryRAM != nil {
+		copy(g.Bus.Cartridge().RAM, batteryRAM)
+	}
+	return nil
 }
 
 // Save writes the current state of the Game Boy's RAM to the save file, if a save is present.

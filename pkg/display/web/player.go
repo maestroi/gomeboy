@@ -9,6 +9,7 @@ import (
 	"github.com/thelolagemann/gomeboy/internal/io"
 	"github.com/thelolagemann/gomeboy/internal/ppu"
 	"github.com/thelolagemann/gomeboy/pkg/display"
+	"github.com/thelolagemann/gomeboy/pkg/emulator"
 	"sync"
 )
 
@@ -80,7 +81,7 @@ func (p *Player) Attach(gb *gameboy.GameBoy) {
 	p.gb = gb
 }
 
-func (p *Player) Start(fb <-chan []byte, pressed, released chan<- io.Button) error {
+func (p *Player) Start(c emulator.Controller, fb <-chan []byte, pressed, released chan<- io.Button) error {
 	// setup keys
 	p.pressed = pressed
 	p.release = released
@@ -256,7 +257,7 @@ func (p *Player) ReadPump(from <-chan []byte) {
 					p.gb.PPU.Debug.WindowDisabled = message[2] == 0
 					p.hub.sendAllButClient(p.c, []byte{PlayerInfo, WindowDisabled, message[2]})
 				case 2: // sprites
-					p.gb.PPU.Debug.SpritesDisabled = message[2] == 0
+					p.gb.PPU.Debug.OBJDisabled = message[2] == 0
 					p.hub.sendAllButClient(p.c, []byte{PlayerInfo, SpritesDisabled, message[2]})
 				}
 
