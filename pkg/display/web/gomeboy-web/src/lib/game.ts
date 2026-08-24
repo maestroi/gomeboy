@@ -58,6 +58,9 @@ export enum PlayerInfoEvent {
     BackgroundEnabled,
     WindowEnabled,
     SpritesEnabled,
+    SaveStateResult,
+    LoadStateResult,
+    SpeedChanged,
 }
 
 type EventCallback = (event: EventType, data: Uint8Array) => void;
@@ -193,9 +196,12 @@ class Game {
     patchRatio: number;
     clients: Writable<Map<string,UserClient>>;
     client: Writable<UserClient>;
+    toast: Writable<{text: string, kind: "info" | "error"} | null>;
+    private toastTimer: ReturnType<typeof setTimeout> | null;
     username: Writable<string>;
     lastTransfer: number;
     speedData: Writable<Array<number>>
+    speed: Writable<number>;
 
     player1: Player;
     player2: Player;
@@ -219,12 +225,15 @@ class Game {
         this.clients = writable(new Map<string,UserClient>())
         this.username = writable("");
         this.client = writable(new UserClient("", "", "", 0))
+        this.toast = writable(null);
+        this.toastTimer = null;
 
         this.frameCaching = writable(true);
         this.framePatching = writable(true);
         this.frameSkipping = writable(true);
 
         this.speedData = writable(new Array<number>());
+        this.speed = writable(1);
 
         this.lastTransfer = 0;
 
@@ -258,6 +267,12 @@ class Game {
         this.isPlayer1 = writable(false);
         this.isPlayer2 = writable(false);
         // this.username = getUsername();
+    }
+
+    showToast(text: string, kind: "info" | "error" = "info", duration = 2000): void {
+        this.toast.set({text, kind})
+        if (this.toastTimer) clearTimeout(this.toastTimer)
+        this.toastTimer = setTimeout(() => this.toast.set(null), duration)
     }
 
     async connect(): Promise<any> {
@@ -374,6 +389,16 @@ class Game {
                             break
                         case PlayerInfoEvent.SpritesEnabled:
                             player.spritesEnabled.set(eventData[1] === 1)
+                            break
+                        case PlayerInfoEvent.SaveStateResult:
+                            this.showToast(eventData[1] === 1 ? "State saved" : "Failed to save state", eventData[1] === 1 ? "info" : "error")
+                            break
+                        case PlayerInfoEvent.LoadStateResult:
+                            this.showToast(eventData[1] === 1 ? "State loaded" : "Failed to load state", eventData[1] === 1 ? "info" : "error")
+                            break
+                        case PlayerInfoEvent.SpeedChanged:
+                            this.speed.set(eventData[1])
+                            this.showToast(`Speed ${eventData[1]}x`)
                             break
                     }
                     break
