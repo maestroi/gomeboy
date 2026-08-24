@@ -1,6 +1,6 @@
 # Agent-driven emulator, bridged into the existing web overlay
 
-Status: approved (design), not yet planned/implemented.
+Status: approved (design), ready for implementation planning.
 
 ## Problem
 
@@ -36,16 +36,19 @@ cmd/gomeboy-agent (new binary)
 │    ├── Emulator.Press/Release   │  pkg/gomeboy.Emulator
 │    ├── Emulator.StepFrame()     │  (existing, untouched)
 │    ├── Emulator.Read8/Frame()   │
-│    └── publish AgentState       ─┘
-│         │
-│         ▼
-│    webbridge.Adapter (new, small)
-│      - satisfies pkg/emulator.Controller
-│      - pushes Emulator.Frame() onto fb chan []byte after each step
-│      - exposes AgentState publication as a plain method call
+│    ├── adapter.PublishFrame()   ─┘
+│    └── publisher.PublishAgentState(...)
+│         │                              │
+│         ▼                              ▼
+│    webbridge.Adapter (new, small) AgentPublisher (new, small,
+│      - satisfies                  implemented by the web hub)
+│        pkg/emulator.Controller      - PublishAgentState(AgentState)
+│      - pushes Frame() onto fb       - independent of the bridge
+│        chan []byte
 │      - never calls StepFrame itself
-│         │
-│         ▼
+│         │                              │
+│         └──────────────┬───────────────┘
+│                         ▼
 │    pkg/display/web hub (existing, unmodified wiring:
 │    Driver.Start(controller, fb, pressed, released))
 │         │
@@ -67,25 +70,34 @@ Stays generic and free of any web/agent/runtime concerns.
 ### 2. `webbridge` package (new, small — lives under `pkg/webbridge` or
    inlined in `cmd/gomeboy-agent` if it stays under ~100 lines)
 
-Bridges `pkg/gomeboy.Emulator`'s step-driven model into the display
-layer's push/channel model, without owning timing.
+Bridges the emulator's step-driven model into the display layer's push/
+channel model, without owning timing. `Adapter` is exactly this bridge —
+emulator/display compatibility — and nothing else. Agent-state
+publication (goal/action/observation) is a separate concern (see
+"Agent state publication" below); the adapter does not own it.
 
 ```go
-// Adapter satisfies pkg/emulator.Controller for a pkg/gomeboy.Emulator.
-// It never advances the emulator itself; PublishFrame/PublishState are
-// called by the agent loop after it has already stepped.
-type Adapter struct {
-    emu     *gomeboy.Emulator
-    fb      chan<- []byte
-    paused  bool // set only by Pause()/Resume(); read by agent loop
+// Emulator is the minimal surface webbridge needs. pkg/gomeboy.Emulator
+// satisfies it; tests use a fake instead of a real ROM.
+type Emulator interface {
+    Frame() gomeboy.Frame // or []byte, whichever pkg/gomeboy already returns
 }
 
-func NewAdapter(emu *gomeboy.Emulator, fb chan<- []byte) *Adapter
+// Adapter satisfies pkg/emulator.Controller for an Emulator. It never
+// advances the emulator itself; PublishFrame is called by the agent loop
+// after it has already stepped.
+type Adapter struct {
+    emu    Emulator
+    fb     chan<- []byte
+    paused atomic.Bool
+}
+
+func NewAdapter(emu Emulator, fb chan<- []byte) *Adapter
 
 // Controller interface methods (pkg/emulator.Controller):
 func (a *Adapter) LoadROM(string) error
-func (a *Adapter) Pause()         // sets paused=true; does not sleep, does not block
-func (a *Adapter) Resume()        // sets paused=false
+func (a *Adapter) Pause()         // sets paused; does not sleep, does not block
+func (a *Adapter) Resume()        // clears paused
 func (a *Adapter) Paused() bool
 func (a *Adapter) Initialised() bool
 func (a *Adapter) QuickSave() error
@@ -97,18 +109,16 @@ func (a *Adapter) Speed() int
 // Called by the agent loop after StepFrame; a no-op (frame dropped) if
 // a.Paused() or the fb channel is full — never blocks the agent loop.
 func (a *Adapter) PublishFrame()
-
-// PublishState broadcasts agent state (goal/action/observation/status/
-// step) to connected clients via the hub.
-func (a *Adapter) PublishState(s AgentState)
 ```
 
-**Pause semantics (precise, per review):** `Pause()` only flips a flag the
-agent loop is expected to check before calling `StepFrame` again, and
-makes `PublishFrame`/`PublishState` no-ops while set. It does not sleep,
-does not spawn a ticker, and does not itself stop anything — the agent
-loop remains in control of whether stepping actually happens. This keeps
-the adapter honest about not owning timing even in the pause path.
+**Pause semantics are advisory/cooperative, not enforced.** `Pause()`
+only flips a flag; it does not sleep, does not spawn a ticker, and does
+not itself prevent anything. `PublishFrame` becomes a no-op while paused,
+but the agent loop MUST check `Paused()` itself before every emulator
+advancement operation (`Press`/`Release`/`StepFrame`) — `Pause()` does
+not guarantee the emulator cannot advance. This is a deliberate
+consequence of the governing invariant (the adapter never steps), stated
+explicitly so a future reader doesn't assume `Pause()` is authoritative.
 
 **No hidden realtime loop:** the adapter has no goroutine that calls
 `StepFrame`, no ticker, nothing that advances emulation without the agent
@@ -121,19 +131,49 @@ New WS message type in `pkg/display/web` (next value in the existing
 `Type` enum in `player.go`, mirrored in `game.ts`'s `EventType`):
 
 ```go
+type AgentStatus string
+
+const (
+    AgentIdle    AgentStatus = "idle"
+    AgentRunning AgentStatus = "running"
+    AgentPaused  AgentStatus = "paused"
+    AgentError   AgentStatus = "error"
+)
+
 type AgentState struct {
     Step        uint64
     Goal        string
     LastAction  string
     Observation string
-    Status      string // e.g. "running", "paused", "error"
+    Status      AgentStatus
 }
 ```
 
-No Pokémon-specific fields (no map ID, no coordinates). If a later
-project wants to show semantic Pokémon state, it publishes that as part
-of `Observation` (a string) or as a separate, later protocol extension —
-not by growing this struct today.
+`Status` is a typed enum, not an arbitrary string, so Go and Svelte can't
+drift on spelling (`"paused"` vs `"Paused"`). No timestamp field for v1 —
+`Step` already gives ordering; the browser can timestamp on receipt if it
+ever needs wall-clock display. No Pokémon-specific fields (no map ID, no
+coordinates). If a later project wants to show semantic Pokémon state, it
+publishes that as part of `Observation` (a string) or as a separate,
+later protocol extension — not by growing this struct today.
+
+### Agent state publication (separate from `webbridge`)
+
+Publishing `AgentState` is not the bridge's job — the bridge is
+"step-driven emulator → existing display/controller", full stop. A small
+publisher interface, implemented by the web hub/driver, owns it instead:
+
+```go
+// in pkg/display/web
+type AgentPublisher interface {
+    PublishAgentState(AgentState)
+}
+```
+
+The agent loop holds both `*webbridge.Adapter` (for `PublishFrame` and
+`Controller` semantics) and an `AgentPublisher` (for state), and calls
+each independently. Nothing about agent-state publication routes through
+`webbridge.Adapter`.
 
 ### 4. `cmd/gomeboy-agent` (new binary, separate from `cmd/gomeboy-web`)
 
@@ -157,19 +197,44 @@ observation/status. Does not replace or modify `Controls.svelte`.
 
 ## Data flow (steady state)
 
-1. Agent loop calls `Press`/`Release`/`StepFrame` on `pkg/gomeboy.Emulator`
-   some number of times.
-2. Agent loop calls `adapter.PublishFrame()` and, when it has a new
-   decision, `adapter.PublishState(...)`.
+The agent command's main loop owns pacing and the pause check — not the
+adapter, not the publisher:
+
+```go
+for ctx.Err() == nil {
+    if adapter.Paused() {
+        time.Sleep(pollInterval)
+        continue
+    }
+
+    // eventually: decision := agent.Decide(...); emu.Press(decision)
+    emu.StepFrame()
+    adapter.PublishFrame()
+    publisher.PublishAgentState(webweb.AgentState{Step: step, ...})
+
+    step++
+}
+```
+
+1. Agent loop calls `Press`/`Release`/`StepFrame` on the emulator some
+   number of times, checking `adapter.Paused()` before each cycle.
+2. Agent loop calls `adapter.PublishFrame()` (bridge) and, when it has a
+   new decision, `publisher.PublishAgentState(...)` (separate publisher)
+   — two independent calls, not one combined step.
 3. Adapter pushes the frame onto the existing `fb` channel the hub
-   already reads via `Driver.Start`; broadcasts `AgentState` to all
-   connected WS clients via the hub's existing broadcast channel.
+   already reads via `Driver.Start`; the publisher broadcasts
+   `AgentState` to all connected WS clients via the hub's existing
+   broadcast channel.
 4. Svelte client renders the frame in the existing game view and the new
    state in `AgentPanel`.
 5. A human browser client's button presses (if any connect) still flow
    through the existing `pressed`/`released` channels into
-   `Emulator.Press`/`Release` — human and agent input are not
-   distinguished at this layer; that's out of scope here.
+   `Emulator.Press`/`Release`, same as agent input, with no arbitration
+   between the two. **Consequence, stated explicitly:** if a human and
+   the agent both connect, their inputs combine into shared button state
+   with no ordering or precedence — this can look like erratic input.
+   That's an accepted limitation of this plumbing stage, not a bridge
+   bug; input arbitration is intentionally deferred to a later plan.
 
 ## Error handling
 
@@ -183,14 +248,17 @@ observation/status. Does not replace or modify `Controls.svelte`.
 
 ## Testing
 
-- `webbridge.Adapter` is tested against a small fake satisfying whatever
-  minimal interface the adapter actually needs from the emulator (frame
-  bytes + pause state), not against a real ROM, so tests don't depend on
-  ROM fixtures. One real-ROM integration test (loads a small test ROM via
-  `pkg/gomeboy`, steps it, asserts a frame reaches the `fb` channel and
-  `AgentState` reaches the hub's broadcast channel) covers the real wiring
-  end-to-end, matching the existing `pkg/gomeboy` test style
-  (`bench_test.go`, `gomeboy_test.go` already use a fixture ROM).
+- `webbridge.Adapter` is tested against a fake implementing the small
+  `webbridge.Emulator` interface (just `Frame()`), not against a real
+  ROM, so unit tests don't depend on ROM fixtures. The narrow interface
+  is what makes this fake trivial — the adapter can't accidentally
+  couple itself to more of `pkg/gomeboy` than `Frame()`.
+- One real-ROM integration test (loads a small test ROM via
+  `pkg/gomeboy.Emulator`, steps it, asserts a frame reaches the `fb`
+  channel via the real adapter, and `AgentState` reaches the hub's
+  broadcast channel via the publisher) covers the real wiring end-to-end,
+  matching the existing `pkg/gomeboy` test style (`bench_test.go`,
+  `gomeboy_test.go` already use a fixture ROM).
 - No test harness exists for the Svelte client; `AgentPanel.svelte` is
   manual-QA'd like `Controls.svelte` already is.
 
