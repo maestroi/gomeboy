@@ -49,4 +49,5 @@ const (
 	ServerInfo
 	PlayerInfo
 	PlayerIdentify
+	AgentUpdate
 )
