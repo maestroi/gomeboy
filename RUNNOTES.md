@@ -1,33 +1,39 @@
-# RUNNOTES — Task 2: AgentState / AgentPublisher on the web hub
-
+# RUNNOTES — Task 3: cmd/gomeboy-agent
 ## Done
-- `pkg/display/web/agentstate.go`: `AgentStatus` (idle/running/paused/error),
-  `AgentState{Step,Goal,LastAction,Observation,Status}` with JSON tags
-  `step`,`goal`,`last_action`,`observation`,`status`; `AgentPublisher`
-  interface; `(*Player).PublishAgentState` broadcasts
-  `createMessage(AgentUpdate, json)` via non-blocking `select` send
-  (drops if hub broadcast full, per design spec's never-block rule).
-- `pkg/display/web/events.go`: `AgentUpdate` appended as LAST value of the
-  Type const block (= 16). Frame=0 ... PlayerIdentify=15 unchanged (wire protocol).
-- `pkg/display/web/agentstate_test.go` (TDD: red first, then green):
-  `newTestPlayer` builds a Player with a fresh hub (buffered broadcast chan);
-  `TestPlayer_PublishAgentState_BroadcastsJSON` asserts message bytes
-  [AgentUpdate, playerByte, json], exact JSON keys, round-trip equality;
-  `TestPlayer_SatisfiesAgentPublisher` is a compile-time assertion.
-- `go test -race ./pkg/display/web/` passes. Full `go test ./...`: all ok
-  except `tests` pkg (TestAge, Test_Acid2) — PRE-EXISTING fixture failures
-  (missing `tests/roms/age`, acid-hell baseline diff); verified via
-  `git stash` that they fail without my changes.
+- `cmd/gomeboy-agent/main.go`: loads ROM via `gomeboy.New(WithROM, Headless)`,
+  builds `webbridge.NewAdapter(emu, fb)`, `display.GetDriver("web")`
+  type-asserted to `web.AgentPublisher` (installed driver is `*web.Player`),
+  driver started in a goroutine, `runAgentLoop` under signal.NotifyContext
+  (INT/TERM).
+- `runAgentLoop(ctx, emu, adapter, publisher, frameInterval)` extracted,
+  testable: ticker-owned pacing, checks `adapter.Paused()` before every step,
+  then StepFrame → adapter.PublishFrame() →
+  publisher.PublishAgentState(AgentState{Step, "stub: step the emulator", "StepFrame", AgentRunning}).
+  Stub presses no buttons.
+- Browser input forwarding goroutine maps the driver's io.Button channels to
+  emu.Press/Release via the name-keyed `ioToGomeboyButton` map — never a
+  bare gomeboy.Button(b) cast (internal/io.Button: A,B,Select,Start,Right,
+  Left,Up,Down vs pkg/gomeboy.Button: A,B,Start,Select,Up,Down,Left,Right).
+- `cmd/gomeboy-agent/main_test.go`: fakePublisher +
+  TestRunAgentLoop_PublishesFramesAndState (3 frames on fb, steps 0..n,
+  AgentRunning, 160*144*3 bytes) + TestRunAgentLoop_RespectsPause (paused:
+  0 frames, FrameCount 0, 0 states). ROM fixture
+  tests/roms/little-things-gb/firstwhite.gb (from package dir:
+  ../../tests/roms/...; extract tests/roms.zip into tests/roms first).
+- Verified: go build ok; go test -race ./cmd/gomeboy-agent/ both pass; full
+  go test ./... ok except PRE-EXISTING tests pkg failures (TestAge,
+  Test_Acid2). Changes left UNCOMMITTED (not requested).
 
 ## Next task must know
-- Plan file `docs/superpowers/plans/2026-08-24-agent-web-overlay.md` still
-  does not exist (only the design spec in docs/superpowers/specs/). JSON tags
-  were chosen here (snake_case); if a later plan pins different tags, the test
-  `TestPlayer_PublishAgentState_BroadcastsJSON` asserts them.
-- Package `init()` (player.go) starts the real hub: binds :8090 and runs the
-  hub loop in tests — port must be free when running `go test ./pkg/display/web`.
-- Message framing: every WS message is `[Type, playerByte, payload...]`;
-  AgentUpdate payload is JSON (unlike the binary frame protocol).
-- Svelte side (AgentPanel.svelte, game.ts EventType mirror) is still TODO;
-  client must handle a new message type byte 0x10 whose payload is JSON.
-- `cmd/gomeboy-agent` binary does not exist yet.
+- THE PLAN FILE docs/superpowers/plans/2026-08-24-agent-web-overlay.md STILL
+  DOES NOT EXIST (only the design spec). Task 3 reconstructed from the
+  design spec + task instructions; both pre-fixed bugs respected (single
+  named web import, no blank import; name-keyed button map).
+- Tests pull in pkg/display/web whose init() binds :8090 and log.Fatals if
+  the port is taken — keep :8090 free for go test ./cmd/gomeboy-agent.
+- *web.Player.gb is nil here (no Attach): browser pause/play or PPU-debug
+  messages would nil-deref in ReadPump. Stub stage: no human input expected.
+- Svelte AgentPanel.svelte / game.ts EventType mirror still TODO (client
+  must handle message type 0x10, JSON payload). Next likely task: real agent
+  decision loop (LLM) replacing the stub, and/or the Svelte panel;
+  human+agent input arbitration still unimplemented (accepted limitation).
