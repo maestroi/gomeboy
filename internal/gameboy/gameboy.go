@@ -37,6 +37,7 @@ type GameBoy struct {
 	rumbling        bool
 	paused, running bool
 	initialised     bool
+	speed           int
 	saveDir         string
 	noSaves         bool
 	cheatsPath      string
@@ -46,7 +47,7 @@ type GameBoy struct {
 }
 
 // NewGameBoy creates a new GameBoy with the provided Opt(s).
-func NewGameBoy(opts ...Opt) *GameBoy { return &GameBoy{options: opts} }
+func NewGameBoy(opts ...Opt) *GameBoy { return &GameBoy{options: opts, speed: 1} }
 
 // WithSaveDir sets the directory that save files (.sav) and quick-save state
 // files (.state) are read from and written to. An empty dir keeps the
@@ -323,3 +324,17 @@ func (g *GameBoy) Paused() bool      { return g.paused }      // is the Game Boy
 func (g *GameBoy) Pause()            { g.paused = true }      // pause execution of the Game Boy
 func (g *GameBoy) Resume()           { g.paused = false }     // resume execution of the Game Boy
 func (g *GameBoy) Running() bool     { return g.running }     // is the emulator currently running?
+
+// Speed returns the current playback speed multiplier (1 = real time).
+func (g *GameBoy) Speed() int { return g.speed }
+
+// SetSpeed sets the playback speed multiplier, clamped to 1..8.
+func (g *GameBoy) SetSpeed(s int) {
+	if s < 1 {
+		s = 1
+	}
+	if s > 8 {
+		s = 8
+	}
+	g.speed = s
+}

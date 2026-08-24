@@ -35,6 +35,15 @@ func AudioData(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 			return
 		}
 
+		// run the extra frames of the playback speed multiplier and drain
+		// their audio so the APU stays in sync with the video
+		for i := 1; i < gb.Speed(); i++ {
+			gb.Step()
+			if s, sN := gb.APU.Samples(); sN > 0 {
+				sampleBuffer = append(sampleBuffer, unsafe.Slice((*byte)(unsafe.Pointer(&s[0])), len(s)*4)...)
+			}
+		}
+
 		frame = gb.Frame()
 		s, sN := gb.APU.Samples()
 		if sN > 0 {
