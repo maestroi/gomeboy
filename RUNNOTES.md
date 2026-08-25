@@ -1,36 +1,37 @@
-# RUNNOTES — OPT-1: expose model, printer, cheats through pkg/gomeboy options
+# RUNNOTES — OPT-2: unified CLI startup options + contextual exit errors
 
-## What changed (pkg/gomeboy only)
-- `gomeboy.go`: new public `Model` string type + constants `ModelAuto, ModelDMG0,
-  ModelDMG, ModelCGB0, ModelCGB, ModelMGB, ModelSGB, ModelSGB2, ModelAGB`
-  (zero value invalid). `WithModel` maps via `modelMap` to `gameboy.AsModel`
-  (DMG->DMGABC, CGB->CGBABC, rest 1:1); auto appends nothing (keeps inference).
-  Unknown values fail New: `gomeboy: unknown model %q: use auto, DMG0, ...`.
-  `WithPrinter` -> `gameboy.WithPrinter`; `WithCheats(path)` -> `gameboy.WithCheats`
-  (explicit path only, no cwd probing). New defaults to `model: ModelAuto`.
-  New read-only `Emulator.Model()` accessor: maps `gb.Bus.Model()` back to public
-  via `publicModelMap` (Unset/nil-Bus -> ModelAuto). No runtime mutation APIs.
-- `gomeboy_test.go`: TestWithModel (8 round-trips), TestWithModelAuto (firstwhite
-  is a DMG cart -> ModelDMG), TestWithModelUnknown (5 bad values), TestWithPrinter
-  + TestNoPrinterByDefault (type-assert Serial.AttachedDevice),
-  TestWithCheatsLoadsOnlyExplicitPath (cwd `firstwhite.cheats` NOT picked up),
-  TestWithCheatsMalformed (>64KB line -> parser fails, New still succeeds,
-  LoadedCheats empty), TestWithCheatsUnreadable, TestNoDiskIOWithModelAndPrinter.
+## What changed
+- New `internal/launch` (FlagSet-based, no global flag state): `Register`
+  (-rom, -boot, -model, -printer, -cheats, -log-level, -pprof),
+  `RegisterSaves` (-save-dir, -no-saves), `RegisterDriver(fs, def)`,
+  `Parse(fs, args) (*Options, error)` via fs.Lookup, `CheatsPath()` (explicit
+  -cheats wins, else `<rombase>.cheats`), `CoreOptions()` (desktop/web; boot
+  via utils.LoadFile with path in error; DMG->DMGABC/CGB->CGBABC; historical
+  cheats + cwd saves preserved), `PublicOptions()` (agent; diskless),
+  `StartPProf(addr, logger)` (sync net.Listen; bind error returned).
+- Model flag case-insensitive auto/DMG0/DMG/CGB0/CGB/MGB/SGB/SGB2/AGB; log
+  level via log.ParseLevel; pprof addr via net.SplitHostPort; -no-saves +
+  -save-dir is a conflict error.
+- All three binaries: `main()` only logs final error + os.Exit(1); testable
+  `run(args) error` boundary. Flags on flag.CommandLine (re-init
+  ContinueOnError): display.Init() registers driver flags on the global flag
+  package, and flag cannot split-parse across two sets. -h -> nil.
+- Contextual errors: `gomeboy[-web/-agent]: load ROM %s: %w`, `open audio
+  device`, `unknown display driver %q: use auto or one of <list>`, `start
+  display driver %q: %w`, `save battery RAM for ROM %s: %w`, `pprof listen
+  on %s: %w`; no panics / silent continue after LoadROM.
+- Agent: -rom required, -fps positive, driver.Start in a goroutine feeding
+  startErr (select with ctx.Done), honest `web hub on <addr>` log. README:
+  full flag tables + shared-options/restart-time and agent-diskless notes;
+  TODO "error handling and logging" + "expose more options" checked.
 
-## Gotchas for the next task
-- `e.gb.model` is unexported in internal/gameboy; observe the effective model
-  via the exported `gb.Bus.Model()` (io.Bus, set by Bus.Map in Init) — that is
-  what `Emulator.Model()` uses.
-- Tests that `t.Chdir` must resolve `testROM` to an absolute path FIRST
-  (helper `absTestROM`); the relative `../../tests/roms/...` breaks after chdir.
-- `tests/roms/` is extracted from `tests/roms.zip` by the tests package init;
-  I extracted it manually (zip members land in `tests/roms/<suite>/`).
-- Cheats errors are log-only (log.Errorf), never returned from New; observable
-  via `gb.Bus.LoadedCheats` / `GameSharkCodes` / `GameGenieCodes`.
-- Pre-existing (NOT this task): ./tests Test_Acid2/cgb-acid-hell + TestAge
-  (missing roms/age) failures; gofmt dirt in pkg/gomeboy/spectate.go,
-  cmd/diag/main.go. POKEMON_RED_ROM tests skip when unset.
+## Gotchas
+- Go 1.27 flag: failf ALWAYS prints usage (to f.Output) on parse errors even with ContinueOnError; error text is only returned. Bool flags:
+  `-printer notabool` parses as flag+positional; test bad bools with `-printer=notabool`.
+- internal/launch tests extract tests/roms.zip into tests/roms (gitignored); ROM paths resolve from a pkgDir captured at test start (t.Chdir-safe).
+- Pre-existing ./tests failures (missing tests/results refs + roms/age): verified identical on the clean tree via git stash.
 
 ## Verification (all green)
-- `go test ./pkg/gomeboy/ -v` all pass; `-race` clean; gofmt/vet/build clean.
-- `go test ./...` green except the pre-existing ./tests failures above.
+- go build/vet ./... clean; gofmt clean on touched files; go test ./... green except the pre-existing ./tests fixture failures.
+- Smoke: -h exit 0 all binaries; bad model/pprof/rom/driver, conflict, and bind-conflict (web hub + pprof) all exit 1 with one contextual line;
+  web hub + pprof serve (200/400-ws); agent SIGTERM exit 0.
