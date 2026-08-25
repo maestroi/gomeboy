@@ -1,39 +1,39 @@
-# RUNNOTES — ERR-1: web listener lifecycle, returned failures, safe hub
+# RUNNOTES — ERR-2: GLFW as a recoverable driver lifecycle
 
 ## What changed
-- `pkg/display/web/hub.go`: listener moved out of package init. `newHub`
-  is inert; `start()` (sync.Once) binds `*listenAddr`, serves a dedicated
-  `http.ServeMux` (WS at `/`, static under `/app/` if GOMEBOY_WEB_STATIC_DIR
-  set) and returns `web: listen on <addr>: <err>` on bind failure — no
-  log.Fatal/panic. `stop()` (sync.Once) is idempotent. Rejected upgrades
-  are logged with remote addr/method/path/user-agent (gorilla v1.5.3 writes
-  the HTTP error itself). `info()` logs via the hub logger.
-- `pkg/display/web/player.go`: `init()` only builds hub/players and
-  `display.Install`s with DriverOption `listen` -> flag `web-listen`
-  (default `:8090`, read at start time). `Start` returns the hub's bind
-  error; `Stop` calls idempotent `hub.stop()`. `broadcastFrame` extracted;
-  encode failures log + drop the frame (no panic); `encode` package var is
-  the test seam. ReadPump guards nil gb / short messages.
-- `pkg/display/web/hub_test.go`: new — WEB-IMPORT, WEB-BIND, WEB-STOP,
-  WEB-STATIC (+upgrade logging), WEB-ERRORS. `agentstate_test.go` dropped
-  its `clients` map literal (sync.Map change).
+- `pkg/display/glfw/glfw.go`: package `init` now ONLY does `runtime.LockOSThread()`
+  + `display.Install`. Initialization moved to: `Start` -> `initSubsystems`
+  (glfw.Init, primary monitor, sdl.Init, joystick open) -> `run` (createWindow,
+  gl.Init AFTER the window — Windows needs a window first) -> `runRenderLoop`.
+- Every failure returns `fmt.Errorf("<subsystem>: <op>: %w", err)` ("glfw: initialize",
+  "no primary monitor found", "sdl: initialize joystick and video", "glfw: create
+  window", "opengl: initialize"). No log.Fatal/panic anywhere.
+- Driver tracks started/glfwInited/sdlInited/glInited/monitor/joystick/window
+  (mutex-guarded). `Stop` is idempotent: window.Destroy, joystick close, sdl.Quit,
+  glfw.Terminate — each only if initialized; clears all state. Start calls Stop on
+  every exit path (no leaked subsystems).
+- Seams (package func vars, defaults = real calls): glfwInit, glfwTerminate,
+  getPrimaryMonitor, sdlInit, sdlQuit, sdlNumJoysticks, sdlJoystickOpen,
+  enableJoystickEvents, glInit, createWindow, runRenderLoop.
+- New `window` interface + `glfwWindow` adapter; new `joystick` interface +
+  `sdlJoystick` adapter (sdl.Joystick is an incomplete C type — cannot be allocated
+  from Go, so the adapter is the only way to fake it).
+- `keyCallback` extracted as a package function (testable); `getBestMode` became
+  `g.bestMode()`; `Rumble` now nil-guards the joystick (pre-existing nil-panic with
+  no controller); pollTicker now Stop()ped.
+- `pkg/display/glfw/glfw_test.go`: new — GLFW-IMPORT, GLFW-ERRORS, GLFW-CLEANUP, GLFW-BEHAVIOR.
 
 ## Gotchas for the next task
-- `stop()` closes the listener DIRECTLY, then `server.Shutdown`: Shutdown
-  only closes listeners `Serve` has tracked; a stop racing ahead of Serve
-  leaks the address (rebind: "address already in use").
-- `hub.clients` is now `sync.Map`: the run loop mutates it while handlers
-  and client pumps iterate it, and client.go calls `sendAllButClient`
-  while holding `hub.mu` (plain map + that mutex would deadlock; client.go
-  is not in the modify list).
-- The hub `run()` loop lives for process lifetime on purpose: client.go
-  pumps send on the unbuffered `unregister` channel in defers; if run()
-  exited at stop, those sends would deadlock.
-- Pre-existing races (NOT fixed; client.go out of scope): `c.avgLatency`
-  written unlocked in ReadPump defer (client.go:34) vs under c.mu in
-  WritePump (client.go:140) -> `go test -race` fails on
-  TestStaticMountWebSocketRouteAndUpgradeLogging; `p.c`/config flags unlocked.
+- `main.go` never calls driver.Stop(); Start self-cleans now, so behavior is
+  unchanged (window close -> Start nil -> gb.Save -> exit).
+- GLFW window destroy is `w.Destroy()`, not Close (no Close in this go-gl/glfw
+  version). `&glfw.Monitor{}` zero literals are safe in tests as long as bestMode
+  isn't called (fullscreen=false in tests).
+- Pre-existing (NOT this task): `./tests` failures (Test_Acid2/cgb-acid-hell,
+  TestAge panics on missing roms/age fixtures) and gofmt dirt in
+  pkg/gomeboy/spectate.go + cmd/diag/main.go. `tests/roms/*.gb` auto-download on
+  first run; parallel `go test ./...` can race that (spurious "no such file" on
+  first pass — just re-run).
 
 ## Verification (all green)
-- `go test ./pkg/display/web/ -v` 8/8 pass; build/vet/gofmt clean; -race
-  fails only on the pre-existing client.go avgLatency race above.
+- `go test ./pkg/display/glfw/ -v` 10/10 pass; `-race` clean; gofmt/vet/build clean; full `go test ./...` green except pre-existing ./tests failures.
