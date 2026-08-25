@@ -1,12 +1,14 @@
 package web
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/thelolagemann/gomeboy/pkg/log"
 	"golang.org/x/sys/unix"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -15,7 +17,10 @@ import (
 )
 
 type hub struct {
-	clients          map[*Client]bool
+	// clients is a sync.Map because the registry is mutated by the run
+	// loop while handlers and client pumps (which may already hold mu)
+	// iterate it; a plain map plus mutex would deadlock there.
+	clients          sync.Map
 	player1, player2 *Player
 
 	broadcast            chan []byte
@@ -28,106 +33,237 @@ type hub struct {
 	frameSkipping    bool
 	currentID        uint8
 
+	// listenAddr points at the configured listen address (the web-listen
+	// flag) and is read when the hub starts, not when it is created.
+	listenAddr *string
+	logger     log.Logger
+
+	listener net.Listener
+	server   *http.Server
+
+	stopping  chan struct{} // closed by stop() to end the server and ticker
+	stopOnce  sync.Once
+	startOnce sync.Once
+	startErr  error
+
+	// done is closed once the server and ticker goroutines have exited.
+	done chan struct{}
+	wg   sync.WaitGroup
+
 	mu sync.Mutex
 }
 
-func (w *hub) run() error {
-	// serve the pre-built frontend if a static directory is configured.
-	// the websocket handler keeps the "/" path, so static assets live
-	// under "/app/" (the Svelte client's asset paths are relative).
-	if staticDir := os.Getenv("GOMEBOY_WEB_STATIC_DIR"); staticDir != "" {
-		http.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.Dir(staticDir))))
+// newHub creates a hub that serves websocket clients at "/" and (if
+// GOMEBOY_WEB_STATIC_DIR is set) static assets under "/app/". Nothing is
+// bound or started until start is called.
+func newHub(listenAddr *string, logger log.Logger) *hub {
+	return &hub{
+		broadcast:  make(chan []byte),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+
+		compression:      true,
+		compressionLevel: 2,
+		framePatching:    true,
+		frameSkipping:    true,
+		framePatchRatio:  1,
+
+		listenAddr: listenAddr,
+		logger:     logger,
 	}
+}
 
-	// create http handler for client connections
-	http.HandleFunc("/", func(wr http.ResponseWriter, r *http.Request) {
-		wr.Header().Set("Access-Control-Allow-Origin", "*")
+// start binds the listen address and starts the HTTP server, the periodic
+// info ticker, and the broadcast loop. It is safe to call more than once;
+// only the first call has an effect. A bind failure is returned to the
+// caller rather than being fatal to the process.
+func (w *hub) start() error {
+	w.startOnce.Do(func() {
+		// a dedicated mux keeps the driver off the global default mux
+		mux := http.NewServeMux()
 
-		// upgrade the connection to a websocket connection
-		conn, err := upgrader.Upgrade(wr, r, nil)
+		// serve the pre-built frontend if a static directory is configured.
+		// the websocket handler keeps the "/" path, so static assets live
+		// under "/app/" (the Svelte client's asset paths are relative).
+		if staticDir := os.Getenv("GOMEBOY_WEB_STATIC_DIR"); staticDir != "" {
+			mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.Dir(staticDir))))
+		}
+
+		// websocket endpoint
+		mux.HandleFunc("/", w.handleUpgrade)
+
+		addr := *w.listenAddr
+		ln, err := net.Listen("tcp", addr)
 		if err != nil {
-			// TODO handle err
+			w.startErr = fmt.Errorf("web: listen on %s: %w", addr, err)
 			return
 		}
 
-		// create new client
-		c := w.newClient(conn, r)
+		w.listener = ln
+		w.server = &http.Server{Handler: mux}
+		w.stopping = make(chan struct{})
+		w.done = make(chan struct{})
 
-		// spawn read/write pumps
-		go c.ReadPump()
-		go c.WritePump()
+		w.wg.Add(2)
+		go w.serve()
+		go w.tick()
+		go w.run()
+		go func() {
+			w.wg.Wait()
+			close(w.done)
+		}()
+	})
+	return w.startErr
+}
 
-		// send initial data information
-		c.Send <- []byte{ClientInfo, ClientStatus, w.info(), uint8(w.compressionLevel), uint8(w.framePatchRatio)}
-
-		// inform players of the new clients
-		w.player1.clientSync <- c
-		if w.player2.c != nil {
-			w.player2.clientSync <- c
+// stop shuts the HTTP server and the periodic ticker down. It is safe to
+// call more than once; only the first call has an effect.
+func (w *hub) stop() {
+	w.stopOnce.Do(func() {
+		if w.stopping == nil {
+			return // never started
 		}
 
-		// synchronize clients to connecting client
-		var data []byte
-		for cl := range w.clients {
-			if c == cl {
-				continue // skip self
+		close(w.stopping)
+
+		if w.listener != nil {
+			// close the listener directly: it releases the address and ends
+			// Serve (http.ErrServerClosed). server.Shutdown alone can miss
+			// it if stop races ahead of Serve's listener tracking.
+			if err := w.listener.Close(); err != nil {
+				w.logger.Errorf("web: close listener on %s: %v", *w.listenAddr, err)
 			}
-
-			data = append(data, c.Metadata.RemoteAddr...)
-			data = append(data, 0)
-			data = append(data, cl.Metadata.UserAgent...)
-			data = append(data, 0)
-			data = append(data, cl.Metadata.Username...)
-			data = append(data, 0)
-			data = append(data, cl.ID)
-			data = append(data, byte('\n'))
 		}
 
-		if len(data) > 0 {
-			// remove last newline to avoid issues with JS
-			data = data[:len(data)-1]
+		if w.server != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := w.server.Shutdown(ctx); err != nil && !errors.Is(err, net.ErrClosed) {
+				w.logger.Errorf("web: shutdown server on %s: %v", *w.listenAddr, err)
+			}
+		}
+	})
+}
+
+// serve runs the HTTP server until it is shut down.
+func (w *hub) serve() {
+	defer w.wg.Done()
+	if err := w.server.Serve(w.listener); err != nil && err != http.ErrServerClosed {
+		w.logger.Errorf("web: serve %s: %v", *w.listenAddr, err)
+	}
+}
+
+// tick sends periodic client latency information to all clients until the
+// hub is stopped.
+func (w *hub) tick() {
+	defer w.wg.Done()
+
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+
+	for {
+		// prefer stopping over sending once stop has been requested
+		select {
+		case <-w.stopping:
+			return
+		default:
 		}
 
-		c.Send <- append([]byte{ClientListSync}, data...)
+		select {
+		case <-w.stopping:
+			return
+		case <-t.C:
+			// build information
+			var data []byte
+			w.clients.Range(func(k, v any) bool {
+				c := k.(*Client)
+				latencyBuf := make([]byte, 2)
+				c.mu.RLock()
+				binary.LittleEndian.PutUint16(latencyBuf, c.avgLatency)
+				c.mu.RUnlock()
+				data = append(data, c.ID)
+				data = append(data, latencyBuf...)
+				return true
+			})
+
+			// broadcast information
+			select {
+			case w.broadcast <- append([]byte{ServerInfo}, data...):
+			case <-w.stopping:
+				return
+			}
+		}
+	}
+}
+
+// handleUpgrade upgrades an incoming HTTP request to a websocket
+// connection and registers the new client with the hub.
+func (w *hub) handleUpgrade(wr http.ResponseWriter, r *http.Request) {
+	wr.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// upgrade the connection to a websocket connection
+	conn, err := upgrader.Upgrade(wr, r, nil)
+	if err != nil {
+		// the upgrader already wrote an HTTP error response; log the
+		// rejection with enough context to identify the request
+		w.logger.Errorf("web: rejected websocket upgrade: %s %s %s (user-agent %q): %v",
+			r.RemoteAddr, r.Method, r.URL.Path, r.Header.Get("User-Agent"), err)
+		return
+	}
+
+	// create new client
+	c := w.newClient(conn, r)
+
+	// spawn read/write pumps
+	go c.ReadPump()
+	go c.WritePump()
+
+	// send initial data information
+	c.Send <- []byte{ClientInfo, ClientStatus, w.info(), uint8(w.compressionLevel), uint8(w.framePatchRatio)}
+
+	// inform players of the new clients
+	w.player1.clientSync <- c
+	if w.player2.c != nil {
+		w.player2.clientSync <- c
+	}
+
+	// synchronize clients to connecting client
+	var data []byte
+	w.clients.Range(func(k, v any) bool {
+		cl := k.(*Client)
+		if c == cl {
+			return true // skip self
+		}
+
+		data = append(data, c.Metadata.RemoteAddr...)
+		data = append(data, 0)
+		data = append(data, cl.Metadata.UserAgent...)
+		data = append(data, 0)
+		data = append(data, cl.Metadata.Username...)
+		data = append(data, 0)
+		data = append(data, cl.ID)
+		data = append(data, byte('\n'))
+		return true
 	})
 
-	// setup goroutines
+	if len(data) > 0 {
+		// remove last newline to avoid issues with JS
+		data = data[:len(data)-1]
+	}
 
-	// web server
-	go func() {
-		log.Fatal(http.ListenAndServe(":8090", nil))
-	}()
+	c.Send <- append([]byte{ClientListSync}, data...)
+}
 
-	// periodic info updates
-	go func() {
-		t := time.NewTicker(time.Second * 1)
-		for {
-			select {
-			case <-t.C:
-				// build information
-				var data []byte
-				for c := range w.clients {
-					latencyBuf := make([]byte, 2)
-					binary.LittleEndian.PutUint16(latencyBuf, c.avgLatency)
-					data = append(data, c.ID)
-					data = append(data, latencyBuf...)
-				}
-
-				// broadcast information
-				w.broadcast <- append([]byte{ServerInfo}, data...)
-			}
-		}
-	}()
-
-	// handle broadcasting
+// run handles client registration, unregistration, and broadcasting.
+func (w *hub) run() {
 	for {
 		select {
 		case c := <-w.register:
-			w.clients[c] = true
+			w.clients.Store(c, true)
 		case c := <-w.unregister:
 			w.player1.mu.Lock()
 			// is this client still registered
-			if _, ok := w.clients[c]; ok {
+			if _, loaded := w.clients.LoadAndDelete(c); loaded {
 				// was it one of the players?
 				if w.player1 != nil && c == w.player1.c {
 					w.player1.clientClose <- struct{}{}
@@ -137,15 +273,16 @@ func (w *hub) run() error {
 				}
 
 				id := c.Metadata.RemoteAddr
-				delete(w.clients, c)
 
 				// notify connected clients that this client has disconnected
-				for c := range w.clients {
+				w.clients.Range(func(k, v any) bool {
+					cl := k.(*Client)
 					select {
-					case c.Send <- append([]byte{ClientClosing}, id...):
+					case cl.Send <- append([]byte{ClientClosing}, id...):
 					default:
 					}
-				}
+					return true
+				})
 
 				// notify the next client that it can join if there is one available
 				if next := w.nextPlayer(); next != nil {
@@ -154,14 +291,16 @@ func (w *hub) run() error {
 			}
 			w.player1.mu.Unlock()
 		case msg := <-w.broadcast:
-			for c := range w.clients {
+			w.clients.Range(func(k, v any) bool {
+				cl := k.(*Client)
 				select {
-				case c.Send <- msg:
+				case cl.Send <- msg:
 				default:
-					close(c.Send)
-					delete(w.clients, c)
+					close(cl.Send)
+					w.clients.Delete(cl)
 				}
-			}
+				return true
+			})
 		}
 	}
 }
@@ -206,7 +345,7 @@ func (w *hub) info() byte {
 		info |= types.Bit4
 	}
 
-	fmt.Printf("%08b\n", info)
+	w.logger.Debugf("web: hub info %08b", info)
 
 	return info
 }
@@ -217,11 +356,13 @@ func (w *hub) info() byte {
 // is able to take over.
 func (w *hub) nextPlayer() *Client {
 	var next *Client
-	for c := range w.clients {
+	w.clients.Range(func(k, v any) bool {
+		c := k.(*Client)
 		if next == nil || c.connectedAt.Before(next.connectedAt) {
 			next = c
 		}
-	}
+		return true
+	})
 
 	return next
 }
@@ -255,10 +396,17 @@ func (w *hub) newClient(conn *websocket.Conn, r *http.Request) *Client {
 // where the client is the one that initiated the event, so is already
 // aware of the registered username.
 func (w *hub) sendAllButClient(client *Client, message []byte) {
-	for c := range w.clients {
-		if c == client {
-			continue
+	// snapshot first so the (possibly blocking) sends happen without
+	// holding the map's internal lock
+	clients := make([]*Client, 0, 8)
+	w.clients.Range(func(k, v any) bool {
+		if c := k.(*Client); c != client {
+			clients = append(clients, c)
 		}
+		return true
+	})
+
+	for _, c := range clients {
 		c.Send <- message
 	}
 }

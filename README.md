@@ -71,11 +71,20 @@ go run . -rom game.gb -driver fyne   # or glfw, web
 | --- | --- | --- |
 | `-rom` | | Path to a `.gb` / `.gbc` ROM |
 | `-boot` | | Optional boot ROM (`.gbr`) |
-| `-model` | `auto` | `auto`, `dmg`, or `cgb` |
-| `-printer` | `false` | Enable the Game Boy Printer |
+| `-model` | `auto` | `auto`, `DMG0`, `DMG`, `CGB0`, `CGB`, `MGB`, `SGB`, `SGB2`, or `AGB` (case-insensitive) |
+| `-printer` | `false` | Attach the Game Boy Printer |
+| `-cheats` | | Explicit path to a cheats file (GameShark / GameGenie) |
+| `-save-dir` | working directory | Directory for `.sav` / `.state` files |
+| `-no-saves` | `false` | Disable all save file I/O (conflicts with `-save-dir`) |
+| `-log-level` | `info` | `debug`, `info`, or `error` |
+| `-pprof` | disabled | `host:port` to serve `net/http/pprof` |
 | `-driver` | `auto` | `auto`, `glfw`, `fyne`, or `web` |
 
-Battery saves (`.sav`) and quick-save states (`.state`) are written next to the process working directory, named after the ROM.
+The display drivers add their own flags on top: `-web-listen` (default `:8090`), and `-fullscreen` / `-scale` for the window drivers.
+
+Battery saves (`.sav`) and quick-save states (`.state`) are written to the working directory (or `-save-dir`), named after the ROM. If `<romname>.cheats` exists in the working directory it is loaded; pass `-cheats` to load an explicit file instead.
+
+All options are restart-time settings, read once at startup. The three binaries share `-rom`, `-boot`, `-model`, `-printer`, `-cheats`, `-log-level`, and `-pprof`; the desktop and web binaries also take `-save-dir` and `-no-saves`, and the agent takes `-fps`. An invalid option, an unreadable ROM, a failed pprof bind, or a failed display driver all produce a single contextual error on stderr and a non-zero exit code.
 
 | Action | Fyne | GLFW | Web |
 | --- | --- | --- | --- |
@@ -91,6 +100,7 @@ Headless web binary (no Fyne/GLFW). It drives the emulator at 60 Hz and serves t
 
 ```sh
 go run ./cmd/gomeboy-web -rom game.gb
+# optional: -web-listen :9000, -model CGB, -pprof 127.0.0.1:6060
 ```
 
 The Svelte UI is served from `GOMEBOY_WEB_STATIC_DIR` at `/app/` (the Docker image sets this). The websocket URL is `ws://<host>:8090/`.
@@ -107,8 +117,10 @@ Swarm deploy notes, ROM volume, and open questions live in [`deploy/README.md`](
 
 ```sh
 go run ./cmd/gomeboy-agent -rom game.gb
-# optional: -fps 60
+# optional: -fps 30, -web-listen :9000, -model CGB, -cheats codes.txt, -pprof 127.0.0.1:6060
 ```
+
+The agent is diskless: it never reads or writes save files, and only loads cheats from an explicit `-cheats` path.
 
 Open the web UI on :8090. The agent panel shows the stub loop; a real decision loop is not wired yet. Browser button presses also reach the emulator (no arbitration between human and agent).
 
@@ -223,7 +235,7 @@ _ = spec.Capture(emu)
 
 - [x] build instructions
 - [x] github actions
-- [ ] improve error handling and logging
-- [ ] expose more emulator options to the user
+- [x] improve error handling and logging
+- [x] expose more emulator options to the user
 - [ ] reimplement link cable & local multiplayer
 - [ ] real agent decision loop (the current `gomeboy-agent` loop is a stub)

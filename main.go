@@ -1,37 +1,83 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/thelolagemann/gomeboy/internal/gameboy"
 	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/thelolagemann/gomeboy/internal/launch"
 	"github.com/thelolagemann/gomeboy/pkg/audio"
 	"github.com/thelolagemann/gomeboy/pkg/display"
 	_ "github.com/thelolagemann/gomeboy/pkg/display/fyne"
 	_ "github.com/thelolagemann/gomeboy/pkg/display/glfw"
 	_ "github.com/thelolagemann/gomeboy/pkg/display/web"
 	"github.com/thelolagemann/gomeboy/pkg/log"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
-	"net/http"
 	_ "net/http/pprof"
-	"path/filepath"
-	"strings"
 )
 
 func main() {
-	// init display package
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// run is the testable boundary of the desktop binary: it parses the CLI
+// options, starts the emulator and the display driver, and returns a
+// contextual error on any failure. main logs the final error and exits
+// non-zero.
+func run(args []string) error {
+	// the display drivers register their own flags (e.g. -web-listen) on
+	// the global flag set, so the shared launch options are registered on
+	// the same set and parsed together
+	fs := flag.CommandLine
+	fs.Init("gomeboy", flag.ContinueOnError)
+
+	// init display package (validates at least one driver is installed)
 	display.Init()
 
-	// start pprof
-	go func() {
-		err := http.ListenAndServe(":6060", nil)
-		if err != nil {
-			return
-		}
-	}()
+	launch.Register(fs)
+	launch.RegisterSaves(fs)
+	launch.RegisterDriver(fs, "auto")
 
-	var logger = log.New()
+	opts, err := launch.Parse(fs, args)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+
+	logger, err := log.NewWithWriter(os.Stderr, opts.LogLevel)
+	if err != nil {
+		return err
+	}
+
+	stopPProf, err := launch.StartPProf(opts.PProfAddr, logger)
+	if err != nil {
+		return err
+	}
+	if stopPProf != nil {
+		defer stopPProf()
+	}
+
+	gbOpts, err := opts.CoreOptions()
+	if err != nil {
+		return err
+	}
+
+	gb := gameboy.NewGameBoy(gbOpts...)
+
+	if opts.ROM != "" {
+		if err := gb.LoadROM(opts.ROM); err != nil {
+			return fmt.Errorf("gomeboy: load ROM %s: %w", opts.ROM, err)
+		}
+	}
+
 	// create framebuffer
 	fb := make(chan []byte, 120)
 
@@ -39,62 +85,13 @@ func main() {
 	pressed := make(chan io.Button, 1)
 	released := make(chan io.Button, 1)
 
-	romFile := flag.String("rom", "", "The rom file to load")
-	bootROM := flag.String("boot", "", "The boot rom file to load")
-	// saveFolder := flag.String("save", "", "The folder to ")
-	asModel := flag.String("model", "auto", "The model to emulate. Can be auto, dmg or cgb")
-	printer := flag.Bool("printer", false, "enable printer")
-	displayDriver := flag.String("driver", "auto", "The display driver to use. Can be auto, glfw, fyne or web")
-
-	flag.Parse()
-
-	var gb *gameboy.GameBoy
-	var opts []gameboy.Opt
-
-	if *bootROM != "" {
-		boot, err := utils.LoadFile(*bootROM)
-		if err != nil {
-			panic(err)
-		}
-
-		opts = append(opts, gameboy.WithBootROM(boot))
-	}
-
-	if *printer {
-		opts = append(opts, gameboy.WithPrinter())
-	}
-
-	// has model been set?
-	if *asModel != "auto" {
-		opts = append(opts, gameboy.AsModel(types.StringToModel(*asModel)))
-	}
-
-	// keep the desktop frontend's historical save behaviour: the .cheats
-	// file (and the .sav file, via the default working-directory save dir)
-	// live next to wherever the process is run, named after the ROM
-	if *romFile != "" {
-		base := strings.TrimSuffix(filepath.Base(*romFile), filepath.Ext(*romFile))
-		opts = append(opts, gameboy.WithCheats(base+".cheats"))
-	}
-
-	// create a new gameboy
-	gb = gameboy.NewGameBoy(opts...)
-
-	if *romFile != "" {
-		if err := gb.LoadROM(*romFile); err != nil {
-			logger.Errorf("unable to load ROM %s: %s", *romFile, err)
-		}
-	}
-
 	if err := audio.OpenAudio(gb, fb); err != nil {
-		logger.Errorf("unable to open audio device %s", err)
+		return fmt.Errorf("gomeboy: open audio device: %w", err)
 	}
 
-	driver := display.GetDriver(*displayDriver)
-
-	// check to make sure the driver is valid
+	driver := display.GetDriver(opts.Driver)
 	if driver == nil {
-		logger.Fatal("invalid display driver")
+		return fmt.Errorf("gomeboy: unknown display driver %q: use auto or one of %s", opts.Driver, installedDriverNames())
 	}
 
 	// is the driver capable of debugging?
@@ -116,12 +113,23 @@ func main() {
 
 	// start the display driver (blocking)
 	if err := driver.Start(gb, fb, pressed, released); err != nil {
-		logger.Fatal(err.Error())
+		return fmt.Errorf("gomeboy: start display driver %q: %w", opts.Driver, err)
 	}
 
-	// save after the driver has stopped TODO important stop audio from driving gameboy somehow
+	// save after the driver has stopped (TODO: stop audio from driving the
+	// Game Boy before this)
 	if err := gb.Save(); err != nil {
-		logger.Fatal(fmt.Sprintf("unable to save: %v", err))
+		return fmt.Errorf("gomeboy: save battery RAM for ROM %s: %w", opts.ROM, err)
 	}
 
+	return nil
+}
+
+// installedDriverNames lists the display drivers compiled into this binary.
+func installedDriverNames() string {
+	names := make([]string, 0, len(display.InstalledDrivers))
+	for _, d := range display.InstalledDrivers {
+		names = append(names, d.Name)
+	}
+	return strings.Join(names, ", ")
 }

@@ -13,7 +13,6 @@ func newTestPlayer(t *testing.T) *Player {
 	t.Helper()
 
 	h := &hub{
-		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte, 1),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),

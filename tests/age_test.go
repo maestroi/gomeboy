@@ -83,6 +83,12 @@ func newAgeTestCollectionFromDir(suite *TestSuite, dir string) *TestCollection {
 }
 
 func TestAge(t *testing.T) {
+	// the age ROMs are not shipped in roms.zip; skip rather than panic when
+	// they are absent
+	if _, err := os.Stat(ageROMPath); err != nil {
+		t.Skipf("skipping age tests: %v", err)
+	}
+
 	// create top level test
 	//tS := table.NewTestSuite("age")
 	table := &TestTable{}

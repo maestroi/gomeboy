@@ -1,4 +1,5 @@
 tests/roms/
+tests/results/
 /roms
 /gomeboy
 /gomeboy-agent

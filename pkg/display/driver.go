@@ -59,11 +59,29 @@ type InstalledDriver struct {
 // call display.Install in their init() function.
 var InstalledDrivers []*InstalledDriver
 
+// webDriverName is the registered name of the network-based web display
+// driver. It is excluded from auto selection: web is an explicit opt-in
+// via -driver web.
+const webDriverName = "web"
+
+// autoPriority is the fixed preference order GetDriver("auto") uses when
+// several desktop drivers are installed. It makes auto selection
+// independent of the order in which drivers registered themselves.
+// Drivers not listed here are considered after the listed ones, in
+// registration order.
+var autoPriority = []string{"fyne", "glfw"}
+
 // GetDriver returns the driver with the given name, or nil if
 // no driver with that name is installed.
+//
+// For "auto" it returns the first installed driver in autoPriority order,
+// or the first installed driver that is not the web driver. It never
+// returns the web driver: if only the web driver is installed it returns
+// nil so the caller reports an actionable error instead of silently
+// opening a network listener.
 func GetDriver(name string) Driver {
 	if name == "auto" {
-		return InstalledDrivers[0].Driver
+		return autoDriver()
 	}
 	for _, driver := range InstalledDrivers {
 		if driver.Name == name {
@@ -71,6 +89,24 @@ func GetDriver(name string) Driver {
 		}
 	}
 
+	return nil
+}
+
+// autoDriver deterministically selects a desktop driver without depending
+// on package initialization order.
+func autoDriver() Driver {
+	for _, preferred := range autoPriority {
+		for _, driver := range InstalledDrivers {
+			if driver.Name == preferred {
+				return driver.Driver
+			}
+		}
+	}
+	for _, driver := range InstalledDrivers {
+		if driver.Name != webDriverName {
+			return driver.Driver
+		}
+	}
 	return nil
 }
 

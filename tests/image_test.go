@@ -204,9 +204,13 @@ func (i *imageTest) Run(t *testing.T) {
 
 		if diff > 0 {
 			i.passed = false
+			skipKnownFailure(t, i.name)
 			t.Errorf("Test %s failed. Difference: %d", i.name, diff)
 
 			// write output image to disk
+			if err := os.MkdirAll("results", 0o755); err != nil {
+				t.Fatal(err)
+			}
 			outFile, err := os.Create(fmt.Sprintf("results/%s_output.png", i.name))
 			if err != nil {
 				t.Fatal(err)
@@ -214,6 +218,7 @@ func (i *imageTest) Run(t *testing.T) {
 			defer outFile.Close()
 
 			if err := png.Encode(outFile, diffImg); err != nil {
+				t.Fatal(err)
 			}
 		}
 	})

@@ -10,54 +10,51 @@ import (
 	"github.com/thelolagemann/gomeboy/internal/ppu"
 	"github.com/thelolagemann/gomeboy/pkg/display"
 	"github.com/thelolagemann/gomeboy/pkg/emulator"
+	"github.com/thelolagemann/gomeboy/pkg/log"
 	"sync"
 )
 
+// webListenAddr is the address the web driver listens on. It is exposed
+// as the web-listen flag and read when the driver starts.
+var webListenAddr = ":8090"
+
+// encode compresses frame data with the given quality. It is a variable so
+// tests can substitute a failing encoder.
+var encode = func(data []byte, quality int) ([]byte, error) {
+	return cbrotli.Encode(data, cbrotli.WriterOptions{Quality: quality})
+}
+
+// init registers the web display driver. It does not open a listener or
+// start any goroutine: the driver's Start method brings the hub up and its
+// Stop method takes it down.
 func init() {
-	h := &hub{
-		clients: make(map[*Client]bool),
-		player1: nil,
-		player2: nil,
-
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-
-		compression:      true,
-		compressionLevel: 2,
-		framePatching:    true,
-		frameSkipping:    true,
-		framePatchRatio:  1,
-	}
-	p1 := &Player{
-		hub:           h,
-		clientClose:   make(chan struct{}, 10),
-		clientConnect: make(chan *Client, 10),
-		clientSync:    make(chan *Client, 10),
-		patchCache:    newCache(16384),
-		frameCache:    newCache(1024),
-		currentFrame:  make([]byte, 92160),
-	}
-	p2 := &Player{
-		hub:           h,
-		clientClose:   make(chan struct{}),
-		clientConnect: make(chan *Client, 10),
-		clientSync:    make(chan *Client, 10),
-		patchCache:    newCache(16384),
-		frameCache:    newCache(1024),
-		currentFrame:  make([]byte, 92160),
-	}
-
-	display.Install("web", p1, []display.DriverOption{})
+	h := newHub(&webListenAddr, log.New())
+	p1 := newPlayer(h, 10)
+	p2 := newPlayer(h, 0)
 	h.player1 = p1
 	h.player2 = p2
 
-	go func() {
-		err := h.run()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	display.Install("web", p1, []display.DriverOption{{
+		Name:        "listen",
+		Default:     ":8090",
+		Value:       &webListenAddr,
+		Description: "The address the web driver listens on",
+		Type:        "string",
+	}})
+}
+
+// newPlayer creates a player attached to the given hub. closeBuf is the
+// buffer size of the clientClose channel.
+func newPlayer(h *hub, closeBuf int) *Player {
+	return &Player{
+		hub:           h,
+		clientClose:   make(chan struct{}, closeBuf),
+		clientConnect: make(chan *Client, 10),
+		clientSync:    make(chan *Client, 10),
+		patchCache:    newCache(16384),
+		frameCache:    newCache(1024),
+		currentFrame:  make([]byte, 92160),
+	}
 }
 
 type Player struct {
@@ -82,6 +79,12 @@ func (p *Player) AttachGameboy(gb *gameboy.GameBoy) {
 }
 
 func (p *Player) Start(c emulator.Controller, fb <-chan []byte, pressed, released chan<- io.Button) error {
+	// bring the shared web hub up (listener, ticker, broadcast loop). a
+	// bind failure is returned to the caller rather than being fatal.
+	if err := p.hub.start(); err != nil {
+		return err
+	}
+
 	// setup keys
 	p.pressed = pressed
 	p.release = released
@@ -102,9 +105,6 @@ func (p *Player) Start(c emulator.Controller, fb <-chan []byte, pressed, release
 	emptyDirtiedPixels := make([]byte, ppu.ScreenWidth*ppu.ScreenHeight*4)
 
 	var frameSkipBuf = make([]byte, 4)
-	var cacheBuf = make([]byte, 2)
-	var e = Frame
-	var buffer, output []byte
 
 	for {
 		select {
@@ -141,56 +141,9 @@ func (p *Player) Start(c emulator.Controller, fb <-chan []byte, pressed, release
 
 				// can we patch the framebuffer?
 				if dirtiedPixelCount < (p.hub.framePatchRatio*4608) && p.hub.framePatching {
-					buffer = dirtiedPixels
-					e = FramePatch
+					p.broadcastFrame(FramePatch, dirtiedPixels)
 				} else {
-					buffer = p.currentFrame
-				}
-
-				// handle compression (if enabled)
-				if p.hub.compression {
-					var err error
-					output, err = cbrotli.Encode(buffer, cbrotli.WriterOptions{
-						Quality: p.hub.compressionLevel,
-					})
-					if err != nil {
-						// TODO handle error
-						panic(err)
-					}
-				} else {
-					output = buffer
-				}
-
-				// calculate the hash of the data to see if it exists in cache
-				hash := xxhash.Sum64(output)
-
-				// should we be looking in frame of patch cache
-				if e == FramePatch {
-					p.patchCache.Lock()
-
-					if idx := p.patchCache.index(hash); idx != -1 { // found in cache
-						binary.LittleEndian.PutUint16(cacheBuf, uint16(idx))
-						p.hub.broadcast <- p.createMessage(PatchCache, bytes.TrimRight(cacheBuf, "\x00"))
-					} else { // not found in cache
-						p.patchCache.add(hash, output)
-						binary.LittleEndian.PutUint16(cacheBuf, uint16(p.patchCache.index(hash)))
-						p.hub.broadcast <- p.createMessage(FramePatch, append(cacheBuf, output...))
-					}
-
-					p.patchCache.Unlock()
-				} else { // full frame
-					p.frameCache.Lock()
-
-					if idx := p.frameCache.index(hash); idx != -1 { // found in cache
-						binary.LittleEndian.PutUint16(cacheBuf, uint16(idx))
-						p.hub.broadcast <- p.createMessage(FrameCache, bytes.TrimRight(cacheBuf, "\x00"))
-					} else { // not found in cache
-						p.frameCache.add(hash, output)
-						binary.LittleEndian.PutUint16(cacheBuf, uint16(p.frameCache.index(hash)))
-						p.hub.broadcast <- p.createMessage(Frame, append(cacheBuf, output...))
-					}
-
-					p.frameCache.Unlock()
+					p.broadcastFrame(Frame, p.currentFrame)
 				}
 			} else if p.hub.frameSkipping { // if not dirtied, but frame skipping is enabled, increment count
 				framesSkipped++
@@ -199,7 +152,6 @@ func (p *Player) Start(c emulator.Controller, fb <-chan []byte, pressed, release
 			// reset various flags
 			dirtied = false
 			dirtiedPixelCount = 0
-			e = Frame
 			copy(dirtiedPixels, emptyDirtiedPixels)
 		case <-p.clientClose:
 			p.c = nil
@@ -219,9 +171,72 @@ func (p *Player) Start(c emulator.Controller, fb <-chan []byte, pressed, release
 	}
 }
 
+// broadcastFrame encodes the frame or patch (if compression is enabled)
+// and broadcasts it to all clients, using the patch/frame caches to avoid
+// resending data the clients already have. A frame that cannot be encoded
+// is logged and dropped rather than fatal.
+func (p *Player) broadcastFrame(e Type, buffer []byte) {
+	var output []byte
+
+	// handle compression (if enabled)
+	if p.hub.compression {
+		var err error
+		output, err = encode(buffer, p.hub.compressionLevel)
+		if err != nil {
+			p.hub.logger.Errorf("web: encode frame for player %d: %v", p.playerByte, err)
+			return
+		}
+	} else {
+		output = buffer
+	}
+
+	// calculate the hash of the data to see if it exists in cache
+	hash := xxhash.Sum64(output)
+
+	cacheBuf := make([]byte, 2)
+
+	// should we be looking in frame of patch cache
+	if e == FramePatch {
+		p.patchCache.Lock()
+
+		if idx := p.patchCache.index(hash); idx != -1 { // found in cache
+			binary.LittleEndian.PutUint16(cacheBuf, uint16(idx))
+			p.hub.broadcast <- p.createMessage(PatchCache, bytes.TrimRight(cacheBuf, "\x00"))
+		} else { // not found in cache
+			p.patchCache.add(hash, output)
+			binary.LittleEndian.PutUint16(cacheBuf, uint16(p.patchCache.index(hash)))
+			p.hub.broadcast <- p.createMessage(FramePatch, append(cacheBuf, output...))
+		}
+
+		p.patchCache.Unlock()
+	} else { // full frame
+		p.frameCache.Lock()
+
+		if idx := p.frameCache.index(hash); idx != -1 { // found in cache
+			binary.LittleEndian.PutUint16(cacheBuf, uint16(idx))
+			p.hub.broadcast <- p.createMessage(FrameCache, bytes.TrimRight(cacheBuf, "\x00"))
+		} else { // not found in cache
+			p.frameCache.add(hash, output)
+			binary.LittleEndian.PutUint16(cacheBuf, uint16(p.frameCache.index(hash)))
+			p.hub.broadcast <- p.createMessage(Frame, append(cacheBuf, output...))
+		}
+
+		p.frameCache.Unlock()
+	}
+}
+
+// sendToClient sends a message to the player's attached client, if any.
+func (p *Player) sendToClient(message []byte) {
+	if p.c == nil {
+		return
+	}
+	p.c.Send <- message
+}
+
 func (p *Player) Stop() error {
-	//TODO implement me
-	panic("implement me")
+	// idempotent: the hub ignores repeated stops
+	p.hub.stop()
+	return nil
 }
 
 func (p *Player) ReadPump(from <-chan []byte) {
@@ -233,8 +248,17 @@ func (p *Player) ReadPump(from <-chan []byte) {
 				return
 			}
 
+			// ignore empty messages
+			if len(message) == 0 {
+				continue
+			}
+
 			// handle special case of pause/play
 			if len(message) == 1 {
+				if p.gb == nil {
+					p.hub.logger.Debugf("web: ignoring pause/play from player %d: no gameboy attached", p.playerByte)
+					continue
+				}
 				if message[0] == 0 {
 					p.gb.Pause()
 					p.hub.sendAllButClient(p.c, p.createMessage(PlayerInfo, []byte{PausePlay, 0}))
@@ -246,8 +270,16 @@ func (p *Player) ReadPump(from <-chan []byte) {
 				continue // skip further processing
 			}
 
+			// messages with a payload need at least 2 bytes
+			if len(message) < 2 {
+				continue
+			}
+
 			switch message[0] {
 			case 9: // PPU related control
+				if p.gb == nil || len(message) < 3 {
+					continue
+				}
 
 				switch message[1] {
 				case 0: // background
@@ -263,20 +295,29 @@ func (p *Player) ReadPump(from <-chan []byte) {
 
 				continue // skip further processing
 			case SaveState:
+				if p.gb == nil {
+					continue
+				}
 				err := p.gb.QuickSave()
 				result := byte(1)
 				if err != nil {
 					result = 0
 				}
-				p.c.Send <- p.createMessage(PlayerInfo, []byte{SaveStateResult, result})
+				p.sendToClient(p.createMessage(PlayerInfo, []byte{SaveStateResult, result}))
 			case LoadState:
+				if p.gb == nil {
+					continue
+				}
 				err := p.gb.QuickLoad()
 				result := byte(1)
 				if err != nil {
 					result = 0
 				}
-				p.c.Send <- p.createMessage(PlayerInfo, []byte{LoadStateResult, result})
+				p.sendToClient(p.createMessage(PlayerInfo, []byte{LoadStateResult, result}))
 			case SetSpeed:
+				if p.gb == nil {
+					continue
+				}
 				level := int(message[1])
 				p.gb.SetSpeed(level)
 				p.hub.broadcast <- p.createMessage(PlayerInfo, []byte{SpeedChanged, byte(p.gb.Speed())})
@@ -302,12 +343,9 @@ func (p *Player) Sync(c *Client) {
 		p.clientConnect <- c
 	}
 
-	frameData, err := cbrotli.Encode(p.currentFrame, cbrotli.WriterOptions{
-		Quality: 9,
-	})
-
+	frameData, err := encode(p.currentFrame, 9)
 	if err != nil {
-		// TODO handle err
+		p.hub.logger.Errorf("web: encode sync frame for player %d: %v", p.playerByte, err)
 		return
 	}
 
