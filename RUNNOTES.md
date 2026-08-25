@@ -1,39 +1,37 @@
-# RUNNOTES — Task 3: cmd/gomeboy-agent
+# RUNNOTES — Task 4: Svelte agent panel (repair run)
 ## Done
-- `cmd/gomeboy-agent/main.go`: loads ROM via `gomeboy.New(WithROM, Headless)`,
-  builds `webbridge.NewAdapter(emu, fb)`, `display.GetDriver("web")`
-  type-asserted to `web.AgentPublisher` (installed driver is `*web.Player`),
-  driver started in a goroutine, `runAgentLoop` under signal.NotifyContext
-  (INT/TERM).
-- `runAgentLoop(ctx, emu, adapter, publisher, frameInterval)` extracted,
-  testable: ticker-owned pacing, checks `adapter.Paused()` before every step,
-  then StepFrame → adapter.PublishFrame() →
-  publisher.PublishAgentState(AgentState{Step, "stub: step the emulator", "StepFrame", AgentRunning}).
-  Stub presses no buttons.
-- Browser input forwarding goroutine maps the driver's io.Button channels to
-  emu.Press/Release via the name-keyed `ioToGomeboyButton` map — never a
-  bare gomeboy.Button(b) cast (internal/io.Button: A,B,Select,Start,Right,
-  Left,Up,Down vs pkg/gomeboy.Button: A,B,Start,Select,Up,Down,Left,Right).
-- `cmd/gomeboy-agent/main_test.go`: fakePublisher +
-  TestRunAgentLoop_PublishesFramesAndState (3 frames on fb, steps 0..n,
-  AgentRunning, 160*144*3 bytes) + TestRunAgentLoop_RespectsPause (paused:
-  0 frames, FrameCount 0, 0 states). ROM fixture
-  tests/roms/little-things-gb/firstwhite.gb (from package dir:
-  ../../tests/roms/...; extract tests/roms.zip into tests/roms first).
-- Verified: go build ok; go test -race ./cmd/gomeboy-agent/ both pass; full
-  go test ./... ok except PRE-EXISTING tests pkg failures (TestAge,
-  Test_Acid2). Changes left UNCOMMITTED (not requested).
+- `src/lib/game.ts`: `AgentUpdate` appended LAST to EventType (index 16, after
+  PlayerIdentify — mirrors pkg/display/web/events.go); `AgentStatus` enum
+  (idle/running/paused/error); `AgentStateData` interface
+  {step,goal,last_action,observation,status}; `Game.agentState` Writable
+  (default idle/empty); dispatch case JSON-decodes via TextDecoder.
+- `src/components/Player/AgentPanel.svelte`: new panel showing status badge +
+  Step/Goal/Last Action/Observation from $agentState, Svelte 4 + scss, styled
+  after ClientList.
+- `src/components/Player/Player.svelte`: `<AgentPanel/>` mounted as sibling
+  right after `<Controls/>` inside the same `{#if controls}` block.
+- Verified: npm build clean; svelte-check = 154 pre-existing errors, 0 new
+  (vs pristine baseline); live e2e: agent on :8090 + WS probe = FrameSync
+  received (game view renders), 481 AgentUpdates/8s, step increasing,
+  status "running", keys match Go JSON. Previous run also passed a full
+  headless-Chrome DOM check (panel live, step 16465, canvas 160x144).
+- Code already in snapshot commit 6c65b19 (preserve-failed-run); this run
+  re-verified it byte-identical. Left UNCOMMITTED for the runner, per the
+  task-3 pattern.
 
 ## Next task must know
-- THE PLAN FILE docs/superpowers/plans/2026-08-24-agent-web-overlay.md STILL
-  DOES NOT EXIST (only the design spec). Task 3 reconstructed from the
-  design spec + task instructions; both pre-fixed bugs respected (single
-  named web import, no blank import; name-keyed button map).
-- Tests pull in pkg/display/web whose init() binds :8090 and log.Fatals if
-  the port is taken — keep :8090 free for go test ./cmd/gomeboy-agent.
-- *web.Player.gb is nil here (no Attach): browser pause/play or PPU-debug
-  messages would nil-deref in ReadPump. Stub stage: no human input expected.
-- Svelte AgentPanel.svelte / game.ts EventType mirror still TODO (client
-  must handle message type 0x10, JSON payload). Next likely task: real agent
-  decision loop (LLM) replacing the stub, and/or the Svelte panel;
-  human+agent input arbitration still unimplemented (accepted limitation).
+- WIRE FORMAT: createMessage always prepends the player byte, so AgentUpdate
+  on the wire is [16, playerByte, JSON]. game.ts strips the type byte before
+  the switch (line ~300), so the case does `eventData.slice(1)`. Task 2's
+  Go test asserts this layout (payload := msg[2:]). Do not "fix" either side.
+- AgentUpdate is intentionally NOT in the playerEvents array (no per-player
+  event fan-out), same handling as ServerInfo.
+- game.ts hardcodes `ws://192.168.1.154:8090/` (pre-existing LAN IP). For
+  local browser checks, temporarily point at ws://localhost:8090/ and
+  revert before finishing. Port 5173 may be held by an unrelated vite.
+- The plan file docs/superpowers/plans/2026-08-24-agent-web-overlay.md still
+  does not exist; work was reconstructed from the design spec + instructions.
+- ROM fixture: extract tests/roms.zip into tests/roms (done in this run).
+  Keep :8090 free for go test ./cmd/gomeboy-agent (web driver init binds it).
+- Next likely task: real agent decision loop (LLM) replacing the stub in
+  cmd/gomeboy-agent; human+agent input arbitration still unimplemented.
