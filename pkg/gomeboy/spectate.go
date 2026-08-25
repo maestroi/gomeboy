@@ -11,10 +11,41 @@ const spectatorPage = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <title>GomeBoy Spectator</title>
+<style>
+  html,body { margin:0; height:100%; background:#111; color:#888;
+              font:14px system-ui,sans-serif; }
+  body { display:flex; align-items:center; justify-content:center; }
+  /* The Game Boy screen is 160x144. Scale it in whole pixels and cap the
+     size, so it never stretches to the width of the browser window. */
+  #f { display:none; width:640px; height:576px; max-width:100vw;
+       max-height:100vh; object-fit:contain; image-rendering:pixelated; }
+</style>
 </head>
-<body style="margin:0;background:#000">
-<img src="/frame.png" id="f" style="width:100%;image-rendering:pixelated">
-<script>setInterval(() => { document.getElementById('f').src = '/frame.png?t=' + Date.now() }, 200)</script>
+<body>
+<p id="w">waiting for the first frame...</p>
+<img id="f" alt="">
+<script>
+const img = document.getElementById('f'), wait = document.getElementById('w');
+let inFlight = false;
+async function tick() {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    const r = await fetch('/frame.png', { cache: 'no-store' });
+    if (r.ok) {
+      const url = URL.createObjectURL(await r.blob());
+      const old = img.src;
+      img.src = url;
+      if (old.startsWith('blob:')) URL.revokeObjectURL(old);
+      img.style.display = 'block';
+      wait.style.display = 'none';
+    }
+  } catch (e) { /* server gone; keep showing the last frame */ }
+  finally { inFlight = false; }
+}
+setInterval(tick, 100);
+tick();
+</script>
 </body>
 </html>
 `
