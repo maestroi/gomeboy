@@ -24,6 +24,26 @@ export enum EventType {
     ServerInfo,
     PlayerInfo,
     PlayerIdentify,
+    AgentUpdate,
+}
+
+// mirrors pkg/display/web AgentStatus: JSON payloads carry these exact
+// lowercase strings, so the values must match the Go spelling.
+export enum AgentStatus {
+    Idle = "idle",
+    Running = "running",
+    Paused = "paused",
+    Error = "error",
+}
+
+// mirrors the JSON shape of pkg/display/web AgentState
+// ({"step","goal","last_action","observation","status"}).
+export interface AgentStateData {
+    step: number;
+    goal: string;
+    last_action: string;
+    observation: string;
+    status: AgentStatus;
 }
 
 export enum ControlEvent {
@@ -213,6 +233,8 @@ class Game {
     framePatching: Writable<boolean>;
     frameSkipping: Writable<boolean>;
 
+    agentState: Writable<AgentStateData>;
+
     onEvent: EventCallback;
     onConnect: OnConnect;
     onDisconnect: OnDisconnect;
@@ -231,6 +253,14 @@ class Game {
         this.frameCaching = writable(true);
         this.framePatching = writable(true);
         this.frameSkipping = writable(true);
+
+        this.agentState = writable({
+            step: 0,
+            goal: "",
+            last_action: "",
+            observation: "",
+            status: AgentStatus.Idle,
+        });
 
         this.speedData = writable(new Array<number>());
 
@@ -546,6 +576,11 @@ class Game {
                     } else {
                         console.warn("unhandled player type", eventData[0])
                     }
+                    break
+                case EventType.AgentUpdate:
+                    // layout is [AgentUpdate, playerByte, JSON] (createMessage
+                    // always prepends the player byte); strip it, then decode
+                    this.agentState.set(JSON.parse(new TextDecoder().decode(eventData.slice(1))))
                     break
                 default:
                     console.warn("unhandled event", eventType)

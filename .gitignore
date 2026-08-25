@@ -1,5 +1,8 @@
 tests/roms/
 /roms
 /gomeboy
+/gomeboy-agent
+/gomeboy-web
+/diag
 *.sav
 *.state

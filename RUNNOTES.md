@@ -36,3 +36,29 @@ file header comments and deploy/README.md §3)
   the `docker run --rm -v gomeboy_roms:/roms ... cp` one-liner). Volume is
   named <stack>_roms (stack name = whatever is passed to `docker stack
   deploy`, e.g. gomeboy).
+
+---
+
+# RUNNOTES — Task 4: Svelte agent panel (repair run)
+## Done
+- `src/lib/game.ts`: `AgentUpdate` appended LAST to EventType (index 16, after
+  PlayerIdentify — mirrors pkg/display/web/events.go); `AgentStatus` enum
+  (idle/running/paused/error); `AgentStateData` interface
+  {step,goal,last_action,observation,status}; `Game.agentState` Writable
+  (default idle/empty); dispatch case JSON-decodes via TextDecoder.
+- `src/components/Player/AgentPanel.svelte`: new panel showing status badge +
+  Step/Goal/Last Action/Observation from $agentState, Svelte 4 + scss, styled
+  after ClientList.
+- `src/components/Player/Player.svelte`: `<AgentPanel/>` mounted as sibling
+  right after `<Controls/>` inside the same `{#if controls}` block.
+
+## Next task must know
+- WIRE FORMAT: createMessage always prepends the player byte, so AgentUpdate
+  on the wire is [16, playerByte, JSON]. game.ts strips the type byte before
+  the switch, so the case does `eventData.slice(1)`. Task 2's
+  Go test asserts this layout (payload := msg[2:]). Do not "fix" either side.
+- AgentUpdate is intentionally NOT in the playerEvents array (no per-player
+  event fan-out), same handling as ServerInfo.
+- game.ts uses `ws://{host}:8090/` and substitutes `location.hostname`.
+- Next likely task: real agent decision loop (LLM) replacing the stub in
+  cmd/gomeboy-agent; human+agent input arbitration still unimplemented.
