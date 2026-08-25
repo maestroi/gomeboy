@@ -1,76 +1,39 @@
-# RUNNOTES — SWARM-2: swarm stack file + deploy README
-
-## Outcome: SUCCESS
-- Created deploy/docker-compose.swarm.yml (single service, compose 3.8).
-- Created deploy/README.md (build/tag, deploy, open questions).
-- `docker compose -f deploy/docker-compose.swarm.yml config` parses clean
-  (exit 0; one benign warning: `version` attribute obsolete — kept on
-  purpose to document the v3.8+ requirement).
-
-## Stack shape (deploy/docker-compose.swarm.yml)
-- image: gomeboy-web:latest (placeholder; real registry/tag is a deploy-time
-  decision via swarmpit-prod, per task).
-- command: ["-rom", "/roms/pokemon_red.gb"] — the Dockerfile ENTRYPOINT is
-  /gomeboy-web with NO default CMD, so the ROM flag must come from compose
-  or the operator. cmd/gomeboy-web/main.go:33 defines -rom, no default path.
-- ports: 8090:8090. Named volume `roms` -> /roms (parent dir of the ROM,
-  not a single file; .dockerignore already keeps roms out of the image).
-- deploy.replicas: 1 (stateful/single-writer). restart_policy:
-  on-failure, delay 5s (no crash-loop hammering).
-- NO .sav volume, NO ingress/Traefik labels — both left as open questions.
-
-## Open questions (deliberately unresolved, documented in BOTH the compose
-file header comments and deploy/README.md §3)
-1. Save persistence: .sav/.state written via gameboy WithSaveDir (empty dir
-   = beside ROM / CWD; internal/gameboy/gameboy.go:52, state.go:101).
-   Spectator saves across restarts? First deployer must decide + add mount.
-2. Ingress/TLS: existing swarmpit-prod stack pattern NOT confirmed — the
-   swarmpit-prod MCP was not available in this run (only agent-runner MCP
-   granted). First deployer must list existing stacks and match labels.
-
-## For SWARM-3 (deploy)
-- Do NOT deploy until a human confirms both open questions above.
-- Every swarm node must be able to pull gomeboy-web:latest (build on each
-  node or push to a shared registry).
-- ROM must be copied into the named volume after first deploy (README has
-  the `docker run --rm -v gomeboy_roms:/roms ... cp` one-liner). Volume is
-  named <stack>_roms (stack name = whatever is passed to `docker stack
-  deploy`, e.g. gomeboy).
-
----
-
-# RUNNOTES — Task 4: Svelte agent panel (repair run)
-## Done
-- `src/lib/game.ts`: `AgentUpdate` appended LAST to EventType (index 16, after
-  PlayerIdentify — mirrors pkg/display/web/events.go); `AgentStatus` enum
-  (idle/running/paused/error); `AgentStateData` interface
-  {step,goal,last_action,observation,status}; `Game.agentState` Writable
-  (default idle/empty); dispatch case JSON-decodes via TextDecoder.
-- `src/components/Player/AgentPanel.svelte`: new panel showing status badge +
-  Step/Goal/Last Action/Observation from $agentState, Svelte 4 + scss, styled
-  after ClientList.
-- `src/components/Player/Player.svelte`: `<AgentPanel/>` mounted as sibling
-  right after `<Controls/>` inside the same `{#if controls}` block.
-
-## Next task must know
-- WIRE FORMAT: createMessage always prepends the player byte, so AgentUpdate
-  on the wire is [16, playerByte, JSON]. game.ts strips the type byte before
-  the switch, so the case does `eventData.slice(1)`. Task 2's
-  Go test asserts this layout (payload := msg[2:]). Do not "fix" either side.
-- AgentUpdate is intentionally NOT in the playerEvents array (no per-player
-  event fan-out), same handling as ServerInfo.
-- game.ts uses `ws://{host}:8090/` and substitutes `location.hostname`.
-- Next likely task: real agent decision loop (LLM) replacing the stub in
-  cmd/gomeboy-agent; human+agent input arbitration still unimplemented.
-
----
-
-# RUNNOTES — GLFW on-screen display (OSD) for save/load/speed feedback
+# RUNNOTES — LOG-1: leveled, contextual, testable logging
 
 ## What changed
-- NEW `pkg/display/glfw/osd.go`: `osd` struct + `newOSD`/`Show`/`Draw`/`compileOSDProgram`.
-  Rasterizes short messages with `golang.org/x/image/font/basicfont` into a
-  CPU RGBA image, uploads as one texture, draws a single quad.
-- `pkg/display/glfw/glfw.go`: F5/F6 show "Saved"/"Save failed"/"Loaded"/"Load failed";
-  +/-/KP+/KP- show "Speed Nx"; `hud.Draw(w,h)` between blit and SwapBuffers.
-- Web client: `Toast.svelte` for the same save/load/speed feedback.
+- `pkg/log/log.go`: bare fmt.Printf wrapper replaced by a stdlib-only facade.
+  - Line format: `<RFC3339-ms>\t[LEVEL]\t<message>[\tkey=value...]`.
+  - `Level`: DebugLevel < InfoLevel < ErrorLevel; a record emits iff its
+    severity >= configured level (deterministic threshold).
+  - `ParseLevel(name) (Level, error)`: case-insensitive; unknown names return
+    an error naming the valid levels.
+  - `New() Logger`: process stderr at InfoLevel (debug suppressed unless
+    enabled); stderr resolved at write time (osStderr) so tests can redirect.
+  - `NewWithWriter(w io.Writer, level Level) (ContextualLogger, error)`:
+    validates nil writer / out-of-range level; no global process state.
+  - `ContextualLogger` = Logger + `With(key, value)`: appends `key=value`
+    fields to every record; receiver unchanged; chainable.
+  - `Logger` interface UNCHANGED, so pkg/log/null.go and all callers compile
+    unmodified. No third-party deps, no JSON. Fatal kept as temporary compat
+    boundary (FATAL line + os.Exit(1)); no new Fatal call sites.
+- `pkg/log/log_test.go`: new. Covers level filtering, line format, context
+  fields, default destination (stderr, never stdout), config validation, and
+  API compatibility.
+
+## Gotchas for the next task
+- `formatMessage` copies format to a local before fmt.Sprintf: this keeps vet's
+  printf-wrapper inference from classifying the *f methods; otherwise
+  `go test ./internal/gameboy/` fails vet at gameboy.go:144
+  (`log.Errorf(fmt.Sprintf(...))`). Pre-facade code had the same behavior. If
+  a later task wants vet to police call sites, remove the copy AND fix
+  gameboy.go:144 to `log.Errorf("error loading save files: %s", err)`.
+- To enable debug at runtime (e.g. -debug flag): `NewWithWriter(os.Stderr,
+  DebugLevel)`; the package-level default stays info.
+- Pre-existing (verified on base commit, NOT caused by this task): fresh-checkout
+  `go test ./...` races on tests/roms/ extraction (tests/rom_test.go:28) ->
+  spurious "no such file" failures in consumer packages; and `go test ./tests/`
+  fails (TestAge: roms/age/* absent from roms.zip; Test_Acid2/cgb-acid-hell).
+
+## Verification (all green)
+- `go test ./pkg/log/ -v` 7/7 pass; `go build ./...`, `go vet ./pkg/log/
+  ./internal/gameboy/`, gofmt clean; `go test ./...`: only pre-existing failures.
