@@ -1,39 +1,39 @@
-# RUNNOTES — LOG-1: leveled, contextual, testable logging
+# RUNNOTES — ERR-1: web listener lifecycle, returned failures, safe hub
 
 ## What changed
-- `pkg/log/log.go`: bare fmt.Printf wrapper replaced by a stdlib-only facade.
-  - Line format: `<RFC3339-ms>\t[LEVEL]\t<message>[\tkey=value...]`.
-  - `Level`: DebugLevel < InfoLevel < ErrorLevel; a record emits iff its
-    severity >= configured level (deterministic threshold).
-  - `ParseLevel(name) (Level, error)`: case-insensitive; unknown names return
-    an error naming the valid levels.
-  - `New() Logger`: process stderr at InfoLevel (debug suppressed unless
-    enabled); stderr resolved at write time (osStderr) so tests can redirect.
-  - `NewWithWriter(w io.Writer, level Level) (ContextualLogger, error)`:
-    validates nil writer / out-of-range level; no global process state.
-  - `ContextualLogger` = Logger + `With(key, value)`: appends `key=value`
-    fields to every record; receiver unchanged; chainable.
-  - `Logger` interface UNCHANGED, so pkg/log/null.go and all callers compile
-    unmodified. No third-party deps, no JSON. Fatal kept as temporary compat
-    boundary (FATAL line + os.Exit(1)); no new Fatal call sites.
-- `pkg/log/log_test.go`: new. Covers level filtering, line format, context
-  fields, default destination (stderr, never stdout), config validation, and
-  API compatibility.
+- `pkg/display/web/hub.go`: listener moved out of package init. `newHub`
+  is inert; `start()` (sync.Once) binds `*listenAddr`, serves a dedicated
+  `http.ServeMux` (WS at `/`, static under `/app/` if GOMEBOY_WEB_STATIC_DIR
+  set) and returns `web: listen on <addr>: <err>` on bind failure — no
+  log.Fatal/panic. `stop()` (sync.Once) is idempotent. Rejected upgrades
+  are logged with remote addr/method/path/user-agent (gorilla v1.5.3 writes
+  the HTTP error itself). `info()` logs via the hub logger.
+- `pkg/display/web/player.go`: `init()` only builds hub/players and
+  `display.Install`s with DriverOption `listen` -> flag `web-listen`
+  (default `:8090`, read at start time). `Start` returns the hub's bind
+  error; `Stop` calls idempotent `hub.stop()`. `broadcastFrame` extracted;
+  encode failures log + drop the frame (no panic); `encode` package var is
+  the test seam. ReadPump guards nil gb / short messages.
+- `pkg/display/web/hub_test.go`: new — WEB-IMPORT, WEB-BIND, WEB-STOP,
+  WEB-STATIC (+upgrade logging), WEB-ERRORS. `agentstate_test.go` dropped
+  its `clients` map literal (sync.Map change).
 
 ## Gotchas for the next task
-- `formatMessage` copies format to a local before fmt.Sprintf: this keeps vet's
-  printf-wrapper inference from classifying the *f methods; otherwise
-  `go test ./internal/gameboy/` fails vet at gameboy.go:144
-  (`log.Errorf(fmt.Sprintf(...))`). Pre-facade code had the same behavior. If
-  a later task wants vet to police call sites, remove the copy AND fix
-  gameboy.go:144 to `log.Errorf("error loading save files: %s", err)`.
-- To enable debug at runtime (e.g. -debug flag): `NewWithWriter(os.Stderr,
-  DebugLevel)`; the package-level default stays info.
-- Pre-existing (verified on base commit, NOT caused by this task): fresh-checkout
-  `go test ./...` races on tests/roms/ extraction (tests/rom_test.go:28) ->
-  spurious "no such file" failures in consumer packages; and `go test ./tests/`
-  fails (TestAge: roms/age/* absent from roms.zip; Test_Acid2/cgb-acid-hell).
+- `stop()` closes the listener DIRECTLY, then `server.Shutdown`: Shutdown
+  only closes listeners `Serve` has tracked; a stop racing ahead of Serve
+  leaks the address (rebind: "address already in use").
+- `hub.clients` is now `sync.Map`: the run loop mutates it while handlers
+  and client pumps iterate it, and client.go calls `sendAllButClient`
+  while holding `hub.mu` (plain map + that mutex would deadlock; client.go
+  is not in the modify list).
+- The hub `run()` loop lives for process lifetime on purpose: client.go
+  pumps send on the unbuffered `unregister` channel in defers; if run()
+  exited at stop, those sends would deadlock.
+- Pre-existing races (NOT fixed; client.go out of scope): `c.avgLatency`
+  written unlocked in ReadPump defer (client.go:34) vs under c.mu in
+  WritePump (client.go:140) -> `go test -race` fails on
+  TestStaticMountWebSocketRouteAndUpgradeLogging; `p.c`/config flags unlocked.
 
 ## Verification (all green)
-- `go test ./pkg/log/ -v` 7/7 pass; `go build ./...`, `go vet ./pkg/log/
-  ./internal/gameboy/`, gofmt clean; `go test ./...`: only pre-existing failures.
+- `go test ./pkg/display/web/ -v` 8/8 pass; build/vet/gofmt clean; -race
+  fails only on the pre-existing client.go avgLatency race above.
