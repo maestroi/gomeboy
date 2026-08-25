@@ -12,6 +12,7 @@
 				</Scaler>
 				{#if controls}
 					<Controls/>
+					<AgentPanel/>
 					<Scaler height="24" width="160">
 						<nav class="pad pad-actions" style="transform-origin: top left; width: 100%">
 							<button class="select actions" >SELECT</button>
@@ -42,6 +43,7 @@
 	import Loader from "./Loader.svelte";
 	import Scaler from "../Scaler/Scaler.svelte";
 	import Controls from "./Controls.svelte";
+	import AgentPanel from "./AgentPanel.svelte";
 	import Show from "../Show.svelte";
 
 	let { paused, running } = false;
