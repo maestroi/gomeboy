@@ -1,39 +1,36 @@
-# RUNNOTES — ERR-2: GLFW as a recoverable driver lifecycle
+# RUNNOTES — OPT-1: expose model, printer, cheats through pkg/gomeboy options
 
-## What changed
-- `pkg/display/glfw/glfw.go`: package `init` now ONLY does `runtime.LockOSThread()`
-  + `display.Install`. Initialization moved to: `Start` -> `initSubsystems`
-  (glfw.Init, primary monitor, sdl.Init, joystick open) -> `run` (createWindow,
-  gl.Init AFTER the window — Windows needs a window first) -> `runRenderLoop`.
-- Every failure returns `fmt.Errorf("<subsystem>: <op>: %w", err)` ("glfw: initialize",
-  "no primary monitor found", "sdl: initialize joystick and video", "glfw: create
-  window", "opengl: initialize"). No log.Fatal/panic anywhere.
-- Driver tracks started/glfwInited/sdlInited/glInited/monitor/joystick/window
-  (mutex-guarded). `Stop` is idempotent: window.Destroy, joystick close, sdl.Quit,
-  glfw.Terminate — each only if initialized; clears all state. Start calls Stop on
-  every exit path (no leaked subsystems).
-- Seams (package func vars, defaults = real calls): glfwInit, glfwTerminate,
-  getPrimaryMonitor, sdlInit, sdlQuit, sdlNumJoysticks, sdlJoystickOpen,
-  enableJoystickEvents, glInit, createWindow, runRenderLoop.
-- New `window` interface + `glfwWindow` adapter; new `joystick` interface +
-  `sdlJoystick` adapter (sdl.Joystick is an incomplete C type — cannot be allocated
-  from Go, so the adapter is the only way to fake it).
-- `keyCallback` extracted as a package function (testable); `getBestMode` became
-  `g.bestMode()`; `Rumble` now nil-guards the joystick (pre-existing nil-panic with
-  no controller); pollTicker now Stop()ped.
-- `pkg/display/glfw/glfw_test.go`: new — GLFW-IMPORT, GLFW-ERRORS, GLFW-CLEANUP, GLFW-BEHAVIOR.
+## What changed (pkg/gomeboy only)
+- `gomeboy.go`: new public `Model` string type + constants `ModelAuto, ModelDMG0,
+  ModelDMG, ModelCGB0, ModelCGB, ModelMGB, ModelSGB, ModelSGB2, ModelAGB`
+  (zero value invalid). `WithModel` maps via `modelMap` to `gameboy.AsModel`
+  (DMG->DMGABC, CGB->CGBABC, rest 1:1); auto appends nothing (keeps inference).
+  Unknown values fail New: `gomeboy: unknown model %q: use auto, DMG0, ...`.
+  `WithPrinter` -> `gameboy.WithPrinter`; `WithCheats(path)` -> `gameboy.WithCheats`
+  (explicit path only, no cwd probing). New defaults to `model: ModelAuto`.
+  New read-only `Emulator.Model()` accessor: maps `gb.Bus.Model()` back to public
+  via `publicModelMap` (Unset/nil-Bus -> ModelAuto). No runtime mutation APIs.
+- `gomeboy_test.go`: TestWithModel (8 round-trips), TestWithModelAuto (firstwhite
+  is a DMG cart -> ModelDMG), TestWithModelUnknown (5 bad values), TestWithPrinter
+  + TestNoPrinterByDefault (type-assert Serial.AttachedDevice),
+  TestWithCheatsLoadsOnlyExplicitPath (cwd `firstwhite.cheats` NOT picked up),
+  TestWithCheatsMalformed (>64KB line -> parser fails, New still succeeds,
+  LoadedCheats empty), TestWithCheatsUnreadable, TestNoDiskIOWithModelAndPrinter.
 
 ## Gotchas for the next task
-- `main.go` never calls driver.Stop(); Start self-cleans now, so behavior is
-  unchanged (window close -> Start nil -> gb.Save -> exit).
-- GLFW window destroy is `w.Destroy()`, not Close (no Close in this go-gl/glfw
-  version). `&glfw.Monitor{}` zero literals are safe in tests as long as bestMode
-  isn't called (fullscreen=false in tests).
-- Pre-existing (NOT this task): `./tests` failures (Test_Acid2/cgb-acid-hell,
-  TestAge panics on missing roms/age fixtures) and gofmt dirt in
-  pkg/gomeboy/spectate.go + cmd/diag/main.go. `tests/roms/*.gb` auto-download on
-  first run; parallel `go test ./...` can race that (spurious "no such file" on
-  first pass — just re-run).
+- `e.gb.model` is unexported in internal/gameboy; observe the effective model
+  via the exported `gb.Bus.Model()` (io.Bus, set by Bus.Map in Init) — that is
+  what `Emulator.Model()` uses.
+- Tests that `t.Chdir` must resolve `testROM` to an absolute path FIRST
+  (helper `absTestROM`); the relative `../../tests/roms/...` breaks after chdir.
+- `tests/roms/` is extracted from `tests/roms.zip` by the tests package init;
+  I extracted it manually (zip members land in `tests/roms/<suite>/`).
+- Cheats errors are log-only (log.Errorf), never returned from New; observable
+  via `gb.Bus.LoadedCheats` / `GameSharkCodes` / `GameGenieCodes`.
+- Pre-existing (NOT this task): ./tests Test_Acid2/cgb-acid-hell + TestAge
+  (missing roms/age) failures; gofmt dirt in pkg/gomeboy/spectate.go,
+  cmd/diag/main.go. POKEMON_RED_ROM tests skip when unset.
 
 ## Verification (all green)
-- `go test ./pkg/display/glfw/ -v` 10/10 pass; `-race` clean; gofmt/vet/build clean; full `go test ./...` green except pre-existing ./tests failures.
+- `go test ./pkg/gomeboy/ -v` all pass; `-race` clean; gofmt/vet/build clean.
+- `go test ./...` green except the pre-existing ./tests failures above.

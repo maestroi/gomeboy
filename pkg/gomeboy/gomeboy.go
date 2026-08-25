@@ -10,16 +10,21 @@
 // the same process. A single Emulator instance is not safe for concurrent use
 // by multiple goroutines; the caller must synchronize access.
 //
-// An Emulator performs no disk I/O unless WithSaveDir is passed: by default,
-// battery-backed save files are neither read nor written, so any number of
-// instances may run the same ROM in parallel without sharing files. Pass
-// WithSaveDir to enable persistence into a per-instance directory.
+// An Emulator performs no disk I/O unless WithSaveDir or WithCheats is
+// passed: by default, battery-backed save files are neither read nor written
+// and no cheats file is read, so any number of instances may run the same ROM
+// in parallel without sharing files. Pass WithSaveDir to enable persistence
+// into a per-instance directory, and WithCheats to load cheats from an
+// explicit file.
 package gomeboy
 
 import (
+	"fmt"
+
 	"github.com/thelolagemann/gomeboy/internal/gameboy"
 	"github.com/thelolagemann/gomeboy/internal/io"
 	"github.com/thelolagemann/gomeboy/internal/ppu"
+	"github.com/thelolagemann/gomeboy/internal/types"
 	"github.com/thelolagemann/gomeboy/pkg/utils"
 	"unsafe"
 )
@@ -51,6 +56,49 @@ var buttonMap = [8]io.Button{
 	io.ButtonRight,
 }
 
+// Model selects the Game Boy hardware the emulator emulates. The zero value
+// is not a valid model; pass ModelAuto to keep the model inferred from the
+// loaded cartridge (the default when WithModel is not passed).
+type Model string
+
+// The supported hardware models.
+const (
+	ModelAuto Model = "auto" // infer the model from the loaded cartridge
+	ModelDMG0 Model = "DMG0" // early Game Boy (Japan)
+	ModelDMG  Model = "DMG"  // Game Boy
+	ModelCGB0 Model = "CGB0" // early Game Boy Color (Japan)
+	ModelCGB  Model = "CGB"  // Game Boy Color
+	ModelMGB  Model = "MGB"  // Pocket Game Boy
+	ModelSGB  Model = "SGB"  // Super Game Boy
+	ModelSGB2 Model = "SGB2" // Super Game Boy 2
+	ModelAGB  Model = "AGB"  // Game Boy Advance
+)
+
+// modelMap maps the public models to the internal hardware models. ModelAuto
+// is deliberately absent: it keeps the cartridge-based inference.
+var modelMap = map[Model]types.Model{
+	ModelDMG0: types.DMG0,
+	ModelDMG:  types.DMGABC,
+	ModelCGB0: types.CGB0,
+	ModelCGB:  types.CGBABC,
+	ModelMGB:  types.MGB,
+	ModelSGB:  types.SGB,
+	ModelSGB2: types.SGB2,
+	ModelAGB:  types.AGB,
+}
+
+// publicModelMap maps the internal hardware models back to the public models.
+var publicModelMap = map[types.Model]Model{
+	types.DMG0:   ModelDMG0,
+	types.DMGABC: ModelDMG,
+	types.CGB0:   ModelCGB0,
+	types.CGBABC: ModelCGB,
+	types.MGB:    ModelMGB,
+	types.SGB:    ModelSGB,
+	types.SGB2:   ModelSGB2,
+	types.AGB:    ModelAGB,
+}
+
 // Frame is the rendered output of a single frame, in 24-bit RGB.
 type Frame struct {
 	Width  int
@@ -72,6 +120,9 @@ type config struct {
 	headless bool
 	saveDir  string
 	saves    bool
+	model    Model
+	printer  bool
+	cheats   string
 }
 
 // Option configures an Emulator at construction time.
@@ -117,10 +168,31 @@ func Headless() Option {
 	return func(c *config) { c.headless = true }
 }
 
+// WithModel selects the hardware model to emulate, overriding the model
+// inferred from the cartridge. ModelAuto (the default) keeps the inference.
+// The model is fixed at construction time; there is no way to change it on a
+// running Emulator.
+func WithModel(m Model) Option {
+	return func(c *config) { c.model = m }
+}
+
+// WithPrinter attaches the serial printer accessory to the emulator. Without
+// it, no device is attached (the default).
+func WithPrinter() Option {
+	return func(c *config) { c.printer = true }
+}
+
+// WithCheats loads cheats from the file at path when the ROM is initialised.
+// The path is used exactly as given; the working directory is never probed.
+// Without it, no cheats file is read.
+func WithCheats(path string) Option {
+	return func(c *config) { c.cheats = path }
+}
+
 // New creates a new Emulator. If a ROM was supplied via WithROM, it is loaded
 // and the emulator is ready to step. Otherwise, call LoadROM before stepping.
 func New(opts ...Option) (*Emulator, error) {
-	cfg := &config{}
+	cfg := &config{model: ModelAuto}
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -132,6 +204,24 @@ func New(opts ...Option) (*Emulator, error) {
 			return nil, err
 		}
 		gbOpts = append(gbOpts, gameboy.WithBootROM(bootROM))
+	}
+
+	// appended after WithBootROM so an explicit model overrides the model
+	// detected from the boot ROM
+	if cfg.model != ModelAuto {
+		internal, ok := modelMap[cfg.model]
+		if !ok {
+			return nil, fmt.Errorf("gomeboy: unknown model %q: use auto, DMG0, DMG, CGB0, CGB, MGB, SGB, SGB2, or AGB", cfg.model)
+		}
+		gbOpts = append(gbOpts, gameboy.AsModel(internal))
+	}
+
+	if cfg.printer {
+		gbOpts = append(gbOpts, gameboy.WithPrinter())
+	}
+
+	if cfg.cheats != "" {
+		gbOpts = append(gbOpts, gameboy.WithCheats(cfg.cheats))
 	}
 
 	if cfg.saves {
@@ -159,6 +249,19 @@ func New(opts ...Option) (*Emulator, error) {
 	}
 
 	return e, nil
+}
+
+// Model returns the hardware model the emulator is emulating. When ModelAuto
+// is in effect (the default), this is the model inferred from the loaded
+// cartridge, or ModelAuto before a ROM has been loaded.
+func (e *Emulator) Model() Model {
+	if e.gb.Bus == nil {
+		return ModelAuto
+	}
+	if m, ok := publicModelMap[e.gb.Bus.Model()]; ok {
+		return m
+	}
+	return ModelAuto
 }
 
 // LoadROM loads a ROM from disk and (re)initializes the emulator.

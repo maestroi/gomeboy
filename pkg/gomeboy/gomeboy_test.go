@@ -2,9 +2,13 @@ package gomeboy
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/thelolagemann/gomeboy/internal/serial/accessories"
 )
 
 // testROM is a simple, deterministic ROM that renders a known image.
@@ -23,6 +27,17 @@ func newTestEmulator(t *testing.T, opts ...Option) *Emulator {
 func (e *Emulator) snapshot() []byte {
 	f := e.Frame()
 	return append([]byte(nil), f.RGB...)
+}
+
+// absTestROM returns testROM as an absolute path so tests that change the
+// working directory can still find it.
+func absTestROM(t *testing.T) string {
+	t.Helper()
+	p, err := filepath.Abs(testROM)
+	if err != nil {
+		t.Fatalf("filepath.Abs(%q): %v", testROM, err)
+	}
+	return p
 }
 
 func TestNewWithROM(t *testing.T) {
@@ -227,5 +242,189 @@ func TestHeadlessDoesNotLeak(t *testing.T) {
 	// we only assert the emulator still produces frames without error.
 	if len(e.Frame().RGB) != 160*144*3 {
 		t.Error("headless emulator produced a malformed frame")
+	}
+}
+
+// TestWithModel verifies that every documented public model maps to the
+// intended internal hardware model: the effective model reported by Model()
+// must round-trip the value passed to WithModel.
+func TestWithModel(t *testing.T) {
+	models := []Model{ModelDMG0, ModelDMG, ModelCGB0, ModelCGB, ModelMGB, ModelSGB, ModelSGB2, ModelAGB}
+	for _, m := range models {
+		t.Run(string(m), func(t *testing.T) {
+			e, err := New(WithROM(testROM), WithModel(m))
+			if err != nil {
+				t.Fatalf("New(WithModel(%s)): %v", m, err)
+			}
+			defer e.Close()
+			if got := e.Model(); got != m {
+				t.Errorf("Model() = %s, want %s", got, m)
+			}
+		})
+	}
+}
+
+// TestWithModelAuto verifies that auto (the default, and the explicit
+// ModelAuto) keeps the model inferred from the cartridge. firstwhite is a
+// DMG cartridge, so the inference must resolve to ModelDMG.
+func TestWithModelAuto(t *testing.T) {
+	e, err := New(WithROM(testROM))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer e.Close()
+	if got := e.Model(); got != ModelDMG {
+		t.Errorf("auto Model() = %s, want %s", got, ModelDMG)
+	}
+
+	e2, err := New(WithROM(testROM), WithModel(ModelAuto))
+	if err != nil {
+		t.Fatalf("New(WithModel(auto)): %v", err)
+	}
+	defer e2.Close()
+	if got := e2.Model(); got != ModelDMG {
+		t.Errorf("explicit auto Model() = %s, want %s", got, ModelDMG)
+	}
+}
+
+// TestWithModelUnknown verifies that unknown model values are rejected by New
+// with an actionable error that names the offending value.
+func TestWithModelUnknown(t *testing.T) {
+	for _, m := range []Model{"", "nintendo", "DMG1", "cgb", "AUTO"} {
+		name := string(m)
+		if name == "" {
+			name = "empty"
+		}
+		t.Run(name, func(t *testing.T) {
+			e, err := New(WithROM(testROM), WithModel(m))
+			if err == nil {
+				t.Fatalf("New(WithModel(%q)): expected an error, got nil", m)
+			}
+			if e != nil {
+				t.Error("expected a nil Emulator")
+			}
+			if !strings.Contains(err.Error(), "unknown model") {
+				t.Errorf("error %q does not name the problem", err)
+			}
+			if !strings.Contains(err.Error(), fmt.Sprintf("%q", m)) {
+				t.Errorf("error %q does not quote the offending value", err)
+			}
+		})
+	}
+}
+
+// TestWithPrinter verifies that WithPrinter attaches the printer accessory.
+func TestWithPrinter(t *testing.T) {
+	e := newTestEmulator(t, WithPrinter())
+	defer e.Close()
+
+	if _, ok := e.gb.Serial.AttachedDevice.(*accessories.Printer); !ok {
+		t.Errorf("AttachedDevice = %T, want *accessories.Printer", e.gb.Serial.AttachedDevice)
+	}
+}
+
+// TestNoPrinterByDefault verifies that no printer is attached unless
+// WithPrinter is passed.
+func TestNoPrinterByDefault(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+
+	if _, ok := e.gb.Serial.AttachedDevice.(*accessories.Printer); ok {
+		t.Error("a printer is attached without WithPrinter")
+	}
+}
+
+// TestWithCheatsLoadsOnlyExplicitPath verifies that WithCheats loads exactly
+// the path it is given: a cheats file with the conventional name sitting in
+// the working directory must not be picked up.
+func TestWithCheatsLoadsOnlyExplicitPath(t *testing.T) {
+	rom := absTestROM(t)
+	t.Chdir(t.TempDir())
+
+	if err := os.WriteFile("firstwhite.cheats", []byte("# cwd cheat\n11223344\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	explicit := filepath.Join(t.TempDir(), "explicit.cheats")
+	if err := os.WriteFile(explicit, []byte("# explicit cheat\n11234567\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	e, err := New(WithROM(rom), WithCheats(explicit))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer e.Close()
+
+	if len(e.gb.Bus.LoadedCheats) != 1 {
+		t.Fatalf("LoadedCheats = %d entries, want 1: %+v", len(e.gb.Bus.LoadedCheats), e.gb.Bus.LoadedCheats)
+	}
+	if got := e.gb.Bus.LoadedCheats[0].Name; got != "explicit cheat" {
+		t.Errorf("cheat name = %q, want %q", got, "explicit cheat")
+	}
+	if len(e.gb.Bus.GameSharkCodes) != 1 {
+		t.Errorf("GameSharkCodes = %d entries, want 1", len(e.gb.Bus.GameSharkCodes))
+	}
+}
+
+// TestWithCheatsMalformed verifies that malformed cheats content is reported
+// through the existing observable error behavior (logged, not returned): New
+// succeeds and no cheats are loaded.
+func TestWithCheatsMalformed(t *testing.T) {
+	rom := absTestROM(t)
+	t.Chdir(t.TempDir())
+	path := filepath.Join(t.TempDir(), "bad.cheats")
+	// a line longer than bufio.MaxScanTokenSize makes the parser fail
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), 70*1024), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	e, err := New(WithROM(rom), WithCheats(path))
+	if err != nil {
+		t.Fatalf("New: %v (malformed cheats must not fail New)", err)
+	}
+	defer e.Close()
+
+	if len(e.gb.Bus.LoadedCheats) != 0 {
+		t.Errorf("LoadedCheats = %d entries, want 0", len(e.gb.Bus.LoadedCheats))
+	}
+}
+
+// TestWithCheatsUnreadable verifies that an unreadable (nonexistent) cheats
+// path is reported through the existing observable error behavior: New
+// succeeds and no cheats are loaded.
+func TestWithCheatsUnreadable(t *testing.T) {
+	rom := absTestROM(t)
+	t.Chdir(t.TempDir())
+
+	e, err := New(WithROM(rom), WithCheats(filepath.Join(t.TempDir(), "missing.cheats")))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer e.Close()
+
+	if len(e.gb.Bus.LoadedCheats) != 0 {
+		t.Errorf("LoadedCheats = %d entries, want 0", len(e.gb.Bus.LoadedCheats))
+	}
+}
+
+// TestNoDiskIOWithModelAndPrinter verifies that the non-persistence options
+// introduce no disk I/O: without WithSaveDir or WithCheats, New, stepping,
+// and Close leave the working directory empty.
+func TestNoDiskIOWithModelAndPrinter(t *testing.T) {
+	rom := absTestROM(t)
+	t.Chdir(t.TempDir())
+
+	e, err := New(WithROM(rom), WithModel(ModelCGB), WithPrinter())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	e.StepFrames(10)
+	if err := e.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if names := entryNames(t, "."); len(names) != 0 {
+		t.Errorf("expected no files in the working directory, found %v", names)
 	}
 }
