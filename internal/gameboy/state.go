@@ -36,6 +36,8 @@ type State struct {
 
 // Snapshot captures the emulator's complete execution state.
 func (g *GameBoy) Snapshot() State {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	return State{
 		CPU:       g.CPU.Snapshot(),
 		Scheduler: g.Scheduler.Snapshot(),
@@ -53,6 +55,8 @@ func (g *GameBoy) Snapshot() State {
 // The ROM must already be loaded and match the one that was present when the
 // snapshot was taken.
 func (g *GameBoy) Restore(s State) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.CPU.Restore(s.CPU)
 	g.Scheduler.Restore(s.Scheduler)
 	g.Bus.Restore(s.Bus)

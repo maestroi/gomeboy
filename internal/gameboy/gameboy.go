@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // GameBoy represents the state and components of the Game Boy emulator.
@@ -40,6 +41,11 @@ type GameBoy struct {
 	saveDir         string
 	noSaves         bool
 	cheatsPath      string
+	speed           int
+
+	// mu serialises the frame loop (audio/ticker thread) against save/load
+	// (UI thread) so Snapshot/Restore can't rewrite PPU/APU state mid-frame.
+	mu sync.Mutex
 
 	ROM     []byte
 	options []Opt
@@ -243,6 +249,8 @@ func (g *GameBoy) Colourise() {
 
 // Frame generates the next frame of the Game Boy's display and applies any visual effects.
 func (g *GameBoy) Frame() [ppu.ScreenHeight][ppu.ScreenWidth][3]uint8 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.running = true
 	g.CPU.Frame()
 
@@ -261,6 +269,8 @@ func (g *GameBoy) Frame() [ppu.ScreenHeight][ppu.ScreenWidth][3]uint8 {
 // not copy the rendered frame, so it avoids allocating on the hot path.
 // Use FrameBuffer to access the rendered frame.
 func (g *GameBoy) Step() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.running = true
 	g.CPU.Frame()
 	g.running = false
@@ -323,3 +333,24 @@ func (g *GameBoy) Paused() bool      { return g.paused }      // is the Game Boy
 func (g *GameBoy) Pause()            { g.paused = true }      // pause execution of the Game Boy
 func (g *GameBoy) Resume()           { g.paused = false }     // resume execution of the Game Boy
 func (g *GameBoy) Running() bool     { return g.running }     // is the emulator currently running?
+
+// SetSpeed sets the emulation speed multiplier. 1 is normal speed. Values
+// less than 1 are clamped to 1 — this does not support slow motion.
+// Values above 8 are clamped to 8.
+func (g *GameBoy) SetSpeed(speed int) {
+	if speed < 1 {
+		speed = 1
+	}
+	if speed > 8 {
+		speed = 8
+	}
+	g.speed = speed
+}
+
+// Speed returns the current emulation speed multiplier. It defaults to 1.
+func (g *GameBoy) Speed() int {
+	if g.speed == 0 {
+		return 1
+	}
+	return g.speed
+}

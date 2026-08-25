@@ -77,7 +77,7 @@ type Player struct {
 	mu sync.Mutex
 }
 
-func (p *Player) Attach(gb *gameboy.GameBoy) {
+func (p *Player) AttachGameboy(gb *gameboy.GameBoy) {
 	p.gb = gb
 }
 
@@ -262,6 +262,24 @@ func (p *Player) ReadPump(from <-chan []byte) {
 				}
 
 				continue // skip further processing
+			case SaveState:
+				err := p.gb.QuickSave()
+				result := byte(1)
+				if err != nil {
+					result = 0
+				}
+				p.c.Send <- p.createMessage(PlayerInfo, []byte{SaveStateResult, result})
+			case LoadState:
+				err := p.gb.QuickLoad()
+				result := byte(1)
+				if err != nil {
+					result = 0
+				}
+				p.c.Send <- p.createMessage(PlayerInfo, []byte{LoadStateResult, result})
+			case SetSpeed:
+				level := int(message[1])
+				p.gb.SetSpeed(level)
+				p.hub.broadcast <- p.createMessage(PlayerInfo, []byte{SpeedChanged, byte(p.gb.Speed())})
 			default:
 				button := message[0]
 				state := message[1]

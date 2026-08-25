@@ -97,11 +97,15 @@ func (a *APU) Snapshot() State {
 		TurningOn:          a.turningOn,
 		TurnedOn:           a.turnedOn,
 		EnableTimer:        a.enableTimer,
-		Buffer:             append([]float32(nil), a.buffer[:a.bufferPos]...),
-		BufferPos:          a.bufferPos,
-		LastCatchup:        a.lastCatchup,
-		Mute:               a.mute,
-		Headless:           a.headless,
+		// The audio output buffer is transient (already-generated samples
+		// waiting for the audio device), not simulation state. The APU
+		// regenerates it from its channel/sequencer state, so it is
+		// deliberately excluded to keep save states small and fast.
+		Buffer:      nil,
+		BufferPos:   0,
+		LastCatchup: a.lastCatchup,
+		Mute:        a.mute,
+		Headless:    a.headless,
 	}
 	st.Channel1.Square = SquareChannelState{
 		Duty:             a.channel1.duty,

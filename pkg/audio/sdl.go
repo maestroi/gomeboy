@@ -35,7 +35,20 @@ func AudioData(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 			return
 		}
 
-		frame = gb.Frame()
+		speed := gb.Speed()
+		for i := 0; i < speed; i++ {
+			frame = gb.Frame()
+		}
+		if speed > 1 {
+			// turbo: mute audio rather than attempting to pitch-shift/resample it.
+			// This is the standard tradeoff other emulators make for fast-forward.
+			for i := 0; i < n; i++ {
+				data[i] = 0
+			}
+			copy((*[maxArraySize]byte)(frameBufferPtr)[:frameSize:frameSize], (*[maxArraySize]byte)(unsafe.Pointer(&frame[0]))[:frameSize:frameSize])
+			frameBuffer <- tempFb
+			return
+		}
 		s, sN := gb.APU.Samples()
 		if sN > 0 {
 

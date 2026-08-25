@@ -16,6 +16,9 @@ const (
 	FrameCaching
 	RegisterUsername
 	Player2Confirmation
+	SaveState
+	LoadState
+	SetSpeed
 	KeepAlive = 254
 	Closing   = 255
 )
@@ -28,6 +31,9 @@ const (
 	BackgroundEnabled
 	WindowEnabled
 	SpritesEnabled
+	SaveStateResult
+	LoadStateResult
+	SpeedChanged
 )
 
 type Type = uint8

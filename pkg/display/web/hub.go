@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -31,6 +32,13 @@ type hub struct {
 }
 
 func (w *hub) run() error {
+	// serve the pre-built frontend if a static directory is configured.
+	// the websocket handler keeps the "/" path, so static assets live
+	// under "/app/" (the Svelte client's asset paths are relative).
+	if staticDir := os.Getenv("GOMEBOY_WEB_STATIC_DIR"); staticDir != "" {
+		http.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.Dir(staticDir))))
+	}
+
 	// create http handler for client connections
 	http.HandleFunc("/", func(wr http.ResponseWriter, r *http.Request) {
 		wr.Header().Set("Access-Control-Allow-Origin", "*")

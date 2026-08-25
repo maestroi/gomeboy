@@ -916,6 +916,8 @@ func (a *APU) catchupLFSR() {
 }
 
 func (a *APU) Samples() ([]float32, uint32) {
+	a.Lock()
+	defer a.Unlock()
 	s, b := a.buffer[:a.bufferPos], a.bufferPos
 	a.bufferPos = 0
 	return s, b

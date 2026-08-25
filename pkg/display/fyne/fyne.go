@@ -54,6 +54,8 @@ type fyneDriver struct {
 	mainMenuOpened bool
 	mainWindow     fyne.Window
 	gb             *gameboy.GameBoy
+	speeds         []int
+	speedItems     []*fyne.MenuItem
 
 	windows    map[string]fyne.Window
 	fullscreen bool
@@ -69,7 +71,6 @@ func (f *fyneDriver) Start(c emulator.Controller, fb <-chan []byte, pressed chan
 	// create main window
 	mainWindow := f.app.NewWindow("GomeBoy")
 	mainWindow.SetMaster()
-	mainWindow.Resize(fyne.NewSize(float32(ppu.ScreenWidth*f.scale), float32(ppu.ScreenHeight*f.scale)))
 	mainWindow.SetPadded(false)
 
 	f.mainWindow = mainWindow
@@ -78,14 +79,14 @@ func (f *fyneDriver) Start(c emulator.Controller, fb <-chan []byte, pressed chan
 	img := image.NewRGBA(image.Rect(0, 0, ppu.ScreenWidth, ppu.ScreenHeight))
 
 	// create canvas to draw to
-	raster := canvas.NewRasterFromImage(img)
-	raster.ScaleMode = canvas.ImageScalePixels
-	raster.SetMinSize(fyne.NewSize(ppu.ScreenWidth, ppu.ScreenHeight))
+	raster := newGameScreen(img, f.screenSize())
 
+	mainWindow.SetContent(raster)
 	if !f.gb.Initialised() {
 		f.toggleMainMenu()
+	} else {
+		mainWindow.Resize(f.screenSize())
 	}
-	mainWindow.SetContent(raster)
 
 	mainWindow.SetOnDropped(func(_ fyne.Position, uris []fyne.URI) {
 		if len(uris) != 1 {
@@ -139,20 +140,23 @@ func (f *fyneDriver) Start(c emulator.Controller, fb <-chan []byte, pressed chan
 					latestFrames = latestFrames[1:]
 
 					// Update image with the latest frame
-					for i := 0; i < ppu.ScreenWidth*ppu.ScreenHeight; i++ {
-						img.Pix[i*4] = latestFrame[i*3]
-						img.Pix[i*4+1] = latestFrame[i*3+1]
-						img.Pix[i*4+2] = latestFrame[i*3+2]
-						img.Pix[i*4+3] = 255
-					}
-					// refresh canvas
-					raster.Refresh()
+					fyne.Do(func() {
+						for i := 0; i < ppu.ScreenWidth*ppu.ScreenHeight; i++ {
+							img.Pix[i*4] = latestFrame[i*3]
+							img.Pix[i*4+1] = latestFrame[i*3+1]
+							img.Pix[i*4+2] = latestFrame[i*3+2]
+							img.Pix[i*4+3] = 255
+						}
+						raster.Refresh()
+					})
 				}
 
 				// Send frame event to windows
-				for _, w := range f.windows {
-					w.Content().Refresh()
-				}
+				fyne.Do(func() {
+					for _, w := range f.windows {
+						w.Content().Refresh()
+					}
+				})
 
 				// Calculate FPS and frametime
 				frameCount++
@@ -161,7 +165,7 @@ func (f *fyneDriver) Start(c emulator.Controller, fb <-chan []byte, pressed chan
 				// Update FPS and frametime every second
 				if elapsedTime >= time.Second {
 					fps := float64(frameCount) / elapsedTime.Seconds()
-					mainWindow.SetTitle(fmt.Sprintf("FPS: %.2f", fps))
+					fyne.Do(func() { mainWindow.SetTitle(fmt.Sprintf("FPS: %.2f", fps)) })
 
 					// Reset counters for next interval
 					frameCount = 0
@@ -185,6 +189,10 @@ func (f *fyneDriver) Start(c emulator.Controller, fb <-chan []byte, pressed chan
 				f.error(c.QuickSave())
 			case fyne.KeyF6:
 				f.error(c.QuickLoad())
+			case fyne.KeyF7:
+				f.cycleSpeed(1)
+			case fyne.KeyF8:
+				f.cycleSpeed(-1)
 			}
 		})
 		desk.SetOnKeyUp(func(e *fyne.KeyEvent) {
@@ -287,6 +295,16 @@ func (f *fyneDriver) createMainMenu() {
 		NewCustomizedMenuItem("Quick Load", func() { f.error(f.gb.QuickLoad()) }, Gated(!f.gb.Initialised())),
 	)
 
+	speedMenu := NewCustomizedMenuItem("Speed", func() {}, Gated(!f.gb.Initialised()))
+	f.speeds = []int{1, 2, 4, 8}
+	f.speedItems = make([]*fyne.MenuItem, len(f.speeds))
+	for i, s := range f.speeds {
+		f.speedItems[i] = NewCustomizedMenuItem(fmt.Sprintf("%dx", s), func() { f.setSpeed(s) })
+		f.speedItems[i].Checked = f.gb.Speed() == s
+	}
+	speedMenu.ChildMenu = fyne.NewMenu("", f.speedItems...)
+	emuMenu.Items = append(emuMenu.Items, fyne.NewMenuItemSeparator(), speedMenu)
+
 	audioChannels := NewCustomizedMenuItem("Audio Channels", func() {}, Gated(!f.gb.Initialised()))
 	audioChannels.ChildMenu = fyne.NewMenu("",
 		NewCustomizedMenuItem("1 (Square)", func() { f.gb.APU.Debug.Square1 = !f.gb.APU.Debug.Square1 }, Checked(true, f.mainMenu.Refresh)),
@@ -372,22 +390,53 @@ func (f *fyneDriver) createMainMenu() {
 	f.mainMenu.Items = []*fyne.Menu{fileMenu, emuMenu, audioMenu, videoMenu, debugMenu}
 }
 
+func (f *fyneDriver) screenSize() fyne.Size {
+	return fyne.NewSize(float32(ppu.ScreenWidth*f.scale), float32(ppu.ScreenHeight*f.scale))
+}
+
+func (f *fyneDriver) setSpeed(s int) {
+	f.gb.SetSpeed(s)
+	for i, it := range f.speedItems {
+		it.Checked = f.speeds[i] == s
+	}
+}
+
+func (f *fyneDriver) cycleSpeed(dir int) {
+	idx := 0
+	for i, s := range f.speeds {
+		if s == f.gb.Speed() {
+			idx = i
+			break
+		}
+	}
+	f.setSpeed(f.speeds[(idx+dir+len(f.speeds))%len(f.speeds)])
+}
+
+// newGameScreen draws the 160x144 framebuffer scaled to fill the window.
+// RasterFromImage maps pixel-for-pixel and pads, so it cannot be used here.
+func newGameScreen(img image.Image, min fyne.Size) fyne.CanvasObject {
+	screen := canvas.NewImageFromImage(img)
+	screen.ScaleMode = canvas.ImageScalePixels
+	screen.FillMode = canvas.ImageFillContain
+	screen.SetMinSize(min)
+	return screen
+}
+
 func (f *fyneDriver) toggleMainMenu() {
 	if f.mainMenuOpened {
 		// if the main menu is already open, close it
 		f.mainMenuOpened = false
 		f.mainWindow.SetMainMenu(nil)
-
-		// workaround to reset the window size to current size + menu bar height
-		w, h := f.mainWindow.Content().Size().Width, f.mainWindow.Content().Size().Height
-		f.mainWindow.Resize(fyne.NewSize(w, h+26))
-		f.mainWindow.Resize(fyne.NewSize(w, h+25))
+		f.mainWindow.Resize(f.screenSize())
 		f.mainWindow.Content().Refresh()
 
 		f.gb.Resume()
 	} else {
 		f.mainMenuOpened = true
 		f.mainWindow.SetMainMenu(f.mainMenu)
+		// menu bar takes 26px, grow window so the screen keeps its size
+		s := f.screenSize()
+		f.mainWindow.Resize(fyne.NewSize(s.Width, s.Height+26))
 
 		// pause the gameboy
 		f.gb.Pause()

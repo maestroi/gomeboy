@@ -30,6 +30,9 @@ export enum ControlEvent {
     Pause,
     PPU = 9,
     Info = 10,
+    SaveState = 13,
+    LoadState = 14,
+    SetSpeed = 15,
     Close = 255,
 }
 
@@ -58,6 +61,9 @@ export enum PlayerInfoEvent {
     BackgroundEnabled,
     WindowEnabled,
     SpritesEnabled,
+    SaveStateResult = 5,
+    LoadStateResult = 6,
+    SpeedChanged = 7,
 }
 
 type EventCallback = (event: EventType, data: Uint8Array) => void;
@@ -190,6 +196,7 @@ class Game {
     transferRate: Readable<number>
     compression: Writable<boolean>;
     compressionLevel: Writable<number>;
+    speed: Writable<number>;
     patchRatio: number;
     clients: Writable<Map<string,UserClient>>;
     client: Writable<UserClient>;
@@ -216,6 +223,7 @@ class Game {
         this.uncompressedThroughput = writable(0);
         this.compression = writable(true);
         this.compressionLevel = writable(1);
+        this.speed = writable(1);
         this.clients = writable(new Map<string,UserClient>())
         this.username = writable("");
         this.client = writable(new UserClient("", "", "", 0))
@@ -374,6 +382,15 @@ class Game {
                             break
                         case PlayerInfoEvent.SpritesEnabled:
                             player.spritesEnabled.set(eventData[1] === 1)
+                            break
+                        case PlayerInfoEvent.SaveStateResult:
+                            console.log(eventData[1] === 1 ? "state saved" : "failed to save state")
+                            break
+                        case PlayerInfoEvent.LoadStateResult:
+                            console.log(eventData[1] === 1 ? "state loaded" : "failed to load state")
+                            break
+                        case PlayerInfoEvent.SpeedChanged:
+                            this.speed.set(eventData[1])
                             break
                     }
                     break
@@ -618,6 +635,18 @@ class Game {
         this.socket.socket.send(new Uint8Array([button, 0]))
     }
 
+    saveState() : void {
+        this.socket.socket.send(new Uint8Array([ControlEvent.SaveState, 0]))
+    }
+
+    loadState() : void {
+        this.socket.socket.send(new Uint8Array([ControlEvent.LoadState, 0]))
+    }
+
+    setSpeed(level: number) : void {
+        this.socket.socket.send(new Uint8Array([ControlEvent.SetSpeed, level]))
+    }
+
     close() {
         this.send(ControlEvent.Close)
         this.socket.socket.close(1000);
@@ -652,7 +681,7 @@ class Socket {
                 this.onDisconnect = onDisconnect;
             }
 
-            this.socket = new WebSocket(this.url);
+            this.socket = new WebSocket(this.url.replace("{host}", location.hostname));
             this.socket.addEventListener("open", () => {
                 this.connected.set(true);
                 if (this.onConnect !== null) {
@@ -701,6 +730,6 @@ function padToUint32(b: Uint8Array) {
     return new Uint32Array(buffer)[0]
 }
 
-export default new Game("ws://192.168.1.154:8090/")
+export default new Game("ws://{host}:8090/")
 
 export let adminView = writable(true);

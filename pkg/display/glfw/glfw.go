@@ -181,6 +181,10 @@ func (g *glfwDriver) Start(c emulator.Controller, frames <-chan []byte, pressed,
 				if err := c.QuickLoad(); err != nil {
 					log.Errorf("quick load: %v", err)
 				}
+			case glfw.KeyEqual, glfw.KeyKPAdd:
+				c.SetSpeed(c.Speed() + 1)
+			case glfw.KeyMinus, glfw.KeyKPSubtract:
+				c.SetSpeed(c.Speed() - 1)
 			}
 		}
 	})

@@ -11,4 +11,6 @@ type Controller interface {
 	Initialised() bool
 	QuickSave() error
 	QuickLoad() error
+	SetSpeed(int)
+	Speed() int
 }

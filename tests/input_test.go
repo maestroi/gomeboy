@@ -90,6 +90,7 @@ func (iT *inputTest) Run(t *testing.T) {
 			// write output image to disk
 			return fmt.Errorf("images are different: %d", diff) // TODO percentage
 		}
+		iT.passed = true // a successful retry clears the flag a failed attempt set
 		return nil
 	}, 5))
 

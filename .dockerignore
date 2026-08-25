@@ -1,0 +1,9 @@
+.git
+node_modules
+/gomeboy
+/diag
+/roms
+*.sav
+*.state
+RUNNOTES.md
+pkg/display/web/gomeboy-web/build
