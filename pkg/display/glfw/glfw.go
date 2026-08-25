@@ -3,6 +3,7 @@
 package glfw
 
 import (
+	"fmt"
 	"github.com/go-gl/gl/v4.6-core/gl"
 	"github.com/go-gl/glfw/v3.4/glfw"
 	"github.com/thelolagemann/gomeboy/internal/io"
@@ -124,6 +125,8 @@ func (g *glfwDriver) Start(c emulator.Controller, frames <-chan []byte, pressed,
 		log.Fatal(err.Error())
 	}
 
+	hud := newOSD()
+
 	// initialize window settings
 	g.windowSettings.width, g.windowSettings.height = window.GetSize()
 	g.windowSettings.xPos, g.windowSettings.yPos = window.GetPos()
@@ -176,15 +179,23 @@ func (g *glfwDriver) Start(c emulator.Controller, frames <-chan []byte, pressed,
 			case glfw.KeyF5:
 				if err := c.QuickSave(); err != nil {
 					log.Errorf("quick save: %v", err)
+					hud.Show("Save failed", 2*time.Second)
+				} else {
+					hud.Show("Saved", 1500*time.Millisecond)
 				}
 			case glfw.KeyF6:
 				if err := c.QuickLoad(); err != nil {
 					log.Errorf("quick load: %v", err)
+					hud.Show("Load failed", 2*time.Second)
+				} else {
+					hud.Show("Loaded", 1500*time.Millisecond)
 				}
 			case glfw.KeyEqual, glfw.KeyKPAdd:
 				c.SetSpeed(c.Speed() + 1)
+				hud.Show(fmt.Sprintf("Speed %dx", c.Speed()), 1500*time.Millisecond)
 			case glfw.KeyMinus, glfw.KeyKPSubtract:
 				c.SetSpeed(c.Speed() - 1)
+				hud.Show(fmt.Sprintf("Speed %dx", c.Speed()), 1500*time.Millisecond)
 			}
 		}
 	})
@@ -233,6 +244,9 @@ func (g *glfwDriver) Start(c emulator.Controller, frames <-chan []byte, pressed,
 			gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 160, 144, 0, gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(f))
 
 			gl.BlitFramebuffer(0, 0, 160, 144, offsetX, offsetY+targetHeight, offsetX+targetWidth, offsetY, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+
+			w, h := window.GetSize()
+			hud.Draw(int32(w), int32(h))
 
 			window.SwapBuffers()
 		case <-pollTicker.C:

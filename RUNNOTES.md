@@ -62,3 +62,15 @@ file header comments and deploy/README.md §3)
 - game.ts uses `ws://{host}:8090/` and substitutes `location.hostname`.
 - Next likely task: real agent decision loop (LLM) replacing the stub in
   cmd/gomeboy-agent; human+agent input arbitration still unimplemented.
+
+---
+
+# RUNNOTES — GLFW on-screen display (OSD) for save/load/speed feedback
+
+## What changed
+- NEW `pkg/display/glfw/osd.go`: `osd` struct + `newOSD`/`Show`/`Draw`/`compileOSDProgram`.
+  Rasterizes short messages with `golang.org/x/image/font/basicfont` into a
+  CPU RGBA image, uploads as one texture, draws a single quad.
+- `pkg/display/glfw/glfw.go`: F5/F6 show "Saved"/"Save failed"/"Loaded"/"Load failed";
+  +/-/KP+/KP- show "Speed Nx"; `hud.Draw(w,h)` between blit and SwapBuffers.
+- Web client: `Toast.svelte` for the same save/load/speed feedback.

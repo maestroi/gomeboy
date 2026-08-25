@@ -52,7 +52,7 @@ type GameBoy struct {
 }
 
 // NewGameBoy creates a new GameBoy with the provided Opt(s).
-func NewGameBoy(opts ...Opt) *GameBoy { return &GameBoy{options: opts} }
+func NewGameBoy(opts ...Opt) *GameBoy { return &GameBoy{options: opts, speed: 1} }
 
 // WithSaveDir sets the directory that save files (.sav) and quick-save state
 // files (.state) are read from and written to. An empty dir keeps the

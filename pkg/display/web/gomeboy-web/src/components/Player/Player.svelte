@@ -1,4 +1,5 @@
 <div class="player" style="position: relative">
+	<Toast/>
 	<div class="card game-player">
 		<div class="content">
 			<Show show={$running}>
@@ -44,6 +45,7 @@
 	import Scaler from "../Scaler/Scaler.svelte";
 	import Controls from "./Controls.svelte";
 	import AgentPanel from "./AgentPanel.svelte";
+	import Toast from "./Toast.svelte";
 	import Show from "../Show.svelte";
 
 	let { paused, running } = false;
