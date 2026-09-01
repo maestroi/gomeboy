@@ -1,39 +1,35 @@
-# RUNNOTES — QA-1: end-to-end startup/shutdown/logging smoke matrix
+# RUNNOTES — SHIP-1: merge plan 8ce944eb into main (DELIVERED, CI FAILED)
 
-## Changed
-- internal/launch/smoke_test.go (new): subprocess smoke tests for the
-  built gomeboy, gomeboy-web, gomeboy-agent binaries. TestMain builds all
-  three via `go build` into a temp dir and extracts two ROMs from
-  tests/roms.zip (01-special.gb plain; dmg_sound 01-registers.gb,
-  battery-backed MBC1RAMBATT). Ephemeral 127.0.0.1:0 ports, every run
-  reaped, no repo files written.
-- Coverage: SMOKE-DEFAULT-OFF (auto never binds the web port, DISPLAY=:99);
-  SMOKE-COMMANDS (-h exit 0 + usage on all 3; web/agent bind then shut
-  down — SIGTERM kills web/desktop, SIGINT/SIGTERM exit 0 on agent, port
-  released); SMOKE-FAILURES (11 cases: bad model, bad log level, missing
-  ROM/boot, -no-saves vs -save-dir, unknown flag, unknown driver, web
-  address-in-use, agent -fps 0 / missing ROM / -save-dir — all non-zero,
-  contextual, fast, no panic output; missing cheats tolerated);
-  SMOKE-PERSISTENCE (battery ROM: cwd vs -save-dir vs -no-saves; agent
-  diskless); SMOKE-LOGGING (agent exactly one summary line, no per-frame
-  growth); SMOKE-HYGIENE (port closed, working dir clean, no root leaks).
+## What was done
+- Merged agent-plan/8ce944eb-b848-475b-8b35-d06569b06003 (4e922ba, tasks 1-7)
+  into fetched origin/main (25e841d) in a temp worktree; no conflicts,
+  expected ancestry (plan is a direct descendant).
+- Integration commit: 7c16e777b7e7fb25ba8225a8e2a0ee7827ca340a
+  "Merge agent-plan/8ce944eb: improve errors, logging, and options"
+- SHIP-GATE passed on the combined tree: go build ./..., go vet ./...,
+  go test ./..., git diff --check vs 25e841d. (Had to copy the gitignored
+  tests/roms/ fixtures into the temp worktree; untracked, never committed.)
+- Pushed NON-FORCE: 25e841d..7c16e77. Fresh fetch confirms origin/main ==
+  7c16e77 and plan SHA 4e922ba is an ancestor. Local main fast-forwarded;
+  worktree clean.
 
-## Why
-Criteria require observing the real binaries end-to-end (ports, signals,
-exit codes, save files); only subprocess level covers that.
+## BLOCKER: CI failed on the pushed SHA (blocking outcome, NOT fixed here)
+- Run: https://github.com/maestroi/gomeboy/actions/runs/32890084106
+  job test_regressions -> failure (compile error, exit 1).
+- Root cause (reproduced locally): .github/workflows/test.yaml runs
+  `go test -tags test -v tests/*.go -run Test_Regressions`. Explicit .go
+  file lists BYPASS build constraints, so both files compile together:
+  - tests/regressions_test.go:21  (//go:build test)   skipKnownFailures=false
+  - tests/skip_known_test.go:9    (//go:build !test)  skipKnownFailures=true
+  -> "skipKnownFailures redeclared in this block".
+- `go test ./...` (package mode) honors the tags and passes, which is why
+  SHIP-GATE was green. The defect is in task 7 (QA-1) test code.
 
-## Verified
-- go build ./... && go vet ./internal/launch/ && go test ./internal/launch/ -count=1 — green, ~20s (binaries cached after first build).
-- No prior-criterion failures found; no out-of-scope code touched.
-
-## Must know
-- Pre-existing (not fixed, out of scope): headless `gomeboy` (auto -> fyne)
-  panics inside fyne v2.8.0 GLFW ("panic: NotInitialized"), exit 2. ERR-2
-  only made the repo's own glfw driver recoverable. The smoke test asserts
-  non-zero exit + web port never bound, not panic-free output.
-- gomeboy/gomeboy-web have no signal handler: SIGTERM kills them (exit -1),
-  so battery saves are created at startup but not flushed on SIGTERM
-  (0-byte .sav is expected in the persistence tests).
-- Repo test ROMs store cartridge type at header offset 0x147 (not standard 0x133); battery ROMs have that byte in batteryMappers.
-- Known pre-existing `go test ./...` race (roms.zip extraction vs
-  pkg/gomeboy) unchanged; pre-extract roms or re-run pkg/gomeboy.
+## Next task must do
+- Fix the redeclaration so the CI file-list invocation compiles: distinct
+  var names, a shared flag file included by both, or change the workflow
+  to `go test -tags test ./tests/`. Fix is a NEW commit; do NOT rewrite
+  history or force-push.
+- Verify CI green for the new main SHA afterwards.
+- Note: tests/roms/ is gitignored, so CI has no ROM fixtures; check
+  Test_Regressions subprocess behavior on CI after the compile fix.
