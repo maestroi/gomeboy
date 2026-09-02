@@ -110,6 +110,11 @@ type Frame struct {
 // concurrent use by multiple goroutines.
 type Emulator struct {
 	gb *gameboy.GameBoy
+
+	// Optional agent/debug tooling. Both are inert unless explicitly enabled.
+	flight         *FlightRecorder
+	inputRecording bool
+	inputLog       []InputEvent
 }
 
 type config struct {
@@ -290,20 +295,29 @@ func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
 // Press presses a joypad button.
 func (e *Emulator) Press(b Button) {
 	e.gb.Bus.Press(buttonMap[b])
+	e.recordInputEvent(b, true)
 }
 
 // Release releases a joypad button.
 func (e *Emulator) Release(b Button) {
 	e.gb.Bus.Release(buttonMap[b])
+	e.recordInputEvent(b, false)
 }
 
 // StepFrame advances the emulator by exactly one frame.
 func (e *Emulator) StepFrame() {
 	e.gb.Step()
+	e.recordFlightFrame()
 }
 
 // StepFrames advances the emulator by n frames.
 func (e *Emulator) StepFrames(n int) {
+	if e.flight != nil && e.flight.needsFrameSampling() {
+		for i := 0; i < n; i++ {
+			e.StepFrame()
+		}
+		return
+	}
 	e.gb.StepFrames(n)
 }
 
