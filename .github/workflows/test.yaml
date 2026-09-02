@@ -30,8 +30,11 @@ jobs:
           go-version: '1.27'
       - name: install dependencies
         run: go get .
-      - name: performance benchmarks
-        run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerf' -benchmem -benchtime=1s -count=5
+      - name: core optimization tests
+        run: |
+          go test ./internal/scheduler -run '^(TestDescheduleRootUpdatesNextEvent|TestDescheduleDoesNotRemoveSentinel|TestChangeSpeedReschedulesAllAffectedEvents)$'
+          go test ./internal/apu -run '^(TestHighPassStateIsPerAPU|TestHeadlessRemovesOutputSamplingEvent)$'
+          go test ./pkg/gomeboy -run '^(TestPerfStepFramesMatchesRepeatedStep|TestPerfPeekIntoMatchesPeek8)$'
       - name: tests
         run: go test -tags test -v ./tests -run Test_Regressions
       - name: import gpg key
