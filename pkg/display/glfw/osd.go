@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"strings"
 	"time"
 
 	"github.com/go-gl/gl/v4.6-core/gl"
@@ -43,16 +44,15 @@ void main() {
 }
 ` + "\x00"
 
-// osd renders short-lived text messages ("Saved", "Speed 2x", ...) on top
-// of the emulator framebuffer. Text is rasterized to a CPU image with
-// golang.org/x/image/font/basicfont (already a project dependency) and
-// uploaded as a single quad texture, since OpenGL core profile has no
-// fixed-function text and hand-building a full glyph atlas isn't needed
-// for a handful of short, infrequent messages.
+// osd renders text panels on top of the emulator framebuffer. Short status
+// messages expire automatically; persistent, multiline panels are used by
+// the in-window GLFW menu. Text is rasterized with basicfont and uploaded as
+// a single texture so the desktop driver stays dependency-light.
 type osd struct {
 	program, vao, vbo, texture uint32
 	message                    string
 	expiresAt                  time.Time
+	persistent                 bool
 	texW, texH                 int32
 }
 
@@ -85,33 +85,71 @@ func newOSD() *osd {
 	return o
 }
 
-// Show rasterizes text and displays it for dur.
+// Show displays a short-lived status message.
 func (o *osd) Show(text string, dur time.Duration) {
-	o.message = text
+	o.persistent = false
 	o.expiresAt = time.Now().Add(dur)
+	o.render(text)
+}
 
+// Set displays a persistent panel until Hide or another Show/Set call.
+func (o *osd) Set(text string) {
+	if text == "" {
+		o.Hide()
+		return
+	}
+	o.persistent = true
+	o.expiresAt = time.Time{}
+	o.render(text)
+}
+
+func (o *osd) Hide() {
+	o.message = ""
+	o.persistent = false
+	o.expiresAt = time.Time{}
+}
+
+func (o *osd) render(text string) {
+	o.message = text
+	lines := strings.Split(text, "\n")
 	face := basicfont.Face7x13
-	w := font.MeasureString(face, text).Ceil() + 8
-	h := 20
+
+	width := 0
+	for _, line := range lines {
+		if w := font.MeasureString(face, line).Ceil(); w > width {
+			width = w
+		}
+	}
+
+	const padding = 8
+	const lineHeight = 15
+	w := width + padding
+	h := len(lines)*lineHeight + padding
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.Draw(img, img.Bounds(), image.NewUniform(osdBG), image.Point{}, draw.Src)
+
 	d := &font.Drawer{
 		Dst:  img,
 		Src:  image.NewUniform(osdFG),
 		Face: face,
-		Dot:  fixed.P(4, h-6),
 	}
-	d.DrawString(text)
+	for i, line := range lines {
+		d.Dot = fixed.P(4, 4+i*lineHeight+11)
+		d.DrawString(line)
+	}
 
 	o.texW, o.texH = int32(w), int32(h)
 	gl.BindTexture(gl.TEXTURE_2D, o.texture)
 	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, o.texW, o.texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
 }
 
-// Draw renders the current message, if not expired, into the top-left
-// corner of a screenW x screenH viewport with an 8px margin.
+// Draw renders the current panel into the top-left corner of a screenW x
+// screenH viewport with an 8px margin.
 func (o *osd) Draw(screenW, screenH int32) {
-	if o.message == "" || time.Now().After(o.expiresAt) {
+	if o.message == "" {
+		return
+	}
+	if !o.persistent && time.Now().After(o.expiresAt) {
 		return
 	}
 
