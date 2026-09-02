@@ -5,6 +5,8 @@ package glfw
 import (
 	"strings"
 	"testing"
+
+	"github.com/go-gl/glfw/v3.4/glfw"
 )
 
 type menuController struct {
@@ -50,6 +52,56 @@ func TestMenuTextReflectsControllerState(t *testing.T) {
 	for _, want := range []string{"Reset", "> Speed: 4x", "Fullscreen: on"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("menu text %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestEscapeMakesMenuModal(t *testing.T) {
+	c := &menuController{speed: 1}
+	m := &menu{}
+	cb := keyCallback(&glfwDriver{}, nil, c, nil, nil, nil, m)
+
+	cb(nil, glfw.KeyEscape, 0, glfw.Press, 0)
+	if !m.open {
+		t.Fatal("Escape did not open menu")
+	}
+	if !c.Paused() {
+		t.Fatal("opening menu did not pause emulation")
+	}
+
+	cb(nil, glfw.KeyEscape, 0, glfw.Press, 0)
+	if m.open {
+		t.Fatal("second Escape did not close menu")
+	}
+	if c.Paused() {
+		t.Fatal("closing menu did not resume emulation")
+	}
+}
+
+func TestResetActionKeepsMenuPaused(t *testing.T) {
+	c := &menuController{paused: true, speed: 1}
+	m := &menu{open: true, selected: int(menuReset)}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if c.resets != 1 {
+		t.Fatalf("reset calls = %d, want 1", c.resets)
+	}
+	if !c.Paused() {
+		t.Fatal("reset action resumed emulation behind menu")
+	}
+	if !m.open {
+		t.Fatal("reset action closed menu")
+	}
+}
+
+func TestMenuSpeedCyclesExpectedValues(t *testing.T) {
+	c := &menuController{paused: true, speed: 1}
+	m := &menu{open: true, selected: int(menuSpeed)}
+
+	for _, want := range []int{2, 4, 8, 1} {
+		executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+		if c.speed != want {
+			t.Fatalf("speed = %d, want %d", c.speed, want)
 		}
 	}
 }
