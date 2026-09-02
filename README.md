@@ -1,184 +1,434 @@
-# gomeboy
+# GomeBoy
 
-![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/thelolagemann/gomeboy)
+![Go version](https://img.shields.io/github/go-mod/go-version/maestroi/gomeboy)
 
-GomeBoy is my attempt at creating a fairly accurate and reasonably performant Game Boy emulator written with golang. It
-is still currently in the very early stages of development, but it is already capable of running quite a few games with
-varying degrees of success.
+GomeBoy is a Game Boy and Game Boy Color emulator written in Go. It can be used as a desktop emulator, a headless web player, or an in-process library for deterministic automation, testing, search, and AI/agent workloads.
+
+The core is designed to keep hardware-visible behavior accurate while also exposing fast paths for workloads that do not need realtime audio or RGB framebuffer output.
+
+## Highlights
+
+- Game Boy (DMG) and Game Boy Color (CGB) emulation
+- Desktop frontends with Fyne and GLFW
+- Headless web player and spectator UI
+- Deterministic Go library with frame and instruction stepping
+- Fast `Headless()` audio path and optional `WithoutVideo()` rendering path
+- Allocation-free bulk memory observation with `PeekInto`
+- Fast in-process checkpoints for search and branching
+- Independent `Fork()` execution branches
+- Frame- and instruction-granular `RunUntil` / watchpoint APIs
+- CPU and PPU debugger state without copying a full save state
+- Bounded flight recorder for inputs, frame samples, and selected RAM changes
+- Deterministic input recording and replay
+- State hashing for replay and branch-equivalence checks
+- Checked durable save states with ROM identity, model, version, frame/cycle metadata, and payload integrity
+- SRAM, RTC, cartridge mappers, Game Genie / GameShark, printer, and serial support
+- Automated regression testing against established Game Boy test ROM suites
 
 ---
 
 ## Screenshots
 
-### DMG Games
+### DMG games
 
 <img src="assets/images/tetris.png" width="250"> <img src="assets/images/super-mario-land2.png" width="250"> <img src="assets/images/pokemon-red.png" width="250">
 
-### DMG Games running on CGB hardware
+### DMG games on CGB hardware
 
 <img src="assets/images/tetris-cgb.png" width="250"> <img src="assets/images/super-mario-land2-cgb.png" width="250"> <img src="assets/images/pokemon-red-cgb.png" width="250">
 
-### CGB Games
+### CGB games
 
 <img src="assets/images/tetris-dx.png" width="250"> <img src="assets/images/mario-tennis.png" width="250"> <img src="assets/images/pokemon-crystal.png" width="250">
 
-### Peripherals (Printer)
+### Game Boy Printer
 
 ![Printer](assets/images/printer.gif)
 
 ---
 
-## Features
+## Emulator features
 
+### Hardware and cartridge support
 
-- GameBoy (DMG) and GameBoy Color (CGB) support
-- SRAM and RTC support
-- Run DMG games with CGB colorization palettes (without using a boot ROM)
-- Automated testing against a large number of test ROMs
-- Peripherals
-	- Cartridge Mappers
-      - MBC1
-      - MBC2
-      - MBC3
-      - MBC5
-      - ROM
-  - Cheat Carts
-    - Game Genie
-    - GameShark
-  - Serial
-    - Printer
-    - Link Cable
-    - Local Multiplayer (needs reimplementation)
-- Platform-agnostic (runs on Windows, Linux, and Mac)
-- Desktop (Fyne/GLFW), web spectator, and a headless Go library
-- Save/load and 1x–8x speed on desktop and web
-- Optional agent overlay that publishes goal/action/observation to the web client
+- DMG and CGB hardware models, plus model selection for `DMG0`, `DMG`, `CGB0`, `CGB`, `MGB`, `SGB`, `SGB2`, and `AGB`
+- HLE boot process or optional boot ROM
+- DMG games with CGB colorization palettes
+- SRAM and RTC persistence
+- Cartridge mapper support including ROM, MBC1, MBC2, MBC3, MBC5, MBC7, HuC1, M161, and Pocket Camera-related paths present in the core
+- Game Genie and GameShark cheats
+- Game Boy Printer
+- Serial/link infrastructure
+
+### Frontends
+
+- Fyne desktop frontend
+- GLFW desktop frontend
+- Headless web frontend with WebSocket-driven UI
+- Read-only HTTP spectator for library users
+- Agent spectator binary that publishes frames and agent state to the web client
+
+### Deterministic execution
+
+- `StepFrame()` for one deterministic emulated frame
+- `StepFrames(n)` for batched stepping with one core lock acquisition
+- `StepInstruction()` for debugger-grade SM83 stepping
+- `FrameCount()` and `Cycle()` counters
+- Fixed WRAM boot randomization seed for reproducible headless runs
+- Independent emulator instances with per-instance APU filter state
 
 ---
 
-## Usage
+## Performance
 
-Requires **Go 1.26+**. Desktop drivers need the usual Fyne/GLFW system libraries; the web binaries do not.
+GomeBoy includes fast paths specifically for headless simulation and agent/search workloads.
 
-### Desktop
+The measurements below were collected on GitHub Actions using Ubuntu 24.04, Go 1.27.1, and an AMD EPYC 7763. Each quoted median was sampled five times with a one-second benchmark window. These numbers describe **emulation throughput**, not the Game Boy display refresh rate.
+
+### Video output on vs off
+
+| Workload | Video on | `WithoutVideo()` | Improvement |
+| --- | ---: | ---: | ---: |
+| Single headless frame | 705.781 µs | 643.765 µs | 8.79% less time |
+| Simulated throughput | ~1,417 frames/s | ~1,553 frames/s | **+9.63%** |
+| 60-frame batch | 42.399 ms | 38.616 ms | 8.92% less time |
+| 60-frame simulated throughput | ~1,415 frames/s | ~1,554 frames/s | **+9.80%** |
+
+Both frame paths remained at **0 B/op and 0 allocs/op** in these benchmarks.
+
+`WithoutVideo()` does not disable the PPU. Fetchers, FIFOs, scanline timing, interrupts, VRAM/OAM locking, and other hardware-visible behavior continue to run. It skips output-only RGB palette composition and framebuffer writes.
+
+For an unthrottled controller or search worker, the measured configuration:
+
+```go
+emu, err := gomeboy.New(
+    gomeboy.WithROM("game.gb"),
+    gomeboy.Headless(),
+    gomeboy.WithoutVideo(),
+)
+```
+
+simulated roughly **1.55k Game Boy frames per wall-clock second** on that runner.
+
+### Fast checkpoints
+
+| Round trip | Median | Bytes/op | Allocs/op |
+| --- | ---: | ---: | ---: |
+| `CheckpointInto` + `RestoreCheckpoint` | 57.014 µs | 27,264 | 1 |
+| `SaveState` + `LoadState` | 6.879 ms | ~4,118,933 | 24,992 |
+
+The process-local checkpoint path is approximately **120.7× faster** than serialized save/load, with about **99.17% lower latency** and roughly **151× fewer allocated bytes**.
+
+Use checkpoints for search trees, rollback, planning, and repeated local branching. Use serialized or checked save states when the state needs to survive outside the current process.
+
+### Memory observation
+
+| Operation | 4 KiB median | Allocations | Intended use |
+| --- | ---: | ---: | --- |
+| `PeekInto` | ~43.47 ns | 0 | Fast side-effect-free observation |
+| `ReadInto` | 11.506 µs | 0 | CPU-accurate reads with bus semantics |
+
+The bulk `PeekInto` optimization reduced the historical 4 KiB benchmark from about 1.761 µs to 43.47 ns, roughly a **40.5× speedup**. The before/after runs were on different GitHub-hosted EPYC SKUs, so small frame-time differences from that older comparison should be treated cautiously; the `PeekInto` gain is large enough that runner variance is not material to the conclusion.
+
+`PeekInto` ignores DMA conflicts, PPU locks, and lazy IO side effects and is therefore the preferred observation API for agents. `ReadInto` should be used when the caller specifically needs CPU-visible bus behavior.
+
+### Headless execution improvements
+
+The headless path also removes the 96 kHz audio-output sampling event while keeping hardware-visible APU state evolving. Batched `StepFrames(n)` avoids taking the emulator mutex once per frame. Both changes reduce overhead without changing the emulated program-visible state.
+
+---
+
+## Requirements
+
+Requires **Go 1.26+**.
+
+Desktop drivers need the usual Fyne/GLFW system libraries. The web and headless library paths do not require a desktop windowing stack.
+
+---
+
+## Desktop usage
 
 ```sh
 go run . -rom game.gb
-go run . -rom game.gb -driver fyne   # or glfw, web
+go run . -rom game.gb -driver fyne
+go run . -rom game.gb -driver glfw
 ```
 
 | Flag | Default | Description |
 | --- | --- | --- |
 | `-rom` | | Path to a `.gb` / `.gbc` ROM |
 | `-boot` | | Optional boot ROM (`.gbr`) |
-| `-model` | `auto` | `auto`, `DMG0`, `DMG`, `CGB0`, `CGB`, `MGB`, `SGB`, `SGB2`, or `AGB` (case-insensitive) |
+| `-model` | `auto` | `auto`, `DMG0`, `DMG`, `CGB0`, `CGB`, `MGB`, `SGB`, `SGB2`, or `AGB` |
 | `-printer` | `false` | Attach the Game Boy Printer |
-| `-cheats` | | Explicit path to a cheats file (GameShark / GameGenie) |
+| `-cheats` | | Explicit GameShark / Game Genie cheat file |
 | `-save-dir` | working directory | Directory for `.sav` / `.state` files |
-| `-no-saves` | `false` | Disable all save file I/O (conflicts with `-save-dir`) |
+| `-no-saves` | `false` | Disable save-file I/O |
 | `-log-level` | `info` | `debug`, `info`, or `error` |
-| `-pprof` | disabled | `host:port` to serve `net/http/pprof` |
+| `-pprof` | disabled | `host:port` for `net/http/pprof` |
 | `-driver` | `auto` | `auto`, `glfw`, `fyne`, or `web` |
 
-The display drivers add their own flags on top: `-web-listen` (default `:8090`), and `-fullscreen` / `-scale` for the window drivers.
-
-Battery saves (`.sav`) and quick-save states (`.state`) are written to the working directory (or `-save-dir`), named after the ROM. If `<romname>.cheats` exists in the working directory it is loaded; pass `-cheats` to load an explicit file instead.
-
-All options are restart-time settings, read once at startup. The three binaries share `-rom`, `-boot`, `-model`, `-printer`, `-cheats`, `-log-level`, and `-pprof`; the desktop and web binaries also take `-save-dir` and `-no-saves`, and the agent takes `-fps`. An invalid option, an unreadable ROM, a failed pprof bind, or a failed display driver all produce a single contextual error on stderr and a non-zero exit code.
+Display drivers add their own flags, including `-web-listen`, `-fullscreen`, and `-scale` where supported.
 
 | Action | Fyne | GLFW | Web |
 | --- | --- | --- | --- |
-| Quick save | F5, or Emulation → Quick Save | F5 | Save |
-| Quick load | F6, or Emulation → Quick Load | F6 | Load |
-| Speed 1x–8x | F7 / F8, or Emulation → Speed | `+` / `-` | 1x / 2x / 4x |
+| Quick save | F5 / Emulation → Quick Save | F5 | Save |
+| Quick load | F6 / Emulation → Quick Load | F6 | Load |
+| Speed | F7 / F8 / Emulation → Speed | `+` / `-` | 1x / 2x / 4x |
 
-Turbo speed mutes audio rather than pitching it up.
+Turbo speed mutes audio instead of pitching it up.
 
-### Web player
+Battery saves and quick-save states are named after the ROM and written to the working directory or `-save-dir`. If `<romname>.cheats` exists in the working directory it is loaded automatically; `-cheats` loads an explicit file.
 
-Headless web binary (no Fyne/GLFW). It drives the emulator at 60 Hz and serves the WebSocket hub on **:8090**.
+---
+
+## Web player
+
+The web binary runs the emulator headlessly and serves the WebSocket/UI path without Fyne or GLFW.
 
 ```sh
 go run ./cmd/gomeboy-web -rom game.gb
-# optional: -web-listen :9000, -model CGB, -pprof 127.0.0.1:6060
+# examples:
+# -web-listen :9000
+# -model CGB
+# -pprof 127.0.0.1:6060
 ```
 
-The Svelte UI is served from `GOMEBOY_WEB_STATIC_DIR` at `/app/` (the Docker image sets this). The websocket URL is `ws://<host>:8090/`.
+The Svelte UI is served from `GOMEBOY_WEB_STATIC_DIR` at `/app/`. The Docker image configures this path.
 
 ```sh
 docker build -t gomeboy-web:latest .
 ```
 
-Swarm deploy notes, ROM volume, and open questions live in [`deploy/README.md`](deploy/README.md).
-
-### Agent spectator
-
-`gomeboy-agent` runs `pkg/gomeboy` under a stub agent loop and publishes frames plus agent state (goal / last action / observation / status) to the same web client. The web UI never steps the emulator.
-
-```sh
-go run ./cmd/gomeboy-agent -rom game.gb
-# optional: -fps 30, -web-listen :9000, -model CGB, -cheats codes.txt, -pprof 127.0.0.1:6060
-```
-
-The agent is diskless: it never reads or writes save files, and only loads cheats from an explicit `-cheats` path.
-
-Open the web UI on :8090. The agent panel shows the stub loop; a real decision loop is not wired yet. Browser button presses also reach the emulator (no arbitration between human and agent).
+Deployment notes live in [`deploy/README.md`](deploy/README.md).
 
 ---
 
-## Library
+## Agent spectator binary
 
-GomeBoy can be used as a headless Go library for programmatic, in-process emulation. The core has no GUI, no audio device, and no realtime throttling — you advance it deterministically frame by frame. This makes it suitable for tooling, testing, and AI/agent workloads that need to drive a Game Boy and observe its state.
+`gomeboy-agent` runs the library under a lightweight agent/spectator loop and publishes frames plus goal/action/observation/status fields to the same web client.
+
+```sh
+go run ./cmd/gomeboy-agent -rom game.gb
+# examples:
+# -fps 30
+# -web-listen :9000
+# -model CGB
+# -cheats codes.txt
+# -pprof 127.0.0.1:6060
+```
+
+The binary is intentionally diskless for emulator state and battery saves. It only loads cheats from an explicit `-cheats` path.
+
+The bundled loop is a demonstration/spectator shell rather than a complete game-planning agent. For real controllers, search workers, or RL/AI environments, use `pkg/gomeboy` directly.
+
+---
+
+## Go library
+
+> This fork currently retains the upstream module path `github.com/thelolagemann/gomeboy`, so library imports use that path.
 
 ```go
 import "github.com/thelolagemann/gomeboy/pkg/gomeboy"
 
-// Create an emulator and load a ROM.
 emu, err := gomeboy.New(
     gomeboy.WithROM("game.gb"),
-    gomeboy.Headless(), // don't accumulate audio samples
+    gomeboy.Headless(),
+    gomeboy.WithoutVideo(), // omit this when RGB frames are needed
 )
 if err != nil {
     log.Fatal(err)
 }
 defer emu.Close()
 
-// Feed input and advance one frame at a time.
 emu.Press(gomeboy.ButtonA)
 emu.StepFrame()
 emu.Release(gomeboy.ButtonA)
 
-// Read the rendered frame (160x144, 24-bit RGB).
-frame := emu.Frame()
-// frame.RGB is 160*144*3 bytes, row-major.
-
-// Read memory directly.
-byte := emu.Read8(0xC140) // e.g. the LY register
+var observation [4096]byte
+emu.PeekInto(0xC000, observation[:])
 ```
 
-### API
+### Construction and execution
 
-| Method | Description |
+| API | Purpose |
 | --- | --- |
-| `New(opts ...Option) (*Emulator, error)` | Create an emulator. `WithROM(path)` loads a ROM up front. |
-| `WithROM(path) Option` | Load and initialize a ROM at construction. |
-| `WithROMBytes(rom []byte) Option` | Load an in-memory ROM image. |
-| `WithBootROM(path) Option` | Use a boot ROM (`.gbr`) instead of the HLE boot process. |
-| `WithSaveDir(dir) Option` | Enable `.sav` / `.state` persistence in `dir`. Off by default (no disk I/O). |
-| `Headless() Option` | Disable APU sample accumulation (prevents memory growth when running long). |
-| `LoadROM(path) error` / `LoadROMBytes(rom, name) error` | Load a ROM and (re)initialize. |
-| `Press(b Button)` / `Release(b Button)` | Press or release a joypad button. |
-| `StepFrame()` | Advance by exactly one frame. |
-| `StepFrames(n int)` | Advance by `n` frames. |
-| `FrameCount() uint64` / `Cycle() uint64` | Frames advanced and master-clock cycle. |
-| `Read8(addr uint16) byte` / `Read(addr uint16, n int) []byte` | CPU-accurate reads (DMA / PPU locks apply). |
-| `Peek8` / `Peek16` / `PeekInto` | Side-effect-free observation of memory. |
-| `Frame() Frame` | The most recently rendered frame (zero-copy view). |
-| `Image() image.Image` / `PNG() ([]byte, error)` / `WritePNG(w)` | Copied frame as `image.Image` or PNG. Safe to keep after the next step. |
-| `Reset() error` | Return to the boot state, reusing the loaded ROM. Battery RAM is preserved. |
-| `SaveState() ([]byte, error)` / `LoadState([]byte) error` | Serialize / restore the full emulator state. |
-| `QuickSave() error` / `QuickLoad() error` | Write / restore `<romname>.state`. |
-| `Close() error` | Flush battery-backed save data and release resources. |
+| `New(opts ...Option)` | Create an emulator |
+| `WithROM(path)` / `WithROMBytes(rom)` | Load ROM from disk or memory |
+| `WithBootROM(path)` | Use a boot ROM instead of HLE boot |
+| `WithSaveDir(dir)` | Enable disk-backed save/state persistence |
+| `Headless()` | Disable output audio sampling while preserving APU-visible behavior |
+| `WithoutVideo()` | Disable RGB generation while preserving PPU-visible behavior |
+| `StepFrame()` | Step one emulated frame |
+| `StepFrames(n)` | Batch multiple frames |
+| `StepInstruction()` | Execute one SM83 instruction or interrupt-service step |
+| `FrameCount()` / `Cycle()` | Read deterministic execution counters |
+| `Reset()` | Return to boot state while preserving battery RAM |
+
+### Memory and observation
+
+| API | Purpose |
+| --- | --- |
+| `Peek8`, `Peek16`, `PeekInto` | Fast side-effect-free observation |
+| `SnapshotMemory(dst)` | Copy the complete 64 KiB address space into caller-owned storage |
+| `Read8`, `Read`, `ReadInto` | CPU-accurate reads with DMA/PPU/IO semantics |
+| `CPUState()` | Compact CPU registers and execution state |
+| `PPUState()` | Compact PPU timing/fetch state without framebuffer copying |
+| `TrackMemory(range)` / `ChangesSince(tracker)` | Reusable selected-RAM diffing |
+| `Frame()` | Zero-copy view of the latest RGB framebuffer |
+| `Image`, `PNG`, `WritePNG` | Copied image output |
+
+### Run-until conditions and watchpoints
+
+Frame-granular execution:
+
+```go
+stop, err := emu.RunUntil(10_000,
+    gomeboy.MemoryEquals(0xC123, 1),
+    gomeboy.PCEquals(0x4000),
+    gomeboy.InterruptPending(),
+)
+```
+
+Instruction-granular debugging/watchpoints:
+
+```go
+stop, err := emu.RunCPUUntil(
+    1_000_000,
+    gomeboy.MemoryWatchpoint(0xC123),
+)
+```
+
+Built-in conditions include:
+
+- `MemoryEquals`
+- `MemoryMaskedEquals`
+- `MemoryChanged` / `MemoryWatchpoint`
+- `PCEquals`
+- `FrameAtLeast`
+- `CycleAtLeast`
+- `InterruptPending`
+- `Any`
+- `All`
+- caller-defined `ConditionFunc`
+
+`RunUntil` checks at frame boundaries. `RunCPUUntil` checks after debugger CPU steps and is intended for fine-grained diagnosis rather than maximum throughput. `MemoryWatchpoint` detects observed value changes; writing the same value does not count as a change.
+
+Full semantics and examples are documented in [`docs/AGENT-TOOLING.md`](docs/AGENT-TOOLING.md).
+
+### Checkpoints and branching
+
+For low-overhead rollback on one emulator:
+
+```go
+var cp gomeboy.Checkpoint
+emu.CheckpointInto(&cp)
+
+// explore a branch
+emu.Press(gomeboy.ButtonRight)
+emu.StepFrames(30)
+
+emu.RestoreCheckpoint(&cp)
+```
+
+For independent branches:
+
+```go
+left, err := emu.Fork()
+if err != nil {
+    log.Fatal(err)
+}
+defer left.Close()
+
+right, err := emu.Fork()
+if err != nil {
+    log.Fatal(err)
+}
+defer right.Close()
+```
+
+A fork receives independent mutable CPU, bus/cartridge, PPU, APU, timer, scheduler, and serial state while reusing the immutable ROM image. Headless/no-video execution policies are preserved.
+
+### Deterministic input recording and replay
+
+```go
+emu.StartInputRecording()
+emu.Press(gomeboy.ButtonA)
+emu.StepFrame()
+emu.Release(gomeboy.ButtonA)
+emu.StepFrame()
+events := emu.StopInputRecording()
+
+if err := replay.ReplayInputs(events, finalFrame); err != nil {
+    log.Fatal(err)
+}
+```
+
+Recorded events are replayed at frame boundaries. Cycle information is retained for diagnostics.
+
+### Flight recorder
+
+The bounded flight recorder is opt-in and can retain recent input transitions, frame samples, and selected memory changes.
+
+```go
+err := emu.EnableFlightRecorder(gomeboy.FlightRecorderOptions{
+    Capacity:     4096,
+    RecordFrames: true,
+    Memory: []gomeboy.MemoryRange{
+        {Start: 0xC000, Length: 0x2000},
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+// ... execute ...
+events := emu.DisableFlightRecorder()
+```
+
+Memory changes are sampled after frame or instruction boundaries. The recorder is intentionally not presented as a cycle-accurate trace of every internal bus write.
+
+When a recorder requests per-frame or memory sampling, `StepFrames` takes the per-frame path so requested observations are not skipped. An input-only recorder leaves batched stepping intact.
+
+### Save states
+
+GomeBoy now has three state mechanisms for different jobs:
+
+| Mechanism | Best for | Characteristics |
+| --- | --- | --- |
+| `CheckpointInto` / `RestoreCheckpoint` | Search and rollback | Fastest, opaque, process-local |
+| `SaveState` / `LoadState` | Raw serialized state | Full emulator state, same-ROM responsibility is on caller |
+| `SaveStateChecked` / `LoadStateChecked` | Durable checkpoints / bug reports | Adds format version, ROM SHA-256, model, frame/cycle, build metadata, and payload checksum |
+
+Checked states can be inspected without restoring:
+
+```go
+data, err := emu.SaveStateChecked()
+if err != nil {
+    log.Fatal(err)
+}
+
+meta, err := gomeboy.InspectCheckedState(data)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("ROM=%s frame=%d cycle=%d\n", meta.ROMSHA256, meta.Frame, meta.Cycle)
+```
+
+`LoadStateChecked` rejects corrupted payloads, unsupported envelope versions, wrong-ROM states, and hardware-model mismatches before restoring.
+
+### Determinism hashes
+
+```go
+hash, err := emu.StateHashHex()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(hash)
+```
+
+`StateHash` fingerprints deterministic execution state and intentionally excludes the RGB framebuffer because that buffer is output-only and may be disabled with `WithoutVideo()`.
+
+This is useful for replay verification, worker-to-worker determinism checks, and confirming that two branches reached the same state.
 
 ### Buttons
 
@@ -186,56 +436,79 @@ byte := emu.Read8(0xC140) // e.g. the LY register
 
 ### Framebuffer ownership
 
-`Frame().RGB` is a **zero-copy view** into the emulator's internal frame buffer. It is valid only until the next call to `StepFrame` or `StepFrames`. Copy the bytes if you need to keep them. `Image()` / `PNG()` return copies.
+`Frame().RGB` is a zero-copy view of the internal framebuffer and is overwritten by later rendering. Copy it if it must outlive the next frame. `Image()` and PNG helpers return copied output.
 
-### Save states
-
-`SaveState`/`LoadState` capture and restore the *entire* deterministic execution state (CPU, scheduler, bus, cartridge, PPU, APU, timer, serial). Restoring a state on an emulator running the same ROM resumes from the exact same point. Save states are not compatible across different ROMs.
+With `WithoutVideo()` enabled, the framebuffer is not regenerated and `Frame()` returns the last framebuffer contents.
 
 ### Concurrency
 
-A single `Emulator` is **not** safe for concurrent use by multiple goroutines — the caller must synchronize. Multiple `Emulator` instances are fully independent and may be created and run in the same process.
+A single `Emulator` is not safe for unsynchronized concurrent use. Multiple emulator instances and `Fork()` branches are independent and can run concurrently when the caller manages their goroutines normally.
 
-### HTTP spectator
+---
 
-`Spectator` serves a read-only PNG of the current frame. It does not accept input. Call `Capture` after each step you want viewers to see.
+## HTTP spectator
+
+The library spectator serves a read-only snapshot of the most recently captured frame.
 
 ```go
 spec := gomeboy.NewSpectator()
 http.ListenAndServe(":8080", spec.Handler())
-// after each StepFrame:
+
+// after a frame you want viewers to see:
 _ = spec.Capture(emu)
 ```
 
-`GET /` is a small auto-refreshing page; `GET /frame.png` is the last captured frame.
+- `GET /` serves a small auto-refreshing page
+- `GET /frame.png` serves the most recently captured frame
 
 ---
 
-# Automated Test Results
+## Benchmarking
 
+The performance benchmarks use a self-contained synthetic ROM and do not depend on gitignored test ROM fixtures.
 
-![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20227,%20failing%2025&width=500)
+```sh
+go test ./pkg/gomeboy \
+  -run '^$' \
+  -bench '^BenchmarkPerf' \
+  -benchmem \
+  -benchtime=1s \
+  -count=5
+```
 
-| Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
-| --- | --- | --- | --- | --- |
+Useful benchmark groups include headless frame stepping, no-video stepping, `StepFrames(60)`, `PeekInto`, `ReadInto`, checkpoint round trips, and serialized save-state round trips.
+
+---
+
+## Accuracy and regression testing
+
+The repository runs automated regression tests against a broad set of Game Boy test ROM suites.
+
+![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20228,%20failing%2024&width=500)
+
+| Test suite | Pass rate | Passed | Failed | Total |
+| --- | ---: | ---: | ---: | ---: |
 | acid2 | 75% | 3 | 1 | 4 |
 | bully | 50% | 1 | 1 | 2 |
 | blarrg | 100% | 43 | 0 | 43 |
-| little-things-gb | 75% | 3 | 1 | 4 |
+| little-things-gb | 100% | 4 | 0 | 4 |
 | mooneye | 99% | 113 | 1 | 114 |
 | samesuite | 75% | 59 | 19 | 78 |
 | scribbltests | 100% | 5 | 0 | 5 |
 | strikethrough | 0% | 0 | 2 | 2 |
 
-<sup>Visit the [tests](tests/README.md) directory for more information.</sup>
+See [`tests/README.md`](tests/README.md) for suite details.
+
+Agent/debug additions also have self-contained synthetic-ROM tests covering instruction/frame stepping equivalence, watchpoints, replay determinism, branching, checked-state validation, video/no-video execution equivalence, memory tracking, checkpoints, and allocation-conscious read APIs.
 
 ---
 
-# TODO
+## Project status and known limitations
 
-- [x] build instructions
-- [x] github actions
-- [x] improve error handling and logging
-- [x] expose more emulator options to the user
-- [ ] reimplement link cable & local multiplayer
-- [ ] real agent decision loop (the current `gomeboy-agent` loop is a stub)
+GomeBoy is actively evolving. The core already supports desktop play, web/headless use, deterministic library execution, and agent/debug tooling, but some areas are intentionally still incomplete:
+
+- Link cable / local multiplayer support needs reimplementation before it should be considered production-ready.
+- The bundled `gomeboy-agent` executable is a demonstration/spectator loop, not a complete decision-making agent.
+- Some external test suites still contain known failures; the current table above documents the repository's measured status rather than claiming complete hardware accuracy.
+
+For automation and agent workloads, prefer the library APIs in `pkg/gomeboy` and the detailed guide in [`docs/AGENT-TOOLING.md`](docs/AGENT-TOOLING.md).

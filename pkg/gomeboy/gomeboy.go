@@ -110,6 +110,11 @@ type Frame struct {
 // concurrent use by multiple goroutines.
 type Emulator struct {
 	gb *gameboy.GameBoy
+
+	// Optional agent/debug tooling. Both are inert unless explicitly enabled.
+	flight         *FlightRecorder
+	inputRecording bool
+	inputLog       []InputEvent
 }
 
 type config struct {
@@ -169,9 +174,10 @@ func Headless() Option {
 	return func(c *config) { c.headless = true }
 }
 
-// WithoutVideo disables RGB framebuffer composition while preserving exact
-// PPU timing, FIFO progression, interrupts, DMA behaviour, and memory state.
-// Frame() is not updated while video output is disabled.
+// WithoutVideo disables RGB framebuffer generation. The PPU still runs its
+// full timing, fetcher, interrupt, and bus-lock behavior, making this useful for
+// memory/state-driven agents that do not inspect rendered frames. Frame() returns
+// the last framebuffer contents while video output is disabled.
 func WithoutVideo() Option {
 	return func(c *config) { c.noVideo = true }
 }
@@ -227,6 +233,9 @@ func New(opts ...Option) (*Emulator, error) {
 	if cfg.printer {
 		gbOpts = append(gbOpts, gameboy.WithPrinter())
 	}
+	if cfg.noVideo {
+		gbOpts = append(gbOpts, gameboy.WithoutVideoOutput())
+	}
 
 	if cfg.cheats != "" {
 		gbOpts = append(gbOpts, gameboy.WithCheats(cfg.cheats))
@@ -236,9 +245,6 @@ func New(opts ...Option) (*Emulator, error) {
 		gbOpts = append(gbOpts, gameboy.WithSaveDir(cfg.saveDir))
 	} else {
 		gbOpts = append(gbOpts, gameboy.WithoutSaves())
-	}
-	if cfg.noVideo {
-		gbOpts = append(gbOpts, gameboy.WithVideoOutput(false))
 	}
 
 	e := &Emulator{gb: gameboy.NewGameBoy(gbOpts...)}
@@ -289,20 +295,29 @@ func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
 // Press presses a joypad button.
 func (e *Emulator) Press(b Button) {
 	e.gb.Bus.Press(buttonMap[b])
+	e.recordInputEvent(b, true)
 }
 
 // Release releases a joypad button.
 func (e *Emulator) Release(b Button) {
 	e.gb.Bus.Release(buttonMap[b])
+	e.recordInputEvent(b, false)
 }
 
 // StepFrame advances the emulator by exactly one frame.
 func (e *Emulator) StepFrame() {
 	e.gb.Step()
+	e.recordFlightFrame()
 }
 
 // StepFrames advances the emulator by n frames.
 func (e *Emulator) StepFrames(n int) {
+	if e.flight != nil && e.flight.needsFrameSampling() {
+		for i := 0; i < n; i++ {
+			e.StepFrame()
+		}
+		return
+	}
 	e.gb.StepFrames(n)
 }
 
@@ -331,10 +346,16 @@ func (e *Emulator) Read8(addr uint16) byte {
 // effects.
 func (e *Emulator) Read(addr uint16, length int) []byte {
 	out := make([]byte, length)
-	for i := range length {
-		out[i] = e.gb.Bus.Read(addr + uint16(i))
-	}
+	e.ReadInto(addr, out)
 	return out
+}
+
+// ReadInto performs CPU-accurate reads into dst without allocating. Reads can
+// be affected by DMA conflicts and PPU region locks, just like Read8 and Read.
+func (e *Emulator) ReadInto(addr uint16, dst []byte) {
+	for i := range dst {
+		dst[i] = e.gb.Bus.Read(addr + uint16(i))
+	}
 }
 
 // Frame returns the most recently rendered frame as a zero-copy view.

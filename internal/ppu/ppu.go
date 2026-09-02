@@ -114,8 +114,8 @@ type PPU struct {
 	s *scheduler.Scheduler
 
 	// Frame buffers
-	videoOutput   bool
 	PreparedFrame [ScreenHeight][ScreenWidth][3]uint8
+	videoOutput   bool
 
 	// Pixel slice fetcher
 	bgFIFO               *utils.FIFO[FIFOEntry] // Background/Window pixel FIFO
@@ -193,12 +193,12 @@ func (o *Object) GobDecode(data []byte) error {
 // New creates and initializes a PPU instance ready to be used.
 func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	p := &PPU{
-		b: b,
-		s: s,
-
-		bgFIFO:      utils.NewFIFO[FIFOEntry](8),
-		objFIFO:     utils.NewFIFO[FIFOEntry](8),
+		b:           b,
+		s:           s,
 		videoOutput: true,
+
+		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
+		objFIFO: utils.NewFIFO[FIFOEntry](8),
 	}
 
 	for pal := 0; pal < 8; pal++ {
@@ -960,14 +960,20 @@ func (p *PPU) pushPixel() {
 		return
 	}
 
-	// FIFO consumption and LX progression are hardware-visible simulation state,
-	// so they always happen even when RGB output is disabled.
-	bgPX := p.bgFIFO.Pop()
-	var objPX *FIFOEntry
+	var color [3]uint8
+
+	var bgPX, objPX *FIFOEntry
+	var bgPriority, drawObject bool
+	var bgEnabled = true
+
+	bgPX = p.bgFIFO.Pop()
+	bgPriority = bgPX.Attributes&types.Bit7 > 0
+
+	// are there any pending object pixels? Keep consuming the FIFO even
+	// when video output is disabled: FIFO timing is emulation state.
 	if p.objFIFO.Size > 0 {
 		objPX = p.objFIFO.Pop()
 	}
-
 	// are we adjusting for horizontal scroll?
 	if p.scxToDiscard > p.scxDiscarded {
 		p.scxDiscarded++
@@ -980,21 +986,17 @@ func (p *PPU) pushPixel() {
 		return
 	}
 
-	// Agent/test workloads often need exact PPU timing and memory side effects
-	// without materialising an RGB framebuffer. Skip only colour composition and
-	// the framebuffer write; all fetch/FIFO/timing state above remains exact.
+	// Rendering the RGB value is output-only. Agent/search workloads that
+	// observe memory can disable it without changing PPU timing, FIFO state,
+	// interrupts, or bus locking.
 	if !p.videoOutput {
 		p.lx++
 		return
 	}
 
-	var color [3]uint8
-	bgPriority := bgPX.Attributes&types.Bit7 > 0
-	drawObject := false
-	bgEnabled := true
-
 	if objPX != nil && objPX.Color > 0 && p.objEnabled {
 		color = p.ColourOBJPalette[objPX.Palette][objPX.Color]
+
 		drawObject = true
 		if objPX.Attributes&types.Bit7 > 0 {
 			bgPriority = true
@@ -1011,17 +1013,20 @@ func (p *PPU) pushPixel() {
 	}
 
 	if !drawObject || bgPriority && bgPX.Color > 0 {
+		// are we drawing a BG pixel?
 		if bgEnabled {
 			if (p.winTriggerWx && !p.Debug.WindowDisabled) || (!p.winTriggerWx && !p.Debug.BackgroundDisabled) {
 				color = p.ColourPalette[bgPX.Attributes&7][bgPX.Color]
 			} else {
-				color = [3]uint8{0xff, 0xff, 0xff}
+				// user has disabled rendering through debugging functions
+				color = [3]uint8{0xff, 0xff, 0xff} // white TODO customizable disabled color
 			}
 		} else {
 			color = p.ColourPalette[bgPX.Attributes&7][0]
 		}
 	}
 
+	// draw pixel to frame
 	p.PreparedFrame[p.ly][p.lx-8] = color
 	p.lx++
 }
@@ -1450,10 +1455,6 @@ func (p *PPU) checkWindowTriggerWX() {
 
 // renderBlank blanks the current screen.
 func (p *PPU) renderBlank() {
-	if !p.videoOutput {
-		return
-	}
-
 	for y := uint8(0); y < ScreenHeight; y++ {
 		for x := uint8(0); x < ScreenWidth; x++ {
 			p.PreparedFrame[y][x] = p.ColourPalette[0][0]
