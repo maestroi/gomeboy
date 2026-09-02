@@ -71,3 +71,32 @@ func TestPeekDoesNotAdvanceState(t *testing.T) {
 		t.Fatal("frame after peek+step does not match an emulator stepped without peeks")
 	}
 }
+
+func TestSnapshotMemoryCapturesWholeAddressSpaceAtCurrentFrame(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+	e.StepFrames(20)
+
+	buf := make([]byte, AddressSpaceSize)
+	frame, err := e.SnapshotMemory(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame != e.FrameCount() {
+		t.Fatalf("SnapshotMemory frame = %d, FrameCount = %d", frame, e.FrameCount())
+	}
+	for _, addr := range []uint16{0x0000, 0x1234, 0xC000, 0xFF80, 0xFFFF} {
+		if got, want := buf[int(addr)], e.Peek8(addr); got != want {
+			t.Fatalf("snapshot[0x%04X] = 0x%02X, Peek8 = 0x%02X", addr, got, want)
+		}
+	}
+}
+
+func TestSnapshotMemoryRejectsPartialBuffers(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+
+	if _, err := e.SnapshotMemory(make([]byte, AddressSpaceSize-1)); err == nil {
+		t.Fatal("SnapshotMemory accepted a partial address-space buffer")
+	}
+}
