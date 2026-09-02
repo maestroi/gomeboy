@@ -11,6 +11,7 @@ func TestRunCPUUntilMemoryWatchpoint(t *testing.T) {
 
 	e.StepInstruction() // LD HL,$C000; next opcode mutates C000.
 	beforeFrame := e.FrameCount()
+	beforeValue := e.Peek8(0xC000)
 	stop, err := e.RunCPUUntil(8, MemoryWatchpoint(0xC000))
 	if err != nil {
 		t.Fatal(err)
@@ -21,8 +22,8 @@ func TestRunCPUUntilMemoryWatchpoint(t *testing.T) {
 	if stop.FramesStepped != 0 || e.FrameCount() != beforeFrame {
 		t.Fatalf("watchpoint required a display frame: stop=%+v frame=%d", stop, e.FrameCount())
 	}
-	if got := e.Peek8(0xC000); got != 1 {
-		t.Fatalf("C000 = %02X, want 01", got)
+	if got := e.Peek8(0xC000); got != beforeValue+1 {
+		t.Fatalf("C000 = %02X, want baseline %02X + 1", got, beforeValue)
 	}
 }
 
