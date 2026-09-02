@@ -165,17 +165,19 @@ byte := emu.Read8(0xC140) // e.g. the LY register
 | `WithROMBytes(rom []byte) Option` | Load an in-memory ROM image. |
 | `WithBootROM(path) Option` | Use a boot ROM (`.gbr`) instead of the HLE boot process. |
 | `WithSaveDir(dir) Option` | Enable `.sav` / `.state` persistence in `dir`. Off by default (no disk I/O). |
-| `Headless() Option` | Disable APU sample accumulation (prevents memory growth when running long). |
+| `Headless() Option` | Disable APU output sampling while preserving hardware-visible APU timing. |
+| `WithoutVideo() Option` | Skip RGB framebuffer composition/writes while preserving PPU timing and hardware-visible behavior. |
 | `LoadROM(path) error` / `LoadROMBytes(rom, name) error` | Load a ROM and (re)initialize. |
 | `Press(b Button)` / `Release(b Button)` | Press or release a joypad button. |
 | `StepFrame()` | Advance by exactly one frame. |
 | `StepFrames(n int)` | Advance by `n` frames. |
 | `FrameCount() uint64` / `Cycle() uint64` | Frames advanced and master-clock cycle. |
-| `Read8(addr uint16) byte` / `Read(addr uint16, n int) []byte` | CPU-accurate reads (DMA / PPU locks apply). |
+| `Read8(addr uint16) byte` / `Read(addr uint16, n int) []byte` / `ReadInto(addr, dst)` | CPU-accurate reads (DMA / PPU locks apply); `ReadInto` reuses caller storage. |
 | `Peek8` / `Peek16` / `PeekInto` | Side-effect-free observation of memory. |
 | `Frame() Frame` | The most recently rendered frame (zero-copy view). |
 | `Image() image.Image` / `PNG() ([]byte, error)` / `WritePNG(w)` | Copied frame as `image.Image` or PNG. Safe to keep after the next step. |
 | `Reset() error` | Return to the boot state, reusing the loaded ROM. Battery RAM is preserved. |
+| `CheckpointInto(*Checkpoint)` / `RestoreCheckpoint(*Checkpoint)` | Fast opaque in-process checkpoint/restore for branching and agent search. |
 | `SaveState() ([]byte, error)` / `LoadState([]byte) error` | Serialize / restore the full emulator state. |
 | `QuickSave() error` / `QuickLoad() error` | Write / restore `<romname>.state`. |
 | `Close() error` | Flush battery-backed save data and release resources. |
@@ -214,14 +216,14 @@ _ = spec.Capture(emu)
 # Automated Test Results
 
 
-![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20227,%20failing%2025&width=500)
+![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20228,%20failing%2024&width=500)
 
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 75% | 3 | 1 | 4 |
 | bully | 50% | 1 | 1 | 2 |
 | blarrg | 100% | 43 | 0 | 43 |
-| little-things-gb | 75% | 3 | 1 | 4 |
+| little-things-gb | 100% | 4 | 0 | 4 |
 | mooneye | 99% | 113 | 1 | 114 |
 | samesuite | 75% | 59 | 19 | 78 |
 | scribbltests | 100% | 5 | 0 | 5 |

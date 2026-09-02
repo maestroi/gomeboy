@@ -118,6 +118,7 @@ type config struct {
 	romName  string
 	bootROM  string
 	headless bool
+	noVideo  bool
 	saveDir  string
 	saves    bool
 	model    Model
@@ -166,6 +167,14 @@ func WithSaveDir(dir string) Option {
 // its sample buffer, so long-running headless emulation does not leak memory.
 func Headless() Option {
 	return func(c *config) { c.headless = true }
+}
+
+// WithoutVideo disables RGB framebuffer generation. The PPU still runs its
+// full timing, fetcher, interrupt, and bus-lock behavior, making this useful for
+// memory/state-driven agents that do not inspect rendered frames. Frame() returns
+// the last framebuffer contents while video output is disabled.
+func WithoutVideo() Option {
+	return func(c *config) { c.noVideo = true }
 }
 
 // WithModel selects the hardware model to emulate, overriding the model
@@ -218,6 +227,9 @@ func New(opts ...Option) (*Emulator, error) {
 
 	if cfg.printer {
 		gbOpts = append(gbOpts, gameboy.WithPrinter())
+	}
+	if cfg.noVideo {
+		gbOpts = append(gbOpts, gameboy.WithoutVideoOutput())
 	}
 
 	if cfg.cheats != "" {
@@ -320,10 +332,16 @@ func (e *Emulator) Read8(addr uint16) byte {
 // effects.
 func (e *Emulator) Read(addr uint16, length int) []byte {
 	out := make([]byte, length)
-	for i := range length {
-		out[i] = e.gb.Bus.Read(addr + uint16(i))
-	}
+	e.ReadInto(addr, out)
 	return out
+}
+
+// ReadInto performs CPU-accurate reads into dst without allocating. Reads can
+// be affected by DMA conflicts and PPU region locks, just like Read8 and Read.
+func (e *Emulator) ReadInto(addr uint16, dst []byte) {
+	for i := range dst {
+		dst[i] = e.gb.Bus.Read(addr + uint16(i))
+	}
 }
 
 // Frame returns the most recently rendered frame as a zero-copy view.

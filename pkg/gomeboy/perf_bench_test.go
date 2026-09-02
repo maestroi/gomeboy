@@ -20,11 +20,14 @@ func perfROM() []byte {
 	return rom
 }
 
-func newPerfEmulator(b *testing.B, headless bool) *Emulator {
+func newPerfEmulatorWithVideo(b *testing.B, headless, video bool) *Emulator {
 	b.Helper()
 	opts := []Option{WithROMBytes(perfROM())}
 	if headless {
 		opts = append(opts, Headless())
+	}
+	if !video {
+		opts = append(opts, WithoutVideo())
 	}
 	e, err := New(opts...)
 	if err != nil {
@@ -37,7 +40,7 @@ func newPerfEmulator(b *testing.B, headless bool) *Emulator {
 }
 
 func BenchmarkPerfStepFrameHeadless(b *testing.B) {
-	e := newPerfEmulator(b, true)
+	e := newPerfEmulatorWithVideo(b, true, true)
 	defer e.Close()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -47,7 +50,7 @@ func BenchmarkPerfStepFrameHeadless(b *testing.B) {
 }
 
 func BenchmarkPerfStepFrameAudio(b *testing.B) {
-	e := newPerfEmulator(b, false)
+	e := newPerfEmulatorWithVideo(b, false, true)
 	defer e.Close()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -57,7 +60,7 @@ func BenchmarkPerfStepFrameAudio(b *testing.B) {
 }
 
 func BenchmarkPerfStepFrames60Headless(b *testing.B) {
-	e := newPerfEmulator(b, true)
+	e := newPerfEmulatorWithVideo(b, true, true)
 	defer e.Close()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -67,12 +70,71 @@ func BenchmarkPerfStepFrames60Headless(b *testing.B) {
 }
 
 func BenchmarkPerfPeekInto4K(b *testing.B) {
-	e := newPerfEmulator(b, true)
+	e := newPerfEmulatorWithVideo(b, true, true)
 	defer e.Close()
 	dst := make([]byte, 4096)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		e.PeekInto(0xC000, dst)
+	}
+}
+
+func BenchmarkPerfStepFrameHeadlessNoVideo(b *testing.B) {
+	e := newPerfEmulatorWithVideo(b, true, false)
+	defer e.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.StepFrame()
+	}
+}
+
+func BenchmarkPerfStepFrames60HeadlessNoVideo(b *testing.B) {
+	e := newPerfEmulatorWithVideo(b, true, false)
+	defer e.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.StepFrames(60)
+	}
+}
+
+func BenchmarkPerfCheckpointRoundTrip(b *testing.B) {
+	e := newPerfEmulatorWithVideo(b, true, false)
+	defer e.Close()
+	var cp Checkpoint
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.CheckpointInto(&cp)
+		e.RestoreCheckpoint(&cp)
+	}
+}
+
+func BenchmarkPerfSaveStateRoundTrip(b *testing.B) {
+	e := newPerfEmulatorWithVideo(b, true, false)
+	defer e.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		state, err := e.SaveState()
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := e.LoadState(state); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPerfReadInto4K(b *testing.B) {
+	e := newPerfEmulatorWithVideo(b, true, false)
+	defer e.Close()
+	dst := make([]byte, 4096)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.ReadInto(0xC000, dst)
 	}
 }
