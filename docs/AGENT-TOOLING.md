@@ -19,9 +19,28 @@ if stop.Matched {
 }
 ```
 
-Built-in conditions include `MemoryEquals`, `MemoryMaskedEquals`, `MemoryChanged`, `PCEquals`, `CycleAtLeast`, `Any`, and `All`. `ConditionFunc` lets a caller build a game-specific predicate without putting game semantics into GomeBoy.
+Built-in conditions include `MemoryEquals`, `MemoryMaskedEquals`, `MemoryChanged`, `MemoryWatchpoint`, `PCEquals`, `FrameAtLeast`, `CycleAtLeast`, `InterruptPending`, `Any`, and `All`. `ConditionFunc` lets a caller build a game-specific predicate without putting game semantics into GomeBoy.
 
-`RunUntil` is frame-granular. Use `StepInstruction` when instruction-level diagnostics are required.
+`MemoryChanged` latches once it observes a different value, which also makes it useful inside `All(...)` when another condition becomes true later.
+
+### Instruction-granular watchpoints
+
+`RunCPUUntil` checks the same condition interface after every debugger-level CPU step. Pair it with `MemoryWatchpoint` or `PCEquals` when a change can happen and disappear within a single display frame.
+
+```go
+stop, err := emu.RunCPUUntil(1_000_000,
+    gomeboy.MemoryWatchpoint(0xC123),
+)
+if err != nil {
+    log.Fatal(err)
+}
+if stop.Matched {
+    log.Printf("watchpoint hit after %d CPU steps at PC=%04X",
+        stop.CPUSteps, emu.CPUState().PC)
+}
+```
+
+A memory watchpoint observes byte-state changes at CPU-step boundaries. It is not an “attempted write” trap: writing the same value does not trigger it. Unlike frame-granular `RunUntil`, it will catch a byte that changes during one instruction and changes back in a later instruction before the next display frame.
 
 ## Debugger state and instruction stepping
 
@@ -38,6 +57,8 @@ fmt.Printf("%04X -> %04X opcode=%02X cycles=%d\n",
 ```
 
 A debugger step normally executes one SM83 opcode. If an interrupt is pending before the next fetch, servicing that interrupt is the step instead and `Interrupt` is true. HALT may advance scheduler time until the CPU can make progress; `Frames` reports display-frame boundaries crossed by the step.
+
+The instruction stepper is validated against normal frame stepping: stepping instructions until the same next frame boundary produces the same deterministic execution-state hash as `StepFrame()`.
 
 ## Memory change tracking
 
@@ -175,3 +196,5 @@ This is useful for replay assertions, cross-worker determinism checks, and verif
 ## Performance model
 
 All agent/debug features are opt-in. With no flight recorder attached, ordinary `StepFrame` and `StepFrames` retain their existing execution path except for a nil recorder check after a single-frame step. Batched `StepFrames` remains batched unless the active flight recorder requires per-frame sampling.
+
+`RunCPUUntil` is deliberately a debugger path: it takes the instruction-level stepping path to provide finer observation granularity and should not replace ordinary batched stepping when frame-level observation is sufficient.
