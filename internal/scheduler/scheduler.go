@@ -286,15 +286,22 @@ func (s *Scheduler) DescheduleEvent(eventType EventType) {
 	var prev *Event
 	event := s.root
 
-	for event != nil {
+	// Never remove the MaxUint64 sentinel. Its zero-value event type may
+	// otherwise alias a real EventType and leave the scheduler without a tail.
+	for event != nil && event.cycle != math.MaxUint64 {
 		if event.eventType == eventType {
 			if prev == nil {
 				s.root = event.next
-				break
+				if s.root != nil {
+					s.nextEventAt = s.root.cycle
+				} else {
+					s.nextEventAt = math.MaxUint64
+				}
 			} else {
 				prev.next = event.next
-				break
 			}
+			event.next = nil
+			break
 		}
 		prev = event
 		event = event.next
@@ -328,7 +335,7 @@ func (s *Scheduler) ChangeSpeed(speed bool) {
 		// and halve the cycle for each event if the event
 		// is affected by the speed change (APU, PPU, Serial)
 		event := s.root
-		for event != nil {
+		for event != nil && event.cycle != math.MaxUint64 {
 			if event.eventType <= PPUHandleOffscreenLine {
 				if eventsProcessed[event.eventType] {
 					event = event.next
@@ -365,7 +372,7 @@ func (s *Scheduler) ChangeSpeed(speed bool) {
 		// and double the cycle for each event if the event
 		// is affected by the speed change (APU, PPU, Serial)
 		event := s.root
-		for event != nil {
+		for event != nil && event.cycle != math.MaxUint64 {
 			if event.eventType <= PPUHandleOffscreenLine {
 				// first we need to get the cycle at which the event
 				// would be executed at double speed

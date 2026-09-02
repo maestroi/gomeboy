@@ -22,6 +22,30 @@ func (e *Emulator) Peek16(addr uint16) uint16 {
 // PeekInto fills dst with len(dst) bytes starting at addr, without side
 // effects and without allocating.
 func (e *Emulator) PeekInto(addr uint16, dst []byte) {
+	if len(dst) == 0 {
+		return
+	}
+
+	end := int(addr) + len(dst)
+	if end <= 0xffff {
+		e.gb.Bus.CopyFrom(addr, uint16(end), dst)
+		return
+	}
+
+	// uint16 cannot represent the exclusive end 0x10000. Keep the full
+	// address-space snapshot on the bulk-copy path by copying through 0xFFFE
+	// and reading the final byte directly.
+	if end == AddressSpaceSize {
+		last := len(dst) - 1
+		if last > 0 {
+			e.gb.Bus.CopyFrom(addr, 0xffff, dst[:last])
+		}
+		dst[last] = e.gb.Bus.Get(0xffff)
+		return
+	}
+
+	// Preserve the historical uint16 wraparound semantics for ranges that
+	// cross the end of the address space.
 	for i := range dst {
 		dst[i] = e.gb.Bus.Get(addr + uint16(i))
 	}

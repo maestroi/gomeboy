@@ -277,6 +277,23 @@ func (g *GameBoy) Step() {
 	g.frames++
 }
 
+// StepFrames advances n frames while taking the frame/save-state mutex once.
+// This preserves the same serialization guarantee as Step without paying one
+// mutex lock/unlock pair per frame in batch/agent workloads.
+func (g *GameBoy) StepFrames(n int) {
+	if n <= 0 {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.running = true
+	for i := 0; i < n; i++ {
+		g.CPU.Frame()
+		g.frames++
+	}
+	g.running = false
+}
+
 // FrameCount returns the number of frames the emulator has advanced since the
 // ROM was loaded or the emulator was last Reset.
 func (g *GameBoy) FrameCount() uint64 { return g.frames }

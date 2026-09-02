@@ -73,6 +73,7 @@ type State struct {
 	LastCatchup             uint64
 	Mute                    bool
 	Headless                bool
+	Capacitors              [2]float32
 
 	Debug struct {
 		Square1, Square2, Wave, Noise bool
@@ -106,6 +107,7 @@ func (a *APU) Snapshot() State {
 		LastCatchup: a.lastCatchup,
 		Mute:        a.mute,
 		Headless:    a.headless,
+		Capacitors:  a.capacitors,
 	}
 	st.Channel1.Square = SquareChannelState{
 		Duty:             a.channel1.duty,
@@ -193,6 +195,11 @@ func (a *APU) Restore(s State) {
 	a.lastCatchup = s.LastCatchup
 	a.mute = s.Mute
 	a.headless = s.Headless
+	a.capacitors = s.Capacitors
+	if a.headless {
+		a.buffer = nil
+		a.bufferPos = 0
+	}
 
 	a.channel1.duty = s.Channel1.Square.Duty
 	a.channel1.lockedDuty = s.Channel1.Square.LockedDuty

@@ -107,6 +107,7 @@ type APU struct {
 	enableTimer             uint64
 	buffer                  []float32
 	bufferPos               uint32
+	capacitors              [2]float32
 	b                       *io.Bus
 	s                       *scheduler.Scheduler
 	lastCatchup             uint64
@@ -114,11 +115,29 @@ type APU struct {
 	headless                bool // when true, sample output is discarded (no audio consumer)
 }
 
-// SetHeadless controls whether generated audio samples are accumulated.
-// When headless is true, the APU keeps evolving its internal state but
-// does not grow its sample buffer, so long-running headless emulation
-// does not leak memory.
-func (a *APU) SetHeadless(headless bool) { a.headless = headless }
+// SetHeadless controls whether audio output is generated. Hardware-visible
+// APU state (channels, frame sequencer, PCM reads, and noise state) continues to
+// evolve, but the 96 kHz output-sampling event is removed while headless. Noise
+// state is already advanced lazily by catchupLFSR when it becomes observable.
+func (a *APU) SetHeadless(headless bool) {
+	if a.headless == headless {
+		return
+	}
+	a.headless = headless
+	if headless {
+		a.s.DescheduleEvent(scheduler.APUSample)
+		a.buffer = nil
+		a.bufferPos = 0
+		return
+	}
+	if a.buffer == nil {
+		a.buffer = make([]float32, bufferSize)
+	}
+	// Be defensive when loading save states created before headless mode
+	// stopped scheduling output samples.
+	a.s.DescheduleEvent(scheduler.APUSample)
+	a.s.ScheduleEvent(scheduler.APUSample, samplePeriod)
+}
 
 func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 	a := &APU{
@@ -345,13 +364,11 @@ func (a *APU) SecondaryDIVEvent() {
 	}
 }
 
-var capacitors [2]float32
-
-func highPass(ch int, in float32, dacEnabled bool) float32 {
+func (a *APU) highPass(ch int, in float32, dacEnabled bool) float32 {
 	out := float32(0.0)
 	if dacEnabled {
-		out = in - capacitors[ch]
-		capacitors[ch] = in - out*0.998166636
+		out = in - a.capacitors[ch]
+		a.capacitors[ch] = in - out*0.998166636
 	}
 	return out
 }
@@ -376,6 +393,12 @@ var digitalAnalog = []float32{
 var volumes = []float32{.125, .250, .375, .500, .625, .750, .875, 1}
 
 func (a *APU) sample() {
+	// Headless mode has no audio consumer. SetHeadless normally removes this
+	// event entirely; this guard also makes old/inconsistent save states safe.
+	if a.headless {
+		return
+	}
+
 	channels := a.channels
 	leftEnable, rightEnable := a.leftEnable, a.rightEnable
 
@@ -415,8 +438,8 @@ func (a *APU) sample() {
 
 	enabled := a.channels[0].dacEnabled || a.channels[1].dacEnabled || a.channels[2].dacEnabled || a.channels[3].dacEnabled
 
-	fLeft := highPass(0, left, enabled)
-	fRight := highPass(1, right, enabled)
+	fLeft := a.highPass(0, left, enabled)
+	fRight := a.highPass(1, right, enabled)
 	if a.visualising {
 		a.Lock()
 		for i := 0; i < 4; i++ {
@@ -437,15 +460,13 @@ func (a *APU) sample() {
 		fLeft = 0
 		fRight = 0
 	}
-	if !a.headless {
-		if a.bufferPos < bufferSize {
-			a.buffer[a.bufferPos] = fLeft
-			a.buffer[a.bufferPos+1] = fRight
-		} else {
-			a.buffer = append(a.buffer, fLeft, fRight)
-		}
-		a.bufferPos += 2
+	if a.bufferPos < bufferSize {
+		a.buffer[a.bufferPos] = fLeft
+		a.buffer[a.bufferPos+1] = fRight
+	} else {
+		a.buffer = append(a.buffer, fLeft, fRight)
 	}
+	a.bufferPos += 2
 
 	a.s.ScheduleEvent(scheduler.APUSample, samplePeriod)
 }
