@@ -402,9 +402,9 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 }
 
 // keyCallback builds the window key handler. Escape opens an in-window menu;
-// while the menu is open Game Boy input is suppressed so arrows and Enter can
-// navigate it. The optional menu parameter keeps the callback seam convenient
-// for display-server-free tests that only exercise joypad forwarding.
+// while the menu is open emulation is paused and Game Boy input is suppressed
+// so arrows and Enter can navigate it. The optional menu parameter keeps the
+// callback seam convenient for display-server-free tests.
 func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, released chan<- io.Button, hud *osd, menus ...*menu) func(*glfw.Window, glfw.Key, int, glfw.Action, glfw.ModifierKey) {
 	menuState := &menu{}
 	if len(menus) > 0 && menus[0] != nil {
@@ -413,7 +413,17 @@ func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, releas
 
 	return func(_ *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		if action == glfw.Press && key == glfw.KeyEscape {
-			menuState.Toggle()
+			if menuState.open {
+				menuState.Close()
+				if c != nil {
+					c.Resume()
+				}
+			} else {
+				menuState.Toggle()
+				if c != nil {
+					c.Pause()
+				}
+			}
 			refreshMenu(hud, menuState, c, g.fullscreen)
 			return
 		}
@@ -477,27 +487,46 @@ func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, releas
 
 func executeMenuAction(g *glfwDriver, w window, c emulator.Controller, hud *osd, menu *menu) {
 	switch menu.Action() {
-	case menuPause:
-		togglePause(c)
+	case menuReset:
+		if c != nil {
+			if err := c.Reset(); err != nil {
+				log.Errorf("reset: %v", err)
+			}
+			// Reset reinitializes the emulator. Keep the menu-modal behavior
+			// explicit so execution cannot resume behind the menu.
+			c.Pause()
+		}
 	case menuQuickSave:
-		if err := c.QuickSave(); err != nil {
-			log.Errorf("quick save: %v", err)
+		if c != nil {
+			if err := c.QuickSave(); err != nil {
+				log.Errorf("quick save: %v", err)
+			}
 		}
 	case menuQuickLoad:
-		if err := c.QuickLoad(); err != nil {
-			log.Errorf("quick load: %v", err)
+		if c != nil {
+			if err := c.QuickLoad(); err != nil {
+				log.Errorf("quick load: %v", err)
+			}
 		}
 	case menuSpeed:
-		c.SetSpeed(nextMenuSpeed(c.Speed()))
+		if c != nil {
+			c.SetSpeed(nextMenuSpeed(c.Speed()))
+		}
 	case menuFullscreen:
 		toggleFullscreen(g, w)
 	case menuClose:
 		menu.Close()
+		if c != nil {
+			c.Resume()
+		}
 	}
 	refreshMenu(hud, menu, c, g.fullscreen)
 }
 
 func refreshMenu(hud *osd, menu *menu, c emulator.Controller, fullscreen bool) {
+	if hud == nil {
+		return
+	}
 	if menu.open {
 		hud.Set(menu.Text(c, fullscreen))
 		return
