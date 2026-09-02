@@ -35,7 +35,7 @@ jobs:
           set -e
           if [ "$merge_status" -ne 0 ]; then
             conflicts="$(git diff --name-only --diff-filter=U | sort)"
-            expected="$(printf '%s\n' '.github/workflows/test.yaml' 'pkg/gomeboy/inspect.go' | sort)"
+            expected='.github/workflows/test.yaml'
             if [ "$conflicts" != "$expected" ]; then
               echo "Unexpected conflicts:"
               printf '%s\n' "$conflicts"
