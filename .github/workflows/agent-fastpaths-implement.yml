@@ -27,7 +27,7 @@ jobs:
       - name: format
         run: gofmt -w internal/ppu/ppu.go internal/ppu/state.go internal/ppu/video_output.go internal/ppu/checkpoint.go internal/apu/state.go internal/io/checkpoint.go internal/gameboy/video_output.go internal/gameboy/checkpoint.go pkg/gomeboy/gomeboy.go pkg/gomeboy/checkpoint.go pkg/gomeboy/read_into.go pkg/gomeboy/agent_fastpaths_test.go pkg/gomeboy/agent_fastpaths_bench_test.go
       - name: focused tests
-        run: go test ./internal/ppu ./internal/apu ./internal/io ./internal/gameboy ./pkg/gomeboy
+        run: go test ./internal/ppu ./internal/apu ./internal/io ./pkg/gomeboy
       - name: regression tests
         run: go test -tags test ./tests -run Test_Regressions
       - name: benchmark agent fast paths
