@@ -95,6 +95,9 @@ func Any(conditions ...Condition) Condition {
 }
 
 // All stops when every child condition matches. An empty All never matches.
+// Every child is evaluated on every check, even after one fails, so stateful
+// predicates such as MemoryChanged establish/update their own observations
+// from the same RunUntil boundary.
 func All(conditions ...Condition) Condition {
 	return conditionFunc{
 		name: "all conditions",
@@ -102,12 +105,17 @@ func All(conditions ...Condition) Condition {
 			if len(conditions) == 0 {
 				return false
 			}
+			matched := true
 			for _, c := range conditions {
-				if c == nil || !c.Match(e) {
-					return false
+				if c == nil {
+					matched = false
+					continue
+				}
+				if !c.Match(e) {
+					matched = false
 				}
 			}
-			return true
+			return matched
 		},
 	}
 }
