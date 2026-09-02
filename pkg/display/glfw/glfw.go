@@ -96,7 +96,7 @@ func enableJoystickEventState() { sdl.JoystickEventState(sdl.ENABLE) }
 
 func initGL() error { return gl.Init() }
 
-func createWindow(width, height int, title string) (window, error) {
+func createGLFWWindow(width, height int, title string) (window, error) {
 	w, err := glfw.CreateWindow(width, height, title, nil, nil)
 	if err != nil {
 		return nil, err
