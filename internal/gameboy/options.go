@@ -53,3 +53,9 @@ func WithBootROM(rom []byte) Opt {
 
 // WithPrinter creates a new accessories.Printer and attaches it to the emulator.
 func WithPrinter() Opt { return func(gb *GameBoy) { gb.Serial.Attach(accessories.NewPrinter()) } }
+
+// WithoutVideoOutput disables RGB framebuffer generation while preserving PPU
+// timing and hardware-visible behavior.
+func WithoutVideoOutput() Opt {
+	return func(gb *GameBoy) { gb.PPU.SetVideoOutput(false) }
+}

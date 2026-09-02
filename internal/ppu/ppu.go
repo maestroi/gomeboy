@@ -115,6 +115,7 @@ type PPU struct {
 
 	// Frame buffers
 	PreparedFrame [ScreenHeight][ScreenWidth][3]uint8
+	videoOutput   bool
 
 	// Pixel slice fetcher
 	bgFIFO               *utils.FIFO[FIFOEntry] // Background/Window pixel FIFO
@@ -192,8 +193,9 @@ func (o *Object) GobDecode(data []byte) error {
 // New creates and initializes a PPU instance ready to be used.
 func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	p := &PPU{
-		b: b,
-		s: s,
+		b:           b,
+		s:           s,
+		videoOutput: true,
 
 		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
 		objFIFO: utils.NewFIFO[FIFOEntry](8),
@@ -967,18 +969,10 @@ func (p *PPU) pushPixel() {
 	bgPX = p.bgFIFO.Pop()
 	bgPriority = bgPX.Attributes&types.Bit7 > 0
 
-	// are there any pending object pixels?
+	// are there any pending object pixels? Keep consuming the FIFO even
+	// when video output is disabled: FIFO timing is emulation state.
 	if p.objFIFO.Size > 0 {
 		objPX = p.objFIFO.Pop()
-
-		if objPX.Color > 0 && p.objEnabled {
-			color = p.ColourOBJPalette[objPX.Palette][objPX.Color]
-
-			drawObject = true
-			if objPX.Attributes&types.Bit7 > 0 {
-				bgPriority = true
-			}
-		}
 	}
 	// are we adjusting for horizontal scroll?
 	if p.scxToDiscard > p.scxDiscarded {
@@ -990,6 +984,23 @@ func (p *PPU) pushPixel() {
 	if p.lx < 8 {
 		p.lx++
 		return
+	}
+
+	// Rendering the RGB value is output-only. Agent/search workloads that
+	// observe memory can disable it without changing PPU timing, FIFO state,
+	// interrupts, or bus locking.
+	if !p.videoOutput {
+		p.lx++
+		return
+	}
+
+	if objPX != nil && objPX.Color > 0 && p.objEnabled {
+		color = p.ColourOBJPalette[objPX.Palette][objPX.Color]
+
+		drawObject = true
+		if objPX.Attributes&types.Bit7 > 0 {
+			bgPriority = true
+		}
 	}
 
 	// BG_EN bit is different on CGB
