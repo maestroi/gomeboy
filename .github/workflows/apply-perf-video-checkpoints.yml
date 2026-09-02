@@ -1,0 +1,46 @@
+name: apply perf video checkpoints
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply_and_benchmark:
+    if: github.event.pull_request.head.ref == 'perf/video-checkpoints'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: perf/video-checkpoints
+          fetch-depth: 0
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: apply implementation
+        run: python3 tools/apply_perf_video_checkpoint.py
+      - name: format
+        run: gofmt -w internal/ppu/ppu.go internal/ppu/output.go internal/gameboy/options.go pkg/gomeboy/gomeboy.go pkg/gomeboy/checkpoint.go pkg/gomeboy/perf_features_test.go pkg/gomeboy/perf_bench_test.go
+      - name: focused tests
+        run: go test ./pkg/gomeboy ./internal/ppu ./internal/gameboy
+      - name: regression tests
+        run: go test -tags test ./tests -run Test_Regressions
+      - name: performance benchmarks
+        run: go test ./pkg/gomeboy -run '^$' -bench '^(BenchmarkPerfStepFrameHeadless|BenchmarkPerfStepFrameHeadlessNoVideo|BenchmarkPerfStepFrames60Headless|BenchmarkPerfStepFrames60HeadlessNoVideo|BenchmarkPerfCheckpointRoundTrip|BenchmarkPerfSaveStateRoundTrip|BenchmarkPerfReadInto4K)$' -benchmem -benchtime=1s -count=5
+      - name: commit implementation
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'implementation already applied'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/ppu/ppu.go internal/ppu/output.go internal/gameboy/options.go pkg/gomeboy/gomeboy.go pkg/gomeboy/checkpoint.go pkg/gomeboy/perf_features_test.go pkg/gomeboy/perf_bench_test.go README.md
+          git commit -m 'perf: add video-free stepping and fast checkpoints'
+          git push origin HEAD:perf/video-checkpoints
