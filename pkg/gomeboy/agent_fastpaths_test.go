@@ -43,7 +43,10 @@ func TestCheckpointRestoreRoundTrip(t *testing.T) {
 
 	var cp Checkpoint
 	e.CheckpointInto(&cp)
-	before := e.SnapshotMemory()
+	before := make([]byte, AddressSpaceSize)
+	if _, err := e.SnapshotMemory(before); err != nil {
+		t.Fatalf("SnapshotMemory(before): %v", err)
+	}
 	cycle := e.Cycle()
 	frames := e.FrameCount()
 
@@ -54,7 +57,10 @@ func TestCheckpointRestoreRoundTrip(t *testing.T) {
 	if err := e.RestoreCheckpoint(&cp); err != nil {
 		t.Fatalf("RestoreCheckpoint: %v", err)
 	}
-	after := e.SnapshotMemory()
+	after := make([]byte, AddressSpaceSize)
+	if _, err := e.SnapshotMemory(after); err != nil {
+		t.Fatalf("SnapshotMemory(after): %v", err)
+	}
 	if !bytes.Equal(before, after) {
 		t.Fatal("memory differs after checkpoint restore")
 	}
