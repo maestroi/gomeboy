@@ -25,7 +25,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           sched = Path('internal/scheduler/scheduler.go')
           text = sched.read_text()
           old = "\t\tevent := s.root\n\t\tfor event != nil {\n\t\t\tif event.eventType <= PPUHandleOffscreenLine {"
@@ -33,7 +32,6 @@ jobs:
           if text.count(old) != 2:
               raise SystemExit(f'expected 2 ChangeSpeed loops, found {text.count(old)}')
           sched.write_text(text.replace(old, new, 2))
-
           apu = Path('internal/apu/apu.go')
           text = apu.read_text()
           old = "\tif a.buffer == nil {\n\t\ta.buffer = make([]float32, bufferSize)\n\t}\n\ta.s.ScheduleEvent(scheduler.APUSample, samplePeriod)"
@@ -41,42 +39,8 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit(f'expected SetHeadless resume path once, found {text.count(old)}')
           apu.write_text(text.replace(old, new, 1))
-
-          tests = Path('internal/scheduler/scheduler_test.go')
-          text = tests.read_text()
-          marker = 'func TestChangeSpeedReschedulesAllAffectedEvents'
-          if marker not in text:
-              text += '''\nfunc TestChangeSpeedReschedulesAllAffectedEvents(t *testing.T) {
-\ts := NewScheduler()
-\tfor _, typ := range []EventType{APUFrameSequencer, APUChannel1, APUChannel2} {
-\t\ts.RegisterEvent(typ, func() {})
-\t}
-\ts.ScheduleEvent(APUFrameSequencer, 10)
-\ts.ScheduleEvent(APUChannel1, 40)
-\ts.ScheduleEvent(APUChannel2, 80)
-
-\ts.ChangeSpeed(true)
-\tfor typ, want := range map[EventType]uint64{
-\t\tAPUFrameSequencer: 5,
-\t\tAPUChannel1:       20,
-\t\tAPUChannel2:       40,
-\t} {
-\t\tif got := s.Until(typ); got != want {
-\t\t\tt.Fatalf("Until(%v) after speed change = %d, want %d", typ, got, want)
-\t\t}
-\t}
-
-\tempty := NewScheduler()
-\tempty.ChangeSpeed(true)
-\tempty.Tick(1)
-\tif got := empty.Cycle(); got != 1 {
-\t\tt.Fatalf("empty scheduler cycle = %d, want 1", got)
-\t}
-}
-'''
-              tests.write_text(text)
           PY
-          gofmt -w internal/scheduler/scheduler.go internal/scheduler/scheduler_test.go internal/apu/apu.go
+          gofmt -w internal/scheduler/scheduler.go internal/apu/apu.go internal/scheduler/change_speed_regression_test.go
       - name: verify fixes
         run: |
           go test ./internal/scheduler -run '^(TestDescheduleRootUpdatesNextEvent|TestDescheduleDoesNotRemoveSentinel|TestChangeSpeedReschedulesAllAffectedEvents)$'
