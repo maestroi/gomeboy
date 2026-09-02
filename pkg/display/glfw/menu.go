@@ -12,7 +12,7 @@ import (
 type menuAction int
 
 const (
-	menuPause menuAction = iota
+	menuReset menuAction = iota
 	menuQuickSave
 	menuQuickLoad
 	menuSpeed
@@ -59,11 +59,6 @@ func (m *menu) Close() {
 }
 
 func (m *menu) Text(c emulator.Controller, fullscreen bool) string {
-	pauseLabel := "Pause"
-	if c != nil && c.Paused() {
-		pauseLabel = "Resume"
-	}
-
 	speed := 1
 	if c != nil && c.Speed() > 0 {
 		speed = c.Speed()
@@ -75,7 +70,7 @@ func (m *menu) Text(c emulator.Controller, fullscreen bool) string {
 	}
 
 	items := []string{
-		pauseLabel,
+		"Reset",
 		"Quick Save",
 		"Quick Load",
 		fmt.Sprintf("Speed: %dx", speed),
