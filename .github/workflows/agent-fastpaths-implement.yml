@@ -1,0 +1,734 @@
+name: implement agent fast paths
+
+on:
+  push:
+    branches:
+      - perf/agent-fastpaths-video-checkpoints
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: perf/agent-fastpaths-video-checkpoints
+          fetch-depth: 0
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: patch core fast paths
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one occurrence, found {count}: {old[:80]!r}")
+              p.write_text(s.replace(old, new, 1))
+
+          ppu_path = Path("internal/ppu/ppu.go")
+          ppu = ppu_path.read_text()
+          old = "\t// Frame buffers\n\tPreparedFrame [ScreenHeight][ScreenWidth][3]uint8\n"
+          new = "\t// Frame buffers\n\tvideoOutput  bool\n\tPreparedFrame [ScreenHeight][ScreenWidth][3]uint8\n"
+          if ppu.count(old) != 1:
+              raise SystemExit("ppu.go: frame buffer field anchor not found exactly once")
+          ppu = ppu.replace(old, new, 1)
+
+          old = "\t\tbgFIFO:  utils.NewFIFO[FIFOEntry](8),\n\t\tobjFIFO: utils.NewFIFO[FIFOEntry](8),\n"
+          new = "\t\tbgFIFO:      utils.NewFIFO[FIFOEntry](8),\n\t\tobjFIFO:     utils.NewFIFO[FIFOEntry](8),\n\t\tvideoOutput: true,\n"
+          if ppu.count(old) != 1:
+              raise SystemExit("ppu.go: New() FIFO anchor not found exactly once")
+          ppu = ppu.replace(old, new, 1)
+
+          new_push = r'''func (p *PPU) pushPixel() {
+	if !p.canPopBG() {
+		return
+	}
+
+	// FIFO consumption and LX progression are hardware-visible simulation state,
+	// so they always happen even when RGB output is disabled.
+	bgPX := p.bgFIFO.Pop()
+	var objPX *FIFOEntry
+	if p.objFIFO.Size > 0 {
+		objPX = p.objFIFO.Pop()
+	}
+
+	// are we adjusting for horizontal scroll?
+	if p.scxToDiscard > p.scxDiscarded {
+		p.scxDiscarded++
+		return
+	}
+
+	// are we currently offscreen? (pixels are simply discarded)
+	if p.lx < 8 {
+		p.lx++
+		return
+	}
+
+	// Agent/test workloads often need exact PPU timing and memory side effects
+	// without materialising an RGB framebuffer. Skip only colour composition and
+	// the framebuffer write; all fetch/FIFO/timing state above remains exact.
+	if !p.videoOutput {
+		p.lx++
+		return
+	}
+
+	var color [3]uint8
+	bgPriority := bgPX.Attributes&types.Bit7 > 0
+	drawObject := false
+	bgEnabled := true
+
+	if objPX != nil && objPX.Color > 0 && p.objEnabled {
+		color = p.ColourOBJPalette[objPX.Palette][objPX.Color]
+		drawObject = true
+		if objPX.Attributes&types.Bit7 > 0 {
+			bgPriority = true
+		}
+	}
+
+	// BG_EN bit is different on CGB
+	if !p.bgEnabled {
+		if p.cgbMode {
+			bgPriority = false
+		} else {
+			bgEnabled = false
+		}
+	}
+
+	if !drawObject || bgPriority && bgPX.Color > 0 {
+		// are we drawing a BG pixel?
+		if bgEnabled {
+			if (p.winTriggerWx && !p.Debug.WindowDisabled) || (!p.winTriggerWx && !p.Debug.BackgroundDisabled) {
+				color = p.ColourPalette[bgPX.Attributes&7][bgPX.Color]
+			} else {
+				// user has disabled rendering through debugging functions
+				color = [3]uint8{0xff, 0xff, 0xff} // white TODO customizable disabled color
+			}
+		} else {
+			color = p.ColourPalette[bgPX.Attributes&7][0]
+		}
+	}
+
+	p.PreparedFrame[p.ly][p.lx-8] = color
+	p.lx++
+}
+'''
+          pattern = r'func \(p \*PPU\) pushPixel\(\) \{.*?\n\}\n\n// FetcherState'
+          ppu, n = re.subn(pattern, new_push + "\n// FetcherState", ppu, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit(f"ppu.go: pushPixel replacement count={n}")
+
+          marker = "func (p *PPU) renderBlank() {\n"
+          if ppu.count(marker) != 1:
+              raise SystemExit(f"ppu.go: renderBlank marker count={ppu.count(marker)}")
+          ppu = ppu.replace(marker, marker + "\tif !p.videoOutput {\n\t\treturn\n\t}\n\n", 1)
+          ppu_path.write_text(ppu)
+
+          replace_once(
+              "internal/ppu/state.go",
+              "\tp.objBuffer = append([]Object(nil), s.ObjBuffer...)\n",
+              "\tp.objBuffer = append(p.objBuffer[:0], s.ObjBuffer...)\n",
+          )
+
+          apu_path = Path("internal/apu/state.go")
+          apu = apu_path.read_text()
+          old = '''\tbufLen := bufferSize
+\tif l := len(s.Buffer); l > bufLen {
+\t\tbufLen = l
+\t}
+\ta.buffer = make([]float32, bufLen)
+\tcopy(a.buffer, s.Buffer)
+\ta.bufferPos = s.BufferPos
+\ta.lastCatchup = s.LastCatchup
+\ta.mute = s.Mute
+\ta.headless = s.Headless
+\ta.capacitors = s.Capacitors
+\tif a.headless {
+\t\ta.buffer = nil
+\t\ta.bufferPos = 0
+\t}
+'''
+          new = '''\ta.lastCatchup = s.LastCatchup
+\ta.mute = s.Mute
+\ta.headless = s.Headless
+\ta.capacitors = s.Capacitors
+\tif a.headless {
+\t\ta.buffer = nil
+\t\ta.bufferPos = 0
+\t} else {
+\t\tbufLen := bufferSize
+\t\tif l := len(s.Buffer); l > bufLen {
+\t\t\tbufLen = l
+\t\t}
+\t\tif cap(a.buffer) < bufLen {
+\t\t\ta.buffer = make([]float32, bufLen)
+\t\t} else {
+\t\t\ta.buffer = a.buffer[:bufLen]
+\t\t\tclear(a.buffer)
+\t\t}
+\t\tcopy(a.buffer, s.Buffer)
+\t\ta.bufferPos = s.BufferPos
+\t}
+'''
+          if apu.count(old) != 1:
+              raise SystemExit("apu/state.go: restore buffer block not found exactly once")
+          apu_path.write_text(apu.replace(old, new, 1))
+
+          replace_once(
+              "pkg/gomeboy/gomeboy.go",
+              "\theadless bool\n\tsaveDir  string\n",
+              "\theadless bool\n\tnoVideo  bool\n\tsaveDir  string\n",
+          )
+          replace_once(
+              "pkg/gomeboy/gomeboy.go",
+              '''func Headless() Option {
+\treturn func(c *config) { c.headless = true }
+}
+''',
+              '''func Headless() Option {
+\treturn func(c *config) { c.headless = true }
+}
+
+// WithoutVideo disables RGB framebuffer composition while preserving exact
+// PPU timing, FIFO progression, interrupts, DMA behaviour, and memory state.
+// Frame() is not updated while video output is disabled.
+func WithoutVideo() Option {
+\treturn func(c *config) { c.noVideo = true }
+}
+''',
+          )
+          replace_once(
+              "pkg/gomeboy/gomeboy.go",
+              '''\tif cfg.saves {
+\t\tgbOpts = append(gbOpts, gameboy.WithSaveDir(cfg.saveDir))
+\t} else {
+\t\tgbOpts = append(gbOpts, gameboy.WithoutSaves())
+\t}
+
+\te := &Emulator{gb: gameboy.NewGameBoy(gbOpts...)}
+''',
+              '''\tif cfg.saves {
+\t\tgbOpts = append(gbOpts, gameboy.WithSaveDir(cfg.saveDir))
+\t} else {
+\t\tgbOpts = append(gbOpts, gameboy.WithoutSaves())
+\t}
+\tif cfg.noVideo {
+\t\tgbOpts = append(gbOpts, gameboy.WithVideoOutput(false))
+\t}
+
+\te := &Emulator{gb: gameboy.NewGameBoy(gbOpts...)}
+''',
+          )
+          PY
+
+          cat > internal/ppu/video_output.go <<'EOF'
+          package ppu
+
+          // SetVideoOutput controls RGB framebuffer composition. Disabling it
+          // does not skip PPU timing, FIFO work, interrupts, bus locks, or DMA.
+          func (p *PPU) SetVideoOutput(enabled bool) {
+          	p.videoOutput = enabled
+          }
+
+          // VideoOutputEnabled reports whether RGB framebuffer composition is enabled.
+          func (p *PPU) VideoOutputEnabled() bool {
+          	return p.videoOutput
+          }
+          EOF
+
+          cat > internal/gameboy/video_output.go <<'EOF'
+          package gameboy
+
+          // WithVideoOutput controls whether the PPU materialises RGB pixels.
+          // PPU simulation remains cycle/timing accurate when output is disabled.
+          func WithVideoOutput(enabled bool) Opt {
+          	return func(g *GameBoy) {
+          		g.PPU.SetVideoOutput(enabled)
+          	}
+          }
+          EOF
+
+          cat > internal/io/checkpoint.go <<'EOF'
+          package io
+
+          // SnapshotInto captures cartridge state into dst while reusing its RAM
+          // storage across repeated checkpoints.
+          func (c *Cartridge) SnapshotInto(dst *CartridgeState) {
+          	ram := dst.RAM
+          	camera := dst.Camera
+          	*dst = CartridgeState{}
+          	if cap(ram) < len(c.RAM) {
+          		ram = make([]byte, len(c.RAM))
+          	} else {
+          		ram = ram[:len(c.RAM)]
+          	}
+          	copy(ram, c.RAM)
+          	dst.RAM = ram
+          	dst.RAMEnabled = c.ramEnabled
+          	dst.ROMOffset = c.romOffset
+          	dst.RAMOffset = c.ramOffset
+          	dst.MBC1.BankShift = c.mbc1.bankShift
+          	dst.MBC1.Bank1 = c.mbc1.bank1
+          	dst.MBC1.Bank2 = c.mbc1.bank2
+          	dst.MBC1.Mode = c.mbc1.mode
+          	dst.M161Latched = c.m161Latched
+          	dst.MBC7.LatchReady = c.mbc7.latchReady
+          	dst.MBC7.RAMEnabled = c.mbc7.ramEnabled
+          	dst.MBC7.XLatch = c.mbc7.xLatch
+          	dst.MBC7.YLatch = c.mbc7.yLatch
+          	dst.MBC7.Eeprom.DO = c.mbc7.eeprom.do
+          	dst.MBC7.Eeprom.DI = c.mbc7.eeprom.di
+          	dst.MBC7.Eeprom.CLK = c.mbc7.eeprom.clk
+          	dst.MBC7.Eeprom.CS = c.mbc7.eeprom.cs
+          	dst.MBC7.Eeprom.WriteEnabled = c.mbc7.eeprom.writeEnabled
+          	dst.MBC7.Eeprom.Command = c.mbc7.eeprom.command
+          	dst.MBC7.Eeprom.BitsIn = c.mbc7.eeprom.bitsIn
+          	dst.MBC7.Eeprom.BitsOut = c.mbc7.eeprom.bitsOut
+          	dst.MBC7.Eeprom.BitsLeft = c.mbc7.eeprom.bitsLeft
+          	dst.HUC1.IRMode = c.huc1.irMode
+          	dst.RTC.Enabled = c.rtc.enabled
+          	dst.RTC.Latched = c.rtc.latched
+          	dst.RTC.Latching = c.rtc.latching
+          	dst.RTC.Register = c.rtc.register
+          	dst.RTC.LastUpdate = c.rtc.lastUpdate
+          	dst.RTC.HeldTicks = c.rtc.heldTicks
+          	dst.AccelerometerX = c.AccelerometerX
+          	dst.AccelerometerY = c.AccelerometerY
+          	if c.Camera != nil {
+          		if camera == nil {
+          			camera = &CameraState{}
+          		}
+          		camera.Registers = c.Camera.Registers
+          		camera.RegistersMapped = c.Camera.registersMapped
+          		dst.Camera = camera
+          	}
+          }
+
+          // SnapshotInto captures bus state into dst while preserving reusable
+          // cartridge checkpoint storage.
+          func (b *Bus) SnapshotInto(dst *State) {
+          	cartridge := dst.Cartridge
+          	*dst = State{
+          		Data:            b.data,
+          		WRAM:            b.wRAM,
+          		VRAM:            b.VRAM,
+          		ButtonState:     b.buttonState,
+          		IME:             b.ime,
+          		BootROMDone:     b.bootROMDone,
+          		VRAMBankMask:    b.vRAMBankMask,
+          		Model:           b.model,
+          		IsGBC:           b.isGBC,
+          		DMASource:       b.dmaSource,
+          		DMADestination:  b.dmaDestination,
+          		DMAActive:       b.dmaActive,
+          		DMARestarting:   b.dmaRestarting,
+          		DMAConflict:     b.dmaConflict,
+          		DMAEnabled:      b.dmaEnabled,
+          		RegionLocks:     b.regionLocks,
+          		DMAConflicted:   b.dmaConflicted,
+          		HDMASource:      b.hdmaSource,
+          		HDMADestination: b.hdmaDestination,
+          		DMALength:       b.dmaLength,
+          		DMARemaining:    b.dmaRemaining,
+          		DMAComplete:     b.dmaComplete,
+          		DMAPaused:       b.dmaPaused,
+          	}
+          	dst.Cartridge = cartridge
+          	b.c.SnapshotInto(&dst.Cartridge)
+          }
+          EOF
+
+          cat > internal/ppu/checkpoint.go <<'EOF'
+          package ppu
+
+          // SnapshotInto captures PPU state into dst while reusing the scanline
+          // object buffer used by repeated in-process checkpoints.
+          func (p *PPU) SnapshotInto(dst *State) {
+          	objBuffer := dst.ObjBuffer
+          	*dst = State{
+          		Enabled:                  p.enabled,
+          		BGEnabled:                p.bgEnabled,
+          		WinEnabled:               p.winEnabled,
+          		ObjEnabled:               p.objEnabled,
+          		BGTileMap:                p.bgTileMap,
+          		WinTileMap:               p.winTileMap,
+          		ObjSize:                  p.objSize,
+          		AddressMode:              p.addressMode,
+          		Mode:                     p.mode,
+          		ModeToInt:                p.modeToInt,
+          		LY:                       p.ly,
+          		LX:                       p.lx,
+          		Status:                   p.status,
+          		WinFetcherX:              p.winFetcherX,
+          		WLY:                      p.wly,
+          		WinTriggerWY:             p.winTriggerWy,
+          		WinTriggerWX:             p.winTriggerWx,
+          		SCXDiscarded:             p.scxDiscarded,
+          		SCXToDiscard:             p.scxToDiscard,
+          		SCY:                      p.scy,
+          		SCX:                      p.scx,
+          		WY:                       p.wy,
+          		WX:                       p.wx,
+          		LYCompare:                p.lyCompare,
+          		LYForComparison:          p.lyForComparison,
+          		LYCInt:                   p.lycInt,
+          		STATInt:                  p.statInt,
+          		CRAM:                     p.cRAM,
+          		ColourPalette:            p.ColourPalette,
+          		ColourOBJPalette:         p.ColourOBJPalette,
+          		BGColourisationPalette:   p.BGColourisationPalette,
+          		OBJ0ColourisationPalette: p.OBJ0ColourisationPalette,
+          		OBJ1ColourisationPalette: p.OBJ1ColourisationPalette,
+          		PreparedFrame:            p.PreparedFrame,
+          		BGFIFO:                   p.bgFIFO.Snapshot(),
+          		ObjFIFO:                  p.objFIFO.Snapshot(),
+          		FetcherState:             p.fetcherState,
+          		FetcherTileNo:            p.fetcherTileNo,
+          		FetcherTileAttr:          p.fetcherTileAttr,
+          		FetcherData:              p.fetcherData,
+          		FetcherTileNoAddress:     p.fetcherTileNoAddress,
+          		ObjectFetcherState:       p.objectFetcherState,
+          		ObjFetcherTileNo:         p.objFetcherTileNo,
+          		ObjFetcherTileAttr:       p.objFetcherTileAttr,
+          		ObjFetcherData:           p.objFetcherData,
+          		FetcherObj:               p.fetcherObj,
+          		FetchingObj:              p.fetchingObj,
+          		LineState:                p.lineState,
+          		OffscreenLineState:       p.offscreenLineState,
+          		GlitchedLineState:        p.glitchedLineState,
+          		LineDot:                  p.lineDot,
+          		FrameDot:                 p.frameDot,
+          		CGBMode:                  p.cgbMode,
+          		BCPSIndex:                p.bcpsIndex,
+          		OCPSIndex:                p.ocpsIndex,
+          		BCPSIncrement:            p.bcpsIncrement,
+          		OCPSIncrement:            p.ocpsIncrement,
+          	}
+          	dst.ObjBuffer = append(objBuffer[:0], p.objBuffer...)
+          	dst.Debug.OBJDisabled = p.Debug.OBJDisabled
+          	dst.Debug.BackgroundDisabled = p.Debug.BackgroundDisabled
+          	dst.Debug.WindowDisabled = p.Debug.WindowDisabled
+          }
+          EOF
+
+          cat > internal/gameboy/checkpoint.go <<'EOF'
+          package gameboy
+
+          // CheckpointInto captures the complete execution state into dst while
+          // reusing mutable snapshot storage where possible. It is intended for
+          // high-frequency in-process branching; SaveState remains the portable
+          // serialized format.
+          func (g *GameBoy) CheckpointInto(dst *State) {
+          	g.mu.Lock()
+          	defer g.mu.Unlock()
+          	dst.CPU = g.CPU.Snapshot()
+          	dst.Scheduler = g.Scheduler.Snapshot()
+          	g.Bus.SnapshotInto(&dst.Bus)
+          	g.PPU.SnapshotInto(&dst.PPU)
+          	dst.APU = g.APU.Snapshot()
+          	dst.Timer = g.Timer.Snapshot()
+          	dst.Serial = g.Serial.Snapshot()
+          	dst.Model = g.model
+          	dst.Frames = g.frames
+          }
+          EOF
+
+          cat > pkg/gomeboy/checkpoint.go <<'EOF'
+          package gomeboy
+
+          import (
+          	"errors"
+
+          	"github.com/thelolagemann/gomeboy/internal/gameboy"
+          )
+
+          // Checkpoint is an opaque reusable in-memory emulator checkpoint.
+          // Its zero value is ready to use as a CheckpointInto destination.
+          // Unlike SaveState, it is not a stable or portable serialized format.
+          type Checkpoint struct {
+          	state gameboy.State
+          	valid bool
+          }
+
+          // CheckpointInto captures the emulator into dst. Reusing the same
+          // Checkpoint avoids serialization and reuses variable-sized snapshot
+          // buffers after their first allocation.
+          func (e *Emulator) CheckpointInto(dst *Checkpoint) {
+          	if dst == nil {
+          		panic("gomeboy: nil checkpoint destination")
+          	}
+          	e.gb.CheckpointInto(&dst.state)
+          	dst.valid = true
+          }
+
+          // RestoreCheckpoint restores a checkpoint captured from an emulator
+          // running the same ROM.
+          func (e *Emulator) RestoreCheckpoint(src *Checkpoint) error {
+          	if src == nil || !src.valid {
+          		return errors.New("gomeboy: checkpoint is not initialized")
+          	}
+          	e.gb.Restore(src.state)
+          	return nil
+          }
+          EOF
+
+          cat > pkg/gomeboy/read_into.go <<'EOF'
+          package gomeboy
+
+          // ReadInto performs CPU-accurate reads into dst without allocating a
+          // result slice. Reads wrap through the 16-bit address space exactly as
+          // Read does.
+          func (e *Emulator) ReadInto(addr uint16, dst []byte) {
+          	for i := range dst {
+          		dst[i] = e.gb.Bus.Read(addr + uint16(i))
+          	}
+          }
+          EOF
+
+          cat > pkg/gomeboy/agent_fastpaths_test.go <<'EOF'
+          package gomeboy
+
+          import (
+          	"bytes"
+          	"reflect"
+          	"testing"
+          )
+
+          func newFastPathTestEmulator(t *testing.T, opts ...Option) *Emulator {
+          	t.Helper()
+          	all := []Option{WithROMBytes(perfROM())}
+          	all = append(all, opts...)
+          	e, err := New(all...)
+          	if err != nil {
+          		t.Fatalf("New: %v", err)
+          	}
+          	t.Cleanup(func() { _ = e.Close() })
+          	return e
+          }
+
+          func TestWithoutVideoPreservesSimulationState(t *testing.T) {
+          	video := newFastPathTestEmulator(t, Headless())
+          	noVideo := newFastPathTestEmulator(t, Headless(), WithoutVideo())
+
+          	video.StepFrames(30)
+          	noVideo.StepFrames(30)
+
+          	var a, b Checkpoint
+          	video.CheckpointInto(&a)
+          	noVideo.CheckpointInto(&b)
+          	// The framebuffer is intentionally different when output is disabled;
+          	// every other captured simulation field must remain identical.
+          	a.state.PPU.PreparedFrame = [144][160][3]uint8{}
+          	b.state.PPU.PreparedFrame = [144][160][3]uint8{}
+          	if !reflect.DeepEqual(a.state, b.state) {
+          		t.Fatal("video suppression changed emulation state")
+          	}
+          }
+
+          func TestCheckpointRestoreRoundTrip(t *testing.T) {
+          	e := newFastPathTestEmulator(t, Headless(), WithoutVideo())
+          	e.StepFrames(5)
+
+          	var cp Checkpoint
+          	e.CheckpointInto(&cp)
+          	before := e.SnapshotMemory()
+          	cycle := e.Cycle()
+          	frames := e.FrameCount()
+
+          	e.Press(ButtonA)
+          	e.StepFrames(7)
+          	e.Release(ButtonA)
+
+          	if err := e.RestoreCheckpoint(&cp); err != nil {
+          		t.Fatalf("RestoreCheckpoint: %v", err)
+          	}
+          	after := e.SnapshotMemory()
+          	if !bytes.Equal(before, after) {
+          		t.Fatal("memory differs after checkpoint restore")
+          	}
+          	if got := e.Cycle(); got != cycle {
+          		t.Fatalf("cycle=%d, want %d", got, cycle)
+          	}
+          	if got := e.FrameCount(); got != frames {
+          		t.Fatalf("frames=%d, want %d", got, frames)
+          	}
+          }
+
+          func TestReadIntoMatchesRead(t *testing.T) {
+          	e := newFastPathTestEmulator(t, Headless(), WithoutVideo())
+          	e.StepFrame()
+          	want := e.Read(0xC000, 64)
+          	got := make([]byte, len(want))
+          	e.ReadInto(0xC000, got)
+          	if !bytes.Equal(got, want) {
+          		t.Fatalf("ReadInto mismatch: got %x want %x", got, want)
+          	}
+          }
+
+          func TestRestoreUninitializedCheckpoint(t *testing.T) {
+          	e := newFastPathTestEmulator(t, Headless())
+          	var cp Checkpoint
+          	if err := e.RestoreCheckpoint(&cp); err == nil {
+          		t.Fatal("expected error restoring uninitialized checkpoint")
+          	}
+          }
+          EOF
+
+          cat > pkg/gomeboy/agent_fastpaths_bench_test.go <<'EOF'
+          package gomeboy
+
+          import "testing"
+
+          func newAgentPerfEmulator(b *testing.B, noVideo bool) *Emulator {
+          	b.Helper()
+          	opts := []Option{WithROMBytes(perfROM()), Headless()}
+          	if noVideo {
+          		opts = append(opts, WithoutVideo())
+          	}
+          	e, err := New(opts...)
+          	if err != nil {
+          		b.Fatalf("New: %v", err)
+          	}
+          	for i := 0; i < 10; i++ {
+          		e.StepFrame()
+          	}
+          	return e
+          }
+
+          func BenchmarkPerfStepFrameHeadlessVideo(b *testing.B) {
+          	e := newAgentPerfEmulator(b, false)
+          	defer e.Close()
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		e.StepFrame()
+          	}
+          }
+
+          func BenchmarkPerfStepFrameHeadlessNoVideo(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		e.StepFrame()
+          	}
+          }
+
+          func BenchmarkPerfStepFrames60HeadlessVideo(b *testing.B) {
+          	e := newAgentPerfEmulator(b, false)
+          	defer e.Close()
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		e.StepFrames(60)
+          	}
+          }
+
+          func BenchmarkPerfStepFrames60HeadlessNoVideo(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		e.StepFrames(60)
+          	}
+          }
+
+          func BenchmarkPerfCheckpointInto(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	var cp Checkpoint
+          	e.CheckpointInto(&cp) // prime reusable buffers
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		e.CheckpointInto(&cp)
+          	}
+          }
+
+          func BenchmarkPerfSaveState(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		if _, err := e.SaveState(); err != nil {
+          			b.Fatal(err)
+          		}
+          	}
+          }
+
+          func BenchmarkPerfRestoreCheckpoint(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	var cp Checkpoint
+          	e.CheckpointInto(&cp)
+          	if err := e.RestoreCheckpoint(&cp); err != nil {
+          		b.Fatal(err)
+          	}
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		if err := e.RestoreCheckpoint(&cp); err != nil {
+          			b.Fatal(err)
+          		}
+          	}
+          }
+
+          func BenchmarkPerfLoadState(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	state, err := e.SaveState()
+          	if err != nil {
+          		b.Fatal(err)
+          	}
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		if err := e.LoadState(state); err != nil {
+          			b.Fatal(err)
+          		}
+          	}
+          }
+
+          func BenchmarkPerfReadInto4K(b *testing.B) {
+          	e := newAgentPerfEmulator(b, true)
+          	defer e.Close()
+          	dst := make([]byte, 4096)
+          	b.ReportAllocs()
+          	b.ResetTimer()
+          	for i := 0; i < b.N; i++ {
+          		e.ReadInto(0xC000, dst)
+          	}
+          }
+          EOF
+      - name: format
+        run: gofmt -w internal/ppu/ppu.go internal/ppu/state.go internal/ppu/video_output.go internal/ppu/checkpoint.go internal/apu/state.go internal/io/checkpoint.go internal/gameboy/video_output.go internal/gameboy/checkpoint.go pkg/gomeboy/gomeboy.go pkg/gomeboy/checkpoint.go pkg/gomeboy/read_into.go pkg/gomeboy/agent_fastpaths_test.go pkg/gomeboy/agent_fastpaths_bench_test.go
+      - name: focused tests
+        run: go test ./internal/ppu ./internal/apu ./internal/io ./internal/gameboy ./pkg/gomeboy
+      - name: regression tests
+        run: go test -tags test ./tests -run Test_Regressions
+      - name: benchmark agent fast paths
+        run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerf(StepFrameHeadless(Video|NoVideo)|StepFrames60Headless(Video|NoVideo)|CheckpointInto|SaveState|RestoreCheckpoint|LoadState|ReadInto4K)$' -benchmem -benchtime=1s -count=5
+      - name: diff check
+        run: git diff --check
+      - name: commit implementation
+        shell: bash
+        run: |
+          git config user.name 'gomeboy-perf-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add internal/ppu internal/apu/state.go internal/io/checkpoint.go internal/gameboy pkg/gomeboy
+          git commit -m 'perf: add video suppression and reusable checkpoints'
+          git push origin HEAD:perf/agent-fastpaths-video-checkpoints
