@@ -96,7 +96,7 @@ func enableJoystickEventState() { sdl.JoystickEventState(sdl.ENABLE) }
 
 func initGL() error { return gl.Init() }
 
-func createGLFWWindow(width, height int, title string) (window, error) {
+func createWindow(width, height int, title string) (window, error) {
 	w, err := glfw.CreateWindow(width, height, title, nil, nil)
 	if err != nil {
 		return nil, err
@@ -403,27 +403,32 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 
 // keyCallback builds the window key handler. Escape opens an in-window menu;
 // while the menu is open Game Boy input is suppressed so arrows and Enter can
-// navigate it. The existing function-key shortcuts continue to work when the
-// menu is closed.
-func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, released chan<- io.Button, hud *osd, menu *menu) func(*glfw.Window, glfw.Key, int, glfw.Action, glfw.ModifierKey) {
+// navigate it. The optional menu parameter keeps the callback seam convenient
+// for display-server-free tests that only exercise joypad forwarding.
+func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, released chan<- io.Button, hud *osd, menus ...*menu) func(*glfw.Window, glfw.Key, int, glfw.Action, glfw.ModifierKey) {
+	menuState := &menu{}
+	if len(menus) > 0 && menus[0] != nil {
+		menuState = menus[0]
+	}
+
 	return func(_ *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		if action == glfw.Press && key == glfw.KeyEscape {
-			menu.Toggle()
-			refreshMenu(hud, menu, c, g.fullscreen)
+			menuState.Toggle()
+			refreshMenu(hud, menuState, c, g.fullscreen)
 			return
 		}
 
-		if menu.open {
+		if menuState.open {
 			if action == glfw.Press {
 				switch key {
 				case glfw.KeyUp:
-					menu.Move(-1)
-					refreshMenu(hud, menu, c, g.fullscreen)
+					menuState.Move(-1)
+					refreshMenu(hud, menuState, c, g.fullscreen)
 				case glfw.KeyDown:
-					menu.Move(1)
-					refreshMenu(hud, menu, c, g.fullscreen)
+					menuState.Move(1)
+					refreshMenu(hud, menuState, c, g.fullscreen)
 				case glfw.KeyEnter, glfw.KeyKPEnter, glfw.KeySpace:
-					executeMenuAction(g, w, c, hud, menu)
+					executeMenuAction(g, w, c, hud, menuState)
 				}
 			}
 			return
