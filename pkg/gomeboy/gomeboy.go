@@ -118,6 +118,7 @@ type config struct {
 	romName  string
 	bootROM  string
 	headless bool
+	noVideo  bool
 	saveDir  string
 	saves    bool
 	model    Model
@@ -166,6 +167,13 @@ func WithSaveDir(dir string) Option {
 // its sample buffer, so long-running headless emulation does not leak memory.
 func Headless() Option {
 	return func(c *config) { c.headless = true }
+}
+
+// WithoutVideo disables RGB framebuffer composition while preserving exact
+// PPU timing, FIFO progression, interrupts, DMA behaviour, and memory state.
+// Frame() is not updated while video output is disabled.
+func WithoutVideo() Option {
+	return func(c *config) { c.noVideo = true }
 }
 
 // WithModel selects the hardware model to emulate, overriding the model
@@ -228,6 +236,9 @@ func New(opts ...Option) (*Emulator, error) {
 		gbOpts = append(gbOpts, gameboy.WithSaveDir(cfg.saveDir))
 	} else {
 		gbOpts = append(gbOpts, gameboy.WithoutSaves())
+	}
+	if cfg.noVideo {
+		gbOpts = append(gbOpts, gameboy.WithVideoOutput(false))
 	}
 
 	e := &Emulator{gb: gameboy.NewGameBoy(gbOpts...)}

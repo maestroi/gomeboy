@@ -185,13 +185,6 @@ func (a *APU) Restore(s State) {
 	a.turningOn = s.TurningOn
 	a.turnedOn = s.TurnedOn
 	a.enableTimer = s.EnableTimer
-	bufLen := bufferSize
-	if l := len(s.Buffer); l > bufLen {
-		bufLen = l
-	}
-	a.buffer = make([]float32, bufLen)
-	copy(a.buffer, s.Buffer)
-	a.bufferPos = s.BufferPos
 	a.lastCatchup = s.LastCatchup
 	a.mute = s.Mute
 	a.headless = s.Headless
@@ -199,6 +192,19 @@ func (a *APU) Restore(s State) {
 	if a.headless {
 		a.buffer = nil
 		a.bufferPos = 0
+	} else {
+		bufLen := bufferSize
+		if l := len(s.Buffer); l > bufLen {
+			bufLen = l
+		}
+		if cap(a.buffer) < bufLen {
+			a.buffer = make([]float32, bufLen)
+		} else {
+			a.buffer = a.buffer[:bufLen]
+			clear(a.buffer)
+		}
+		copy(a.buffer, s.Buffer)
+		a.bufferPos = s.BufferPos
 	}
 
 	a.channel1.duty = s.Channel1.Square.Duty
