@@ -16,6 +16,19 @@ func (e *Emulator) Peek16(addr uint16) uint16 {
 // PeekInto fills dst with len(dst) bytes starting at addr, without side
 // effects and without allocating.
 func (e *Emulator) PeekInto(addr uint16, dst []byte) {
+	if len(dst) == 0 {
+		return
+	}
+
+	// Most agent observations are contiguous WRAM/HRAM ranges. Use the
+	// runtime-optimized bulk copy when the range does not wrap the 16-bit bus.
+	if end := int(addr) + len(dst); end <= 0xffff {
+		e.gb.Bus.CopyFrom(addr, uint16(end), dst)
+		return
+	}
+
+	// Preserve the historical uint16 wraparound semantics for boundary-crossing
+	// or unusually large reads.
 	for i := range dst {
 		dst[i] = e.gb.Bus.Get(addr + uint16(i))
 	}

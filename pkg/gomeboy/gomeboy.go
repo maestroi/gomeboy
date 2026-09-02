@@ -292,9 +292,7 @@ func (e *Emulator) StepFrame() {
 
 // StepFrames advances the emulator by n frames.
 func (e *Emulator) StepFrames(n int) {
-	for i := 0; i < n; i++ {
-		e.gb.Step()
-	}
+	e.gb.StepFrames(n)
 }
 
 // FrameCount returns the number of frames this Emulator has advanced since
