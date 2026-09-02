@@ -5,6 +5,7 @@ package emulator
 // it.
 type Controller interface {
 	LoadROM(string) error
+	Reset() error
 	Pause()
 	Resume()
 	Paused() bool
