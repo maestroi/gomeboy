@@ -40,7 +40,10 @@ jobs:
             pkg/gomeboy/inspect.go \
             pkg/gomeboy/perf_optimizations_test.go
       - name: targeted tests
-        run: go test ./internal/scheduler ./internal/apu ./pkg/gomeboy -run 'Test(Deschedule|HighPass|Headless|Perf)'
+        run: |
+          go test ./internal/scheduler -run '^(TestDescheduleRootUpdatesNextEvent|TestDescheduleDoesNotRemoveSentinel)$'
+          go test ./internal/apu -run '^(TestHighPassStateIsPerAPU|TestHeadlessRemovesOutputSamplingEvent)$'
+          go test ./pkg/gomeboy -run '^(TestPerfStepFramesMatchesRepeatedStep|TestPerfPeekIntoMatchesPeek8)$'
       - name: commit optimized tree
         run: |
           rm .github/apply_optimizations.py .github/workflows/apply-optimization.yml
