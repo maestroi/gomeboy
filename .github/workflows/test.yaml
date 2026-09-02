@@ -15,6 +15,10 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.PASSPHRASE }}
+
     steps:
       - name: checkout repo
         uses: actions/checkout@v3
@@ -31,15 +35,15 @@ jobs:
       - name: tests
         run: go test -tags test -v ./tests -run Test_Regressions
       - name: import gpg key
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && env.GPG_PRIVATE_KEY != ''
         uses: crazy-max/ghaction-import-gpg@v5
         with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
+          gpg_private_key: ${{ env.GPG_PRIVATE_KEY }}
+          passphrase: ${{ env.GPG_PASSPHRASE }}
           git_user_signingkey: true
           git_commit_gpgsign: true
       - name: automated test results
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && env.GPG_PRIVATE_KEY != ''
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: automated test results
