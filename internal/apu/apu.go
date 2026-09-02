@@ -133,6 +133,9 @@ func (a *APU) SetHeadless(headless bool) {
 	if a.buffer == nil {
 		a.buffer = make([]float32, bufferSize)
 	}
+	// Be defensive when loading save states created before headless mode
+	// stopped scheduling output samples.
+	a.s.DescheduleEvent(scheduler.APUSample)
 	a.s.ScheduleEvent(scheduler.APUSample, samplePeriod)
 }
 

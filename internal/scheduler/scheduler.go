@@ -335,7 +335,7 @@ func (s *Scheduler) ChangeSpeed(speed bool) {
 		// and halve the cycle for each event if the event
 		// is affected by the speed change (APU, PPU, Serial)
 		event := s.root
-		for event != nil {
+		for event != nil && event.cycle != math.MaxUint64 {
 			if event.eventType <= PPUHandleOffscreenLine {
 				if eventsProcessed[event.eventType] {
 					event = event.next
@@ -372,7 +372,7 @@ func (s *Scheduler) ChangeSpeed(speed bool) {
 		// and double the cycle for each event if the event
 		// is affected by the speed change (APU, PPU, Serial)
 		event := s.root
-		for event != nil {
+		for event != nil && event.cycle != math.MaxUint64 {
 			if event.eventType <= PPUHandleOffscreenLine {
 				// first we need to get the cycle at which the event
 				// would be executed at double speed
