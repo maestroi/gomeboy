@@ -1,0 +1,26 @@
+name: Validate agent debug tooling
+
+on:
+  push:
+    branches:
+      - feat/agent-debug-tooling
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Focused self-contained tests
+        run: >-
+          go test ./pkg/gomeboy
+          -run '^(TestDebuggerStepAndState|TestConditionsAndRunUntil|TestMemoryTracker|TestFlightRecorderAndInputRecording|TestInputReplayIsDeterministic|TestForkIsIndependent|TestCheckedStateMetadataAndValidation|TestStateHashIgnoresFramebufferOutput|TestRunCPUUntilMemoryWatchpoint|TestInstructionSteppingMatchesFrameStep|TestWithoutVideoMatchesExecutionState|TestCheckpointRestore|TestReadIntoMatchesRead)$'
+      - name: Compile touched internal packages
+        run: go test ./internal/cpu ./internal/gameboy ./internal/ppu -run '^$'
+      - name: Diff check
+        run: git diff --check
