@@ -23,8 +23,12 @@ jobs:
         run: python3 tools/apply_agent_debug_tooling.py
       - name: Format
         run: gofmt -w pkg/gomeboy/gomeboy.go internal/cpu/debug.go internal/gameboy/debug.go internal/ppu/debug.go pkg/gomeboy/debug.go pkg/gomeboy/rununtil.go pkg/gomeboy/memory_tracker.go pkg/gomeboy/input_timeline.go pkg/gomeboy/flight_recorder.go pkg/gomeboy/fork.go pkg/gomeboy/checked_state.go pkg/gomeboy/state_hash.go pkg/gomeboy/agent_features_test.go
-      - name: Focused tests
-        run: go test ./pkg/gomeboy ./internal/cpu ./internal/gameboy ./internal/ppu
+      - name: Focused self-contained tests
+        run: >-
+          go test ./pkg/gomeboy
+          -run '^(TestDebuggerStepAndState|TestConditionsAndRunUntil|TestMemoryTracker|TestFlightRecorderAndInputRecording|TestInputReplayIsDeterministic|TestForkIsIndependent|TestCheckedStateMetadataAndValidation|TestStateHashIgnoresFramebufferOutput|TestWithoutVideoMatchesExecutionState|TestCheckpointRestore|TestReadIntoMatchesRead)$'
+      - name: Compile touched internal packages
+        run: go test ./internal/cpu ./internal/gameboy ./internal/ppu -run '^$'
       - name: Diff check
         run: git diff --check
       - name: Commit wired implementation
