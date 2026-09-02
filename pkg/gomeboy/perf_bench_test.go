@@ -2,6 +2,9 @@ package gomeboy
 
 import "testing"
 
+// Run these directly with:
+// go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerf' -benchmem
+//
 // perfROM returns a minimal 32 KiB ROM that spins at 0x0100. It is intentionally
 // self-contained so performance benchmarks do not depend on gitignored test ROMs.
 func perfROM() []byte {
