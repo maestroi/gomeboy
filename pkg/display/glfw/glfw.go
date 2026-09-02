@@ -301,6 +301,7 @@ func (g *glfwDriver) run(c emulator.Controller, frames <-chan []byte, pressed, r
 // the draw loop until the window is closed.
 func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan []byte, pressed, released chan<- io.Button) error {
 	hud := newOSD()
+	menu := &menu{}
 
 	// initialize window settings
 	g.windowSettings.width, g.windowSettings.height = w.size()
@@ -318,7 +319,7 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 	}
 
 	// setup event handling
-	w.setKeyCallback(keyCallback(g, w, c, pressed, released, hud))
+	w.setKeyCallback(keyCallback(g, w, c, pressed, released, hud, menu))
 
 	var fb uint32
 	{
@@ -348,6 +349,22 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 		offsetY = (int32(height) - targetHeight) / 2
 	})
 
+	// draw refreshes the current Game Boy texture and overlays. A nil frame
+	// reuses the last uploaded texture, which lets menus remain responsive
+	// while emulation is paused.
+	draw := func(frame []byte) {
+		gl.Clear(gl.COLOR_BUFFER_BIT)
+		if frame != nil {
+			gl.BindTexture(gl.TEXTURE_2D, texture)
+			gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 160, 144, 0, gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(frame))
+		}
+		gl.BlitFramebuffer(0, 0, 160, 144, offsetX, offsetY+targetHeight, offsetX+targetWidth, offsetY, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+
+		width, height := w.size()
+		hud.Draw(int32(width), int32(height))
+		w.swapBuffers()
+	}
+
 	pollTicker := time.NewTicker(time.Millisecond * 20) // to handle when paused
 	defer pollTicker.Stop()
 	var sdlEvent sdl.Event
@@ -359,19 +376,8 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 			if w.shouldClose() {
 				return nil
 			}
-			gl.Clear(gl.COLOR_BUFFER_BIT)
-
-			gl.BindTexture(gl.TEXTURE_2D, texture)
-			gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 160, 144, 0, gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(f))
-
-			gl.BlitFramebuffer(0, 0, 160, 144, offsetX, offsetY+targetHeight, offsetX+targetWidth, offsetY, gl.COLOR_BUFFER_BIT, gl.NEAREST)
-
-			width, height := w.size()
-			hud.Draw(int32(width), int32(height))
-
-			w.swapBuffers()
+			draw(f)
 		case <-pollTicker.C:
-
 			for sdlEvent = sdl.PollEvent(); sdlEvent != nil; sdlEvent = sdl.PollEvent() {
 				switch t := sdlEvent.(type) {
 				case *sdl.JoyAxisEvent:
@@ -385,15 +391,44 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 			}
 
 			glfw.PollEvents()
+			if w.shouldClose() {
+				return nil
+			}
+			if c != nil && c.Paused() {
+				draw(nil)
+			}
 		}
 	}
 }
 
-// keyCallback builds the window key handler: mapped joypad keys are forwarded
-// on the pressed/released channels and the function keys drive fullscreen,
-// pause, save/load, and speed.
-func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, released chan<- io.Button, hud *osd) func(*glfw.Window, glfw.Key, int, glfw.Action, glfw.ModifierKey) {
+// keyCallback builds the window key handler. Escape opens an in-window menu;
+// while the menu is open Game Boy input is suppressed so arrows and Enter can
+// navigate it. The existing function-key shortcuts continue to work when the
+// menu is closed.
+func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, released chan<- io.Button, hud *osd, menu *menu) func(*glfw.Window, glfw.Key, int, glfw.Action, glfw.ModifierKey) {
 	return func(_ *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
+		if action == glfw.Press && key == glfw.KeyEscape {
+			menu.Toggle()
+			refreshMenu(hud, menu, c, g.fullscreen)
+			return
+		}
+
+		if menu.open {
+			if action == glfw.Press {
+				switch key {
+				case glfw.KeyUp:
+					menu.Move(-1)
+					refreshMenu(hud, menu, c, g.fullscreen)
+				case glfw.KeyDown:
+					menu.Move(1)
+					refreshMenu(hud, menu, c, g.fullscreen)
+				case glfw.KeyEnter, glfw.KeyKPEnter, glfw.KeySpace:
+					executeMenuAction(g, w, c, hud, menu)
+				}
+			}
+			return
+		}
+
 		// check to see if the key is mapped to a joypad button
 		if button, ok := joypadKeys[key]; ok {
 			switch action {
@@ -407,25 +442,9 @@ func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, releas
 		if action == glfw.Press {
 			switch key {
 			case glfw.KeyF11:
-				// toggle fullscreen
-				if g.fullscreen {
-					w.setMonitor(nil, g.windowSettings.xPos, g.windowSettings.yPos, g.windowSettings.width, g.windowSettings.height, 60)
-				} else {
-					// store the current window settings
-					g.windowSettings.width, g.windowSettings.height = w.size()
-					g.windowSettings.xPos, g.windowSettings.yPos = w.pos()
-
-					bestMode := g.bestMode()
-					w.setMonitor(g.monitor, 0, 0, bestMode.Width, bestMode.Height, bestMode.RefreshRate)
-				}
-
-				g.fullscreen = !g.fullscreen
-			case glfw.KeyEscape, glfw.KeyPause:
-				if c.Paused() {
-					c.Resume()
-				} else {
-					c.Pause()
-				}
+				toggleFullscreen(g, w)
+			case glfw.KeyPause:
+				togglePause(c)
 			case glfw.KeyF5:
 				if err := c.QuickSave(); err != nil {
 					log.Errorf("quick save: %v", err)
@@ -449,6 +468,74 @@ func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, releas
 			}
 		}
 	}
+}
+
+func executeMenuAction(g *glfwDriver, w window, c emulator.Controller, hud *osd, menu *menu) {
+	switch menu.Action() {
+	case menuPause:
+		togglePause(c)
+	case menuQuickSave:
+		if err := c.QuickSave(); err != nil {
+			log.Errorf("quick save: %v", err)
+		}
+	case menuQuickLoad:
+		if err := c.QuickLoad(); err != nil {
+			log.Errorf("quick load: %v", err)
+		}
+	case menuSpeed:
+		c.SetSpeed(nextMenuSpeed(c.Speed()))
+	case menuFullscreen:
+		toggleFullscreen(g, w)
+	case menuClose:
+		menu.Close()
+	}
+	refreshMenu(hud, menu, c, g.fullscreen)
+}
+
+func refreshMenu(hud *osd, menu *menu, c emulator.Controller, fullscreen bool) {
+	if menu.open {
+		hud.Set(menu.Text(c, fullscreen))
+		return
+	}
+	hud.Hide()
+}
+
+func nextMenuSpeed(current int) int {
+	switch {
+	case current < 2:
+		return 2
+	case current < 4:
+		return 4
+	case current < 8:
+		return 8
+	default:
+		return 1
+	}
+}
+
+func togglePause(c emulator.Controller) {
+	if c == nil {
+		return
+	}
+	if c.Paused() {
+		c.Resume()
+	} else {
+		c.Pause()
+	}
+}
+
+func toggleFullscreen(g *glfwDriver, w window) {
+	if g.fullscreen {
+		w.setMonitor(nil, g.windowSettings.xPos, g.windowSettings.yPos, g.windowSettings.width, g.windowSettings.height, 60)
+	} else {
+		// store the current window settings before switching monitors
+		g.windowSettings.width, g.windowSettings.height = w.size()
+		g.windowSettings.xPos, g.windowSettings.yPos = w.pos()
+
+		bestMode := g.bestMode()
+		w.setMonitor(g.monitor, 0, 0, bestMode.Width, bestMode.Height, bestMode.RefreshRate)
+	}
+	g.fullscreen = !g.fullscreen
 }
 
 // Stop stops the display driver. It is idempotent: each resource is released
