@@ -1,0 +1,51 @@
+name: apply core optimizations
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'perf/headless-core-optimizations'
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - name: apply source changes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/apply_optimizations.py')
+          p.write_text(p.read_text().replace("write_text(r'''", "write_text('''"))
+          PY
+          python3 .github/apply_optimizations.py
+          gofmt -w \
+            internal/scheduler/scheduler.go \
+            internal/scheduler/scheduler_test.go \
+            internal/apu/apu.go \
+            internal/apu/state.go \
+            internal/apu/headless_test.go \
+            internal/gameboy/gameboy.go \
+            pkg/gomeboy/gomeboy.go \
+            pkg/gomeboy/inspect.go \
+            pkg/gomeboy/perf_optimizations_test.go
+      - name: targeted tests
+        run: go test ./internal/scheduler ./internal/apu ./pkg/gomeboy -run 'Test(Deschedule|HighPass|Headless|Perf)'
+      - name: commit optimized tree
+        run: |
+          rm .github/apply_optimizations.py .github/workflows/apply-optimization.yml
+          git config user.name 'gomeboy perf bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'perf: optimize headless emulation hot paths'
+          git push origin HEAD:${{ github.head_ref }}
