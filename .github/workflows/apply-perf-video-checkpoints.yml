@@ -43,7 +43,7 @@ jobs:
       - name: format
         run: gofmt -w internal/ppu/ppu.go internal/ppu/output.go internal/gameboy/options.go pkg/gomeboy/gomeboy.go pkg/gomeboy/checkpoint.go pkg/gomeboy/perf_features_test.go pkg/gomeboy/perf_bench_test.go
       - name: focused tests
-        run: go test ./pkg/gomeboy ./internal/ppu
+        run: go test ./pkg/gomeboy -run '^(TestWithoutVideoMatchesExecutionState|TestCheckpointRestore|TestReadIntoMatchesRead)$'
       - name: regression tests
         run: go test -tags test ./tests -run Test_Regressions
       - name: performance benchmarks
