@@ -26,6 +26,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name 'gomeboy conflict bot'
+          git config user.email 'actions@users.noreply.github.com'
           git fetch origin main
           set +e
           git merge --no-ff --no-commit origin/main
@@ -167,7 +169,5 @@ jobs:
         run: |
           rm .github/workflows/resolve-pr2-conflicts.yml
           git add -A
-          git config user.name 'gomeboy conflict bot'
-          git config user.email 'actions@users.noreply.github.com'
           git commit -m 'merge: resolve optimization conflicts with memory snapshots'
           git push origin HEAD:perf/headless-core-optimizations
