@@ -1,0 +1,26 @@
+name: Validate PR3 resolution
+
+on:
+  push:
+    branches:
+      - perf/agent-fastpaths-video-checkpoints
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Focused checkpoint tests
+        run: go test ./pkg/gomeboy -run '^(TestCheckpointRestore|TestReusableCheckpointSteadyStateAllocations|TestRestoreUninitializedCheckpointRejected)$'
+      - name: Reusable checkpoint benchmarks
+        run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkCheckpointReusable(Capture|Restore)$' -benchmem -benchtime=200ms
+      - name: Compile touched internals
+        run: go test ./internal/apu ./internal/gameboy ./internal/io ./internal/ppu -run '^$'
+      - name: Diff check
+        run: git diff --check
