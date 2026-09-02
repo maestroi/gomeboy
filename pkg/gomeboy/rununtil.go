@@ -16,7 +16,7 @@ type conditionFunc struct {
 }
 
 func (c conditionFunc) Match(e *Emulator) bool { return c.fn(e) }
-func (c conditionFunc) String() string          { return c.name }
+func (c conditionFunc) String() string         { return c.name }
 
 // ConditionFunc turns a caller-provided predicate into a named RunUntil
 // condition. The callback must not step or mutate the emulator.
