@@ -22,6 +22,29 @@ func TestPeekMatchesReadWhenQuiet(t *testing.T) {
 	check(0xFF80, 0xFFFE)
 }
 
+func TestPeekBypassesLazyIORead(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+
+	// DIV (FF04) is evaluated lazily from the scheduler for CPU-visible reads,
+	// while the raw bus byte remains directly observable through Get/Peek8.
+	const div = uint16(0xFF04)
+	for i := 0; i < 16; i++ {
+		e.StepFrame()
+		raw := e.gb.Bus.Get(div)
+		cpuVisible := e.Read8(div)
+		if raw == cpuVisible {
+			continue
+		}
+		if got := e.Peek8(div); got != raw {
+			t.Fatalf("Peek8(DIV) = 0x%02X, raw bus state = 0x%02X", got, raw)
+		}
+		return
+	}
+
+	t.Fatal("expected CPU-visible DIV read to differ from raw bus state")
+}
+
 func TestPeek16LittleEndian(t *testing.T) {
 	e := newTestEmulator(t)
 	defer e.Close()
