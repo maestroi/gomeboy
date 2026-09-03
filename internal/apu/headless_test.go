@@ -3,8 +3,8 @@ package apu
 import (
 	"testing"
 
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/scheduler"
 )
 
 func TestHighPassStateIsPerAPU(t *testing.T) {

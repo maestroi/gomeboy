@@ -2,8 +2,8 @@ package tests
 
 import (
 	"fmt"
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/types"
 	"image"
 	"image/color"
 	"image/draw"

@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/launch"
-	"github.com/thelolagemann/gomeboy/pkg/display"
-	"github.com/thelolagemann/gomeboy/pkg/display/web"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
-	"github.com/thelolagemann/gomeboy/pkg/log"
-	"github.com/thelolagemann/gomeboy/pkg/webbridge"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/launch"
+	"github.com/maestroi/gomeboy/pkg/display"
+	"github.com/maestroi/gomeboy/pkg/display/web"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/log"
+	"github.com/maestroi/gomeboy/pkg/webbridge"
 	_ "net/http/pprof"
 )
 

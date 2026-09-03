@@ -1,4 +1,4 @@
-module github.com/thelolagemann/gomeboy
+module github.com/maestroi/gomeboy
 
 go 1.26.0
 

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
 )
 
 // fakeEmulator is a trivial fake implementing the webbridge.Emulator

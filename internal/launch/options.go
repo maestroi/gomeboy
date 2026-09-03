@@ -16,11 +16,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/types"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
-	"github.com/thelolagemann/gomeboy/pkg/log"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/log"
+	"github.com/maestroi/gomeboy/pkg/utils"
 )
 
 // Options holds the shared CLI options. Every field is a restart-time

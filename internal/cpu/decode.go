@@ -1,8 +1,8 @@
 package cpu
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/scheduler"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/types"
 )
 
 var incDecBit = []uint16{0x01, 0xffff}

@@ -21,11 +21,11 @@ package gomeboy
 import (
 	"fmt"
 
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/ppu"
-	"github.com/thelolagemann/gomeboy/internal/types"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/ppu"
+	"github.com/maestroi/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/pkg/utils"
 	"unsafe"
 )
 

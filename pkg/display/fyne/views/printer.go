@@ -5,7 +5,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/thelolagemann/gomeboy/internal/serial/accessories"
+	"github.com/maestroi/gomeboy/internal/serial/accessories"
 	"image"
 	"time"
 )

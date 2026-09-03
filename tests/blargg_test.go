@@ -1,8 +1,8 @@
 package tests
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/types"
 	"os"
 	"path/filepath"
 	"strings"

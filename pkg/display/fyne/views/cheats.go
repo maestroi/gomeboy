@@ -8,8 +8,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/pkg/display/fyne/themes"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/pkg/display/fyne/themes"
 	"image/color"
 	"strings"
 )

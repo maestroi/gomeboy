@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/pkg/emulator"
 )
 
 // fakeDriver is a display-server-free stand-in for a display driver.

@@ -225,10 +225,10 @@ The bundled loop is a demonstration/spectator shell rather than a complete game-
 
 ## Go library
 
-> This fork currently retains the upstream module path `github.com/thelolagemann/gomeboy`, so library imports use that path.
+> This fork currently retains the upstream module path `github.com/maestroi/gomeboy`, so library imports use that path.
 
 ```go
-import "github.com/thelolagemann/gomeboy/pkg/gomeboy"
+import "github.com/maestroi/gomeboy/pkg/gomeboy"
 
 emu, err := gomeboy.New(
     gomeboy.WithROM("game.gb"),

@@ -3,10 +3,10 @@ package display
 import (
 	"flag"
 	"fmt"
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
-	"github.com/thelolagemann/gomeboy/pkg/log"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/pkg/log"
 	"strconv"
 )
 

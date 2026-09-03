@@ -1,7 +1,7 @@
 package tests
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/types"
 	"os"
 	"path/filepath"
 	"testing"

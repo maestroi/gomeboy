@@ -5,8 +5,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/pkg/utils"
 	"strconv"
 )
 

@@ -1,10 +1,10 @@
 package timer
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/apu"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/scheduler"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/apu"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/types"
 )
 
 // Controller is a timer controller. It is used to generate

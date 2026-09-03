@@ -1,6 +1,6 @@
 package cpu
 
-import "github.com/thelolagemann/gomeboy/internal/types"
+import "github.com/maestroi/gomeboy/internal/types"
 
 // InstructionStep describes one debugger-level CPU step. Executed is false
 // when the step serviced an interrupt before fetching the next opcode. Frames

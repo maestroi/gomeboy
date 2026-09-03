@@ -3,7 +3,7 @@ package io
 import (
 	"bufio"
 	"fmt"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
+	"github.com/maestroi/gomeboy/pkg/utils"
 	"io"
 	"strconv"
 	"strings"

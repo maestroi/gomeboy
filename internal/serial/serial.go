@@ -1,9 +1,9 @@
 package serial
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/scheduler"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/types"
 )
 
 const (

@@ -1,7 +1,7 @@
 package ppu
 
 import (
-	"github.com/thelolagemann/gomeboy/pkg/utils"
+	"github.com/maestroi/gomeboy/pkg/utils"
 )
 
 // State is a snapshot of the PPU's execution state, including all

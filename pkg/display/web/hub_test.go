@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/thelolagemann/gomeboy/pkg/display"
-	"github.com/thelolagemann/gomeboy/pkg/log"
+	"github.com/maestroi/gomeboy/pkg/display"
+	"github.com/maestroi/gomeboy/pkg/log"
 )
 
 // freeAddr returns an ephemeral loopback address that is currently free.
