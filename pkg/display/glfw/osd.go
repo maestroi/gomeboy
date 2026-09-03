@@ -143,8 +143,9 @@ func (o *osd) render(text string) {
 	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, o.texW, o.texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
 }
 
-// Draw renders the current panel into the top-left corner of a screenW x
-// screenH viewport with an 8px margin.
+// Draw renders the current panel. Transient messages stay in the top-left;
+// persistent panels such as the pause menu are centered. Both are scaled at
+// common desktop resolutions so fullscreen overlays remain readable.
 func (o *osd) Draw(screenW, screenH int32) {
 	if o.message == "" {
 		return
@@ -153,10 +154,26 @@ func (o *osd) Draw(screenW, screenH int32) {
 		return
 	}
 
+	scale := osdScale(screenW, screenH)
+	quadW := o.texW * scale
+	quadH := o.texH * scale
+	posX := int32(8) * scale
+	posY := int32(8) * scale
+	if o.persistent {
+		posX = (screenW - quadW) / 2
+		posY = (screenH - quadH) / 2
+		if posX < 8 {
+			posX = 8
+		}
+		if posY < 8 {
+			posY = 8
+		}
+	}
+
 	gl.UseProgram(o.program)
 	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("screenSize\x00")), float32(screenW), float32(screenH))
-	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("quadSize\x00")), float32(o.texW), float32(o.texH))
-	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("quadPos\x00")), 8, 8)
+	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("quadSize\x00")), float32(quadW), float32(quadH))
+	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("quadPos\x00")), float32(posX), float32(posY))
 
 	gl.ActiveTexture(gl.TEXTURE0)
 	gl.BindTexture(gl.TEXTURE_2D, o.texture)
@@ -169,6 +186,17 @@ func (o *osd) Draw(screenW, screenH int32) {
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
 
 	gl.Disable(gl.BLEND)
+}
+
+func osdScale(screenW, screenH int32) int32 {
+	switch {
+	case screenW >= 2560 && screenH >= 1440:
+		return 3
+	case screenW >= 1280 && screenH >= 720:
+		return 2
+	default:
+		return 1
+	}
 }
 
 func compileOSDProgram() uint32 {
