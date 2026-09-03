@@ -941,6 +941,13 @@ func (a *APU) Samples() ([]float32, uint32) {
 	defer a.Unlock()
 	s, b := a.buffer[:a.bufferPos], a.bufferPos
 	a.bufferPos = 0
+	// sample() grows a.buffer via append when a burst (e.g. turbo mode)
+	// overflows bufferSize. Shrink back down after draining so each future
+	// overflow grows from the same baseline instead of compounding onto an
+	// ever-larger backing array.
+	if len(a.buffer) > bufferSize {
+		a.buffer = a.buffer[:bufferSize]
+	}
 	return s, b
 }
 
