@@ -26,3 +26,31 @@ jobs:
         run: go mod download
       - name: tests
         run: go test -tags test -v ./tests -run Test_Regressions
+
+  test_desktop_glfw:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v7
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            xorg-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            wayland-protocols \
+            libsdl2-dev
+      - name: install dependencies
+        run: go mod download
+      - name: test desktop display packages
+        run: go test ./pkg/display ./pkg/display/glfw
