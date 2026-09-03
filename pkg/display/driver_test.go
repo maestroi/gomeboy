@@ -46,19 +46,19 @@ func driverByName(t *testing.T, name string) *fakeDriver {
 }
 
 // WEB-AUTO: auto chooses the preferred installed desktop driver regardless
-// of registration order. GLFW is preferred when both desktop frontends are
-// available; web is never selected implicitly.
+// of registration order. Fyne remains first until GLFW has standalone-launch
+// parity; web is never selected implicitly.
 func TestAutoSelectsDesktopDriverRegardlessOfOrder(t *testing.T) {
 	tests := []struct {
 		name  string
 		order []string
 		want  string // name of the driver auto must select
 	}{
-		{name: "web first", order: []string{"web", "fyne", "glfw"}, want: "glfw"},
-		{name: "web middle", order: []string{"fyne", "web", "glfw"}, want: "glfw"},
-		{name: "web last", order: []string{"fyne", "glfw", "web"}, want: "glfw"},
-		{name: "glfw before fyne", order: []string{"glfw", "fyne", "web"}, want: "glfw"},
-		{name: "desktop reversed", order: []string{"web", "glfw", "fyne"}, want: "glfw"},
+		{name: "web first", order: []string{"web", "fyne", "glfw"}, want: "fyne"},
+		{name: "web middle", order: []string{"fyne", "web", "glfw"}, want: "fyne"},
+		{name: "web last", order: []string{"fyne", "glfw", "web"}, want: "fyne"},
+		{name: "glfw before fyne", order: []string{"glfw", "fyne", "web"}, want: "fyne"},
+		{name: "desktop reversed", order: []string{"web", "glfw", "fyne"}, want: "fyne"},
 		{name: "only glfw after web", order: []string{"web", "glfw"}, want: "glfw"},
 		{name: "only glfw before web", order: []string{"glfw", "web"}, want: "glfw"},
 		{name: "only fyne after web", order: []string{"web", "fyne"}, want: "fyne"},
@@ -108,7 +108,7 @@ func TestExplicitWebSelection(t *testing.T) {
 
 			want := driverByName(t, "web")
 			if got := GetDriver("web"); got != want {
-				t.Fatalf("GetDriver(web) with %v installed = %v, want the registered web driver", order, got)
+				t.Fatalf("GetDriver(web) with %v installed = %v, want the registered web driver", order, got, want)
 			}
 		})
 	}
