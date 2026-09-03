@@ -3,6 +3,7 @@
 package glfw
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,9 +11,11 @@ import (
 )
 
 type menuController struct {
-	paused bool
-	speed  int
-	resets int
+	paused  bool
+	speed   int
+	resets  int
+	saveErr error
+	loadErr error
 }
 
 func (m *menuController) LoadROM(string) error { return nil }
@@ -24,8 +27,8 @@ func (m *menuController) Pause()            { m.paused = true }
 func (m *menuController) Resume()           { m.paused = false }
 func (m *menuController) Paused() bool      { return m.paused }
 func (m *menuController) Initialised() bool { return true }
-func (m *menuController) QuickSave() error  { return nil }
-func (m *menuController) QuickLoad() error  { return nil }
+func (m *menuController) QuickSave() error  { return m.saveErr }
+func (m *menuController) QuickLoad() error  { return m.loadErr }
 func (m *menuController) SetSpeed(speed int) {
 	m.speed = speed
 }
@@ -35,23 +38,35 @@ func TestMenuNavigationWraps(t *testing.T) {
 	m := &menu{}
 	m.Toggle()
 	m.Move(-1)
-	if got, want := m.Action(), menuClose; got != want {
+	if got, want := m.Action(), menuReset; got != want {
 		t.Fatalf("Move(-1) action = %v, want %v", got, want)
 	}
 	m.Move(1)
-	if got, want := m.Action(), menuReset; got != want {
+	if got, want := m.Action(), menuResume; got != want {
 		t.Fatalf("Move(1) action = %v, want %v", got, want)
 	}
 }
 
 func TestMenuTextReflectsControllerState(t *testing.T) {
+	fpsOverlayEnabled = false
+	t.Cleanup(func() { fpsOverlayEnabled = false })
+
 	c := &menuController{speed: 4}
 	m := &menu{open: true, selected: int(menuSpeed)}
 	got := m.Text(c, true)
 
-	for _, want := range []string{"Reset", "> Speed: 4x", "Fullscreen: on"} {
+	for _, want := range []string{"Resume game", "> Speed: 4x", "Fullscreen: on", "Show FPS: off", "arrows D-pad", "Backspace Select"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("menu text %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestStartupHelpExplainsKeyboardMapping(t *testing.T) {
+	got := startupHelpText()
+	for _, want := range []string{"Arrows       D-Pad", "A / B        Game Boy A / B", "Enter        Start", "Backspace    Select", "Esc          Menu", "F5 / F6      Quick Save / Load", "F11          Fullscreen"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("startup help %q does not contain %q", got, want)
 		}
 	}
 }
@@ -78,6 +93,19 @@ func TestEscapeMakesMenuModal(t *testing.T) {
 	}
 }
 
+func TestResumeActionClosesMenu(t *testing.T) {
+	c := &menuController{paused: true, speed: 1}
+	m := &menu{open: true, selected: int(menuResume)}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if m.open {
+		t.Fatal("resume action left menu open")
+	}
+	if c.Paused() {
+		t.Fatal("resume action left emulation paused")
+	}
+}
+
 func TestResetActionKeepsMenuPaused(t *testing.T) {
 	c := &menuController{paused: true, speed: 1}
 	m := &menu{open: true, selected: int(menuReset)}
@@ -92,16 +120,86 @@ func TestResetActionKeepsMenuPaused(t *testing.T) {
 	if !m.open {
 		t.Fatal("reset action closed menu")
 	}
+	if got, want := m.status, "Game reset"; got != want {
+		t.Fatalf("reset status = %q, want %q", got, want)
+	}
+}
+
+func TestMenuQuickSaveAndLoadFeedback(t *testing.T) {
+	c := &menuController{paused: true, speed: 1}
+	m := &menu{open: true, selected: int(menuQuickSave)}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if got, want := m.status, "State saved"; got != want {
+		t.Fatalf("quick save status = %q, want %q", got, want)
+	}
+
+	c.saveErr = errors.New("disk full")
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if got, want := m.status, "Quick Save failed"; got != want {
+		t.Fatalf("failed quick save status = %q, want %q", got, want)
+	}
+
+	m.selected = int(menuQuickLoad)
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if got, want := m.status, "State loaded"; got != want {
+		t.Fatalf("quick load status = %q, want %q", got, want)
+	}
+
+	c.loadErr = errors.New("missing state")
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if got, want := m.status, "Quick Load failed"; got != want {
+		t.Fatalf("failed quick load status = %q, want %q", got, want)
+	}
+}
+
+func TestMenuMoveClearsStatus(t *testing.T) {
+	m := &menu{open: true, status: "State saved"}
+	m.Move(1)
+	if m.status != "" {
+		t.Fatalf("menu status = %q after navigation, want empty", m.status)
+	}
 }
 
 func TestMenuSpeedCyclesExpectedValues(t *testing.T) {
 	c := &menuController{paused: true, speed: 1}
 	m := &menu{open: true, selected: int(menuSpeed)}
 
-	for _, want := range []int{2, 4, 8, 1} {
+	for _, want := range []int{2, 4, 8, 16, 1} {
 		executeMenuAction(&glfwDriver{}, nil, c, nil, m)
 		if c.speed != want {
 			t.Fatalf("speed = %d, want %d", c.speed, want)
 		}
+	}
+}
+
+func TestMenuFPSToggleIsOffByDefaultAndUpdatesStatus(t *testing.T) {
+	fpsOverlayEnabled = false
+	t.Cleanup(func() { fpsOverlayEnabled = false })
+
+	c := &menuController{paused: true, speed: 1}
+	m := &menu{open: true, selected: int(menuFPS)}
+
+	if got := m.Text(c, false); !strings.Contains(got, "> Show FPS: off") {
+		t.Fatalf("initial menu text %q does not show FPS off", got)
+	}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if !fpsOverlayEnabled {
+		t.Fatal("FPS toggle did not enable overlay")
+	}
+	if got, want := m.status, "FPS counter enabled"; got != want {
+		t.Fatalf("FPS status = %q, want %q", got, want)
+	}
+	if got := m.Text(c, false); !strings.Contains(got, "> Show FPS: on") {
+		t.Fatalf("enabled menu text %q does not show FPS on", got)
+	}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if fpsOverlayEnabled {
+		t.Fatal("FPS toggle did not disable overlay")
+	}
+	if got, want := m.status, "FPS counter disabled"; got != want {
+		t.Fatalf("FPS status = %q, want %q", got, want)
 	}
 }

@@ -302,6 +302,7 @@ func (g *glfwDriver) run(c emulator.Controller, frames <-chan []byte, pressed, r
 func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan []byte, pressed, released chan<- io.Button) error {
 	hud := newOSD()
 	menu := &menu{}
+	hud.Show(startupHelpText(), 8*time.Second)
 
 	// initialize window settings
 	g.windowSettings.width, g.windowSettings.height = w.size()
@@ -491,37 +492,52 @@ type resetter interface {
 
 func executeMenuAction(g *glfwDriver, w window, c emulator.Controller, hud *osd, menu *menu) {
 	switch menu.Action() {
-	case menuReset:
-		if r, ok := c.(resetter); ok {
-			if err := r.Reset(); err != nil {
-				log.Errorf("reset: %v", err)
-			}
-			// Reset reinitializes the emulator. Keep the menu-modal behavior
-			// explicit so execution cannot resume behind the menu.
-			c.Pause()
+	case menuResume:
+		menu.Close()
+		if c != nil {
+			c.Resume()
 		}
 	case menuQuickSave:
 		if c != nil {
 			if err := c.QuickSave(); err != nil {
 				log.Errorf("quick save: %v", err)
+				menu.SetStatus("Quick Save failed")
+			} else {
+				menu.SetStatus("State saved")
 			}
 		}
 	case menuQuickLoad:
 		if c != nil {
 			if err := c.QuickLoad(); err != nil {
 				log.Errorf("quick load: %v", err)
+				menu.SetStatus("Quick Load failed")
+			} else {
+				menu.SetStatus("State loaded")
 			}
 		}
 	case menuSpeed:
 		if c != nil {
 			c.SetSpeed(nextMenuSpeed(c.Speed()))
+			menu.SetStatus(fmt.Sprintf("Speed set to %dx", c.Speed()))
 		}
 	case menuFullscreen:
 		toggleFullscreen(g, w)
-	case menuClose:
-		menu.Close()
-		if c != nil {
-			c.Resume()
+		if g.fullscreen {
+			menu.SetStatus("Fullscreen enabled")
+		} else {
+			menu.SetStatus("Fullscreen disabled")
+		}
+	case menuReset:
+		if r, ok := c.(resetter); ok {
+			if err := r.Reset(); err != nil {
+				log.Errorf("reset: %v", err)
+				menu.SetStatus("Reset failed")
+			} else {
+				menu.SetStatus("Game reset")
+			}
+			// Reset reinitializes the emulator. Keep the menu-modal behavior
+			// explicit so execution cannot resume behind the menu.
+			c.Pause()
 		}
 	}
 	refreshMenu(hud, menu, c, g.fullscreen)
@@ -546,6 +562,8 @@ func nextMenuSpeed(current int) int {
 		return 4
 	case current < 8:
 		return 8
+	case current < 16:
+		return 16
 	default:
 		return 1
 	}
