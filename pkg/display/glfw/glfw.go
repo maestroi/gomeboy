@@ -485,11 +485,15 @@ func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, releas
 	}
 }
 
+type resetter interface {
+	Reset() error
+}
+
 func executeMenuAction(g *glfwDriver, w window, c emulator.Controller, hud *osd, menu *menu) {
 	switch menu.Action() {
 	case menuReset:
-		if c != nil {
-			if err := c.Reset(); err != nil {
+		if r, ok := c.(resetter); ok {
+			if err := r.Reset(); err != nil {
 				log.Errorf("reset: %v", err)
 			}
 			// Reset reinitializes the emulator. Keep the menu-modal behavior
