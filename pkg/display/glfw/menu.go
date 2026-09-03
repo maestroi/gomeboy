@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/pkg/emulator"
 )
 
 type menuAction int
