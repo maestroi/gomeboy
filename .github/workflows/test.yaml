@@ -9,6 +9,24 @@ on:
       - main
 
 jobs:
+  test_library:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v7
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: install dependencies
+        run: go mod download
+      - name: test library package
+        run: go test ./pkg/gomeboy
+
   test_regressions:
     runs-on: ubuntu-latest
 
