@@ -1,28 +1,36 @@
 package gomeboy
 
-import "github.com/thelolagemann/gomeboy/internal/gameboy"
+import (
+	"errors"
 
-// Checkpoint is an opaque in-memory emulator snapshot intended for fast
-// branching/search workloads. It is process-local: use SaveState for portable
-// serialized state.
+	"github.com/thelolagemann/gomeboy/internal/gameboy"
+)
+
+// Checkpoint is an opaque reusable in-memory emulator checkpoint. Its zero
+// value is ready to use as a CheckpointInto destination. Unlike SaveState, it
+// is not a stable or portable serialized format.
 type Checkpoint struct {
 	state gameboy.State
+	valid bool
 }
 
-// CheckpointInto captures the current execution state into cp. Reusing the same
-// Checkpoint avoids serialized save-state encoding and its byte-buffer churn.
-func (e *Emulator) CheckpointInto(cp *Checkpoint) {
-	if cp == nil {
-		return
+// CheckpointInto captures the emulator into dst. Reusing the same Checkpoint
+// avoids serialization and reuses variable-sized snapshot buffers after their
+// first allocation.
+func (e *Emulator) CheckpointInto(dst *Checkpoint) {
+	if dst == nil {
+		panic("gomeboy: nil checkpoint destination")
 	}
-	cp.state = e.gb.Snapshot()
+	e.gb.CheckpointInto(&dst.state)
+	dst.valid = true
 }
 
-// RestoreCheckpoint restores a checkpoint previously captured from an emulator
-// running the same ROM.
-func (e *Emulator) RestoreCheckpoint(cp *Checkpoint) {
-	if cp == nil {
-		return
+// RestoreCheckpoint restores a checkpoint captured from an emulator running
+// the same ROM.
+func (e *Emulator) RestoreCheckpoint(src *Checkpoint) error {
+	if src == nil || !src.valid {
+		return errors.New("gomeboy: checkpoint is not initialized")
 	}
-	e.gb.Restore(cp.state)
+	e.gb.Restore(src.state)
+	return nil
 }

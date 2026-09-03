@@ -1,0 +1,70 @@
+package ppu
+
+// SnapshotInto captures PPU state into dst while reusing the scanline object
+// buffer used by repeated in-process checkpoints.
+func (p *PPU) SnapshotInto(dst *State) {
+	objBuffer := dst.ObjBuffer
+	*dst = State{
+		Enabled:                  p.enabled,
+		BGEnabled:                p.bgEnabled,
+		WinEnabled:               p.winEnabled,
+		ObjEnabled:               p.objEnabled,
+		BGTileMap:                p.bgTileMap,
+		WinTileMap:               p.winTileMap,
+		ObjSize:                  p.objSize,
+		AddressMode:              p.addressMode,
+		Mode:                     p.mode,
+		ModeToInt:                p.modeToInt,
+		LY:                       p.ly,
+		LX:                       p.lx,
+		Status:                   p.status,
+		WinFetcherX:              p.winFetcherX,
+		WLY:                      p.wly,
+		WinTriggerWY:             p.winTriggerWy,
+		WinTriggerWX:             p.winTriggerWx,
+		SCXDiscarded:             p.scxDiscarded,
+		SCXToDiscard:             p.scxToDiscard,
+		SCY:                      p.scy,
+		SCX:                      p.scx,
+		WY:                       p.wy,
+		WX:                       p.wx,
+		LYCompare:                p.lyCompare,
+		LYForComparison:          p.lyForComparison,
+		LYCInt:                   p.lycInt,
+		STATInt:                  p.statInt,
+		CRAM:                     p.cRAM,
+		ColourPalette:            p.ColourPalette,
+		ColourOBJPalette:         p.ColourOBJPalette,
+		BGColourisationPalette:   p.BGColourisationPalette,
+		OBJ0ColourisationPalette: p.OBJ0ColourisationPalette,
+		OBJ1ColourisationPalette: p.OBJ1ColourisationPalette,
+		PreparedFrame:            p.PreparedFrame,
+		BGFIFO:                   p.bgFIFO.Snapshot(),
+		ObjFIFO:                  p.objFIFO.Snapshot(),
+		FetcherState:             p.fetcherState,
+		FetcherTileNo:            p.fetcherTileNo,
+		FetcherTileAttr:          p.fetcherTileAttr,
+		FetcherData:              p.fetcherData,
+		FetcherTileNoAddress:     p.fetcherTileNoAddress,
+		ObjectFetcherState:       p.objectFetcherState,
+		ObjFetcherTileNo:         p.objFetcherTileNo,
+		ObjFetcherTileAttr:       p.objFetcherTileAttr,
+		ObjFetcherData:           p.objFetcherData,
+		FetcherObj:               p.fetcherObj,
+		FetchingObj:              p.fetchingObj,
+		LineState:                p.lineState,
+		OffscreenLineState:       p.offscreenLineState,
+		GlitchedLineState:        p.glitchedLineState,
+		LineDot:                  p.lineDot,
+		FrameDot:                 p.frameDot,
+		CGBMode:                  p.cgbMode,
+		BCPSIndex:                p.bcpsIndex,
+		OCPSIndex:                p.ocpsIndex,
+		BCPSIncrement:            p.bcpsIncrement,
+		OCPSIncrement:            p.ocpsIncrement,
+	}
+	dst.ObjBuffer = append(objBuffer[:0], p.objBuffer...)
+	dst.Debug.OBJDisabled = p.Debug.OBJDisabled
+	dst.Debug.BackgroundDisabled = p.Debug.BackgroundDisabled
+	dst.Debug.WindowDisabled = p.Debug.WindowDisabled
+}

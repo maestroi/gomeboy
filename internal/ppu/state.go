@@ -205,7 +205,7 @@ func (p *PPU) Restore(s State) {
 	p.lineState = s.LineState
 	p.offscreenLineState = s.OffscreenLineState
 	p.glitchedLineState = s.GlitchedLineState
-	p.objBuffer = append([]Object(nil), s.ObjBuffer...)
+	p.objBuffer = append(p.objBuffer[:0], s.ObjBuffer...)
 	p.lineDot = s.LineDot
 	p.frameDot = s.FrameDot
 	p.cgbMode = s.CGBMode
