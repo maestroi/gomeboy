@@ -61,6 +61,21 @@ func (w *controlWindow) setKeyCallback(callback func(*glfw.Window, glfw.Key, int
 	})
 }
 
+// setDropCallback is a compatibility passthrough for the standalone ROM-open
+// flow. Keeping it here means this wrapper can be composed before or after the
+// ROM-drop wrapper without depending on Go's file/init ordering.
+func (w *controlWindow) setDropCallback(callback func([]string)) {
+	if dropper, ok := w.window.(interface{ setDropCallback(func([]string)) }); ok {
+		dropper.setDropCallback(callback)
+		return
+	}
+	if native, ok := w.window.(*glfwWindow); ok {
+		native.w.SetDropCallback(func(_ *glfw.Window, paths []string) { callback(paths) })
+	}
+}
+
+func (w *controlWindow) setTitle(title string) { setNativeWindowTitle(w.window, title) }
+
 func (w *controlWindow) setStatusTitle(status string) {
 	setNativeWindowTitle(w.window, "GomeBoy — "+status)
 }
