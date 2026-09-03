@@ -17,10 +17,17 @@ const (
 	menuQuickLoad
 	menuSpeed
 	menuFullscreen
+	menuFPS
 	menuReset
+	menuNoop
 )
 
 const menuItemCount = int(menuReset) + 1
+
+// fpsOverlayEnabled is intentionally off by default so the normal gameplay
+// view stays clean. The pause menu toggles it for users who want performance
+// diagnostics without conflating render FPS with emulation speed.
+var fpsOverlayEnabled bool
 
 // menu is the small state machine behind the GLFW in-window menu. It is kept
 // independent from OpenGL so navigation and labels can be tested without a
@@ -54,7 +61,20 @@ func (m *menu) Action() menuAction {
 	if !m.open {
 		return menuResume
 	}
-	return menuAction(m.selected)
+
+	action := menuAction(m.selected)
+	if action == menuFPS {
+		fpsOverlayEnabled = !fpsOverlayEnabled
+		if fpsOverlayEnabled {
+			m.SetStatus("FPS counter enabled")
+		} else {
+			m.SetStatus("FPS counter disabled")
+		}
+		// executeMenuAction deliberately has no work to do beyond refreshing
+		// the menu for this display-only toggle.
+		return menuNoop
+	}
+	return action
 }
 
 func (m *menu) Close() {
@@ -77,12 +97,18 @@ func (m *menu) Text(c emulator.Controller, fullscreen bool) string {
 		fullscreenLabel = "on"
 	}
 
+	fpsLabel := "off"
+	if fpsOverlayEnabled {
+		fpsLabel = "on"
+	}
+
 	items := []string{
 		"Resume game",
 		"Quick Save  [F5]",
 		"Quick Load  [F6]",
 		fmt.Sprintf("Speed: %dx", speed),
 		"Fullscreen: " + fullscreenLabel + "  [F11]",
+		"Show FPS: " + fpsLabel,
 		"Reset game",
 	}
 
