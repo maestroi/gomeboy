@@ -3,6 +3,7 @@
 package glfw
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -50,10 +51,15 @@ void main() {
 // a single texture so the desktop driver stays dependency-light.
 type osd struct {
 	program, vao, vbo, texture uint32
+	fpsTexture                 uint32
 	message                    string
 	expiresAt                  time.Time
 	persistent                 bool
 	texW, texH                 int32
+	fpsTexW, fpsTexH           int32
+	fpsFrames                  int
+	fpsWindowStart             time.Time
+	fpsValue                   float64
 }
 
 func newOSD() *osd {
@@ -78,11 +84,17 @@ func newOSD() *osd {
 	gl.EnableVertexAttribArray(1)
 
 	gl.GenTextures(1, &o.texture)
-	gl.BindTexture(gl.TEXTURE_2D, o.texture)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+	configureOSDTexture(o.texture)
+	gl.GenTextures(1, &o.fpsTexture)
+	configureOSDTexture(o.fpsTexture)
 
 	return o
+}
+
+func configureOSDTexture(texture uint32) {
+	gl.BindTexture(gl.TEXTURE_2D, texture)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
 }
 
 // Show displays a short-lived status message.
@@ -110,7 +122,21 @@ func (o *osd) Hide() {
 }
 
 func (o *osd) render(text string) {
+	img, w, h := rasterizeOSDText(text)
 	o.message = text
+	o.texW, o.texH = w, h
+	gl.BindTexture(gl.TEXTURE_2D, o.texture)
+	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, o.texW, o.texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
+}
+
+func (o *osd) renderFPS(text string) {
+	img, w, h := rasterizeOSDText(text)
+	o.fpsTexW, o.fpsTexH = w, h
+	gl.BindTexture(gl.TEXTURE_2D, o.fpsTexture)
+	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, o.fpsTexW, o.fpsTexH, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
+}
+
+func rasterizeOSDText(text string) (*image.RGBA, int32, int32) {
 	lines := strings.Split(text, "\n")
 	face := basicfont.Face7x13
 
@@ -138,37 +164,84 @@ func (o *osd) render(text string) {
 		d.DrawString(line)
 	}
 
-	o.texW, o.texH = int32(w), int32(h)
-	gl.BindTexture(gl.TEXTURE_2D, o.texture)
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, o.texW, o.texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
+	return img, int32(w), int32(h)
 }
 
 // Draw renders the current panel. Transient messages stay in the top-left;
 // persistent panels such as the pause menu are centered. Both are scaled at
-// common desktop resolutions so fullscreen overlays remain readable.
+// common desktop resolutions so fullscreen overlays remain readable. When
+// enabled, the FPS counter is drawn separately in the top-right corner.
 func (o *osd) Draw(screenW, screenH int32) {
-	if o.message == "" {
-		return
+	now := time.Now()
+	messageVisible := o.message != "" && (o.persistent || now.Before(o.expiresAt))
+
+	if messageVisible {
+		scale := osdScale(screenW, screenH)
+		quadW := o.texW * scale
+		quadH := o.texH * scale
+		posX := int32(8) * scale
+		posY := int32(8) * scale
+		if o.persistent {
+			posX = (screenW - quadW) / 2
+			posY = (screenH - quadH) / 2
+			if posX < 8 {
+				posX = 8
+			}
+			if posY < 8 {
+				posY = 8
+			}
+		}
+		o.drawTexture(o.texture, o.texW, o.texH, screenW, screenH, posX, posY, scale)
 	}
-	if !o.persistent && time.Now().After(o.expiresAt) {
+
+	// Hide the FPS counter while a modal menu is open. This keeps the pause
+	// screen uncluttered and avoids reporting the menu's polling redraw rate.
+	if fpsOverlayEnabled && !o.persistent {
+		o.updateFPS(now)
+		scale := osdScale(screenW, screenH)
+		quadW := o.fpsTexW * scale
+		margin := int32(8) * scale
+		posX := screenW - quadW - margin
+		if posX < margin {
+			posX = margin
+		}
+		o.drawTexture(o.fpsTexture, o.fpsTexW, o.fpsTexH, screenW, screenH, posX, margin, scale)
+	}
+}
+
+func (o *osd) updateFPS(now time.Time) {
+	if o.fpsWindowStart.IsZero() {
+		o.fpsWindowStart = now
+		o.fpsFrames = 0
+		o.renderFPS("FPS: --")
+	}
+
+	o.fpsFrames++
+	elapsed := now.Sub(o.fpsWindowStart)
+	if elapsed < 500*time.Millisecond {
 		return
 	}
 
-	scale := osdScale(screenW, screenH)
-	quadW := o.texW * scale
-	quadH := o.texH * scale
-	posX := int32(8) * scale
-	posY := int32(8) * scale
-	if o.persistent {
-		posX = (screenW - quadW) / 2
-		posY = (screenH - quadH) / 2
-		if posX < 8 {
-			posX = 8
-		}
-		if posY < 8 {
-			posY = 8
-		}
+	o.fpsValue = float64(o.fpsFrames) / elapsed.Seconds()
+	o.fpsFrames = 0
+	o.fpsWindowStart = now
+	o.renderFPS(formatFPS(o.fpsValue))
+}
+
+func formatFPS(fps float64) string {
+	if fps <= 0 {
+		return "FPS: --"
 	}
+	return fmt.Sprintf("FPS: %.1f", fps)
+}
+
+func (o *osd) drawTexture(texture uint32, texW, texH, screenW, screenH, posX, posY, scale int32) {
+	if texW <= 0 || texH <= 0 {
+		return
+	}
+
+	quadW := texW * scale
+	quadH := texH * scale
 
 	gl.UseProgram(o.program)
 	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("screenSize\x00")), float32(screenW), float32(screenH))
@@ -176,7 +249,7 @@ func (o *osd) Draw(screenW, screenH int32) {
 	gl.Uniform2f(gl.GetUniformLocation(o.program, gl.Str("quadPos\x00")), float32(posX), float32(posY))
 
 	gl.ActiveTexture(gl.TEXTURE0)
-	gl.BindTexture(gl.TEXTURE_2D, o.texture)
+	gl.BindTexture(gl.TEXTURE_2D, texture)
 	gl.Uniform1i(gl.GetUniformLocation(o.program, gl.Str("tex\x00")), 0)
 
 	gl.Enable(gl.BLEND)
