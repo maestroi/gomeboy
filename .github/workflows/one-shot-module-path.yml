@@ -1,0 +1,43 @@
+name: one-shot module path migration
+
+on:
+  push:
+    branches:
+      - chore/standalone-module-path
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rewrite module path
+        shell: bash
+        run: |
+          set -euo pipefail
+          old='github.com/thelolagemann/gomeboy'
+          new='github.com/maestroi/gomeboy'
+          mapfile -t files < <(git grep -Il "$old" || true)
+          if ((${#files[@]})); then
+            perl -pi -e "s#\Q$old\E#$new#g" "${files[@]}"
+          fi
+          rm -f .github/workflows/one-shot-module-path.yml
+          git diff --check
+          if git grep -n "$old" -- ':!LICENSE' ':!go.sum'; then
+            echo 'old module path still present' >&2
+            exit 1
+          fi
+      - name: Commit migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'chore: adopt standalone module path'
+          git push origin HEAD:chore/standalone-module-path
