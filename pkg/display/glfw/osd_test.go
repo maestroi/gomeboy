@@ -25,3 +25,21 @@ func TestOSDScaleTracksDesktopResolution(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatFPS(t *testing.T) {
+	tests := []struct {
+		fps  float64
+		want string
+	}{
+		{fps: 0, want: "FPS: --"},
+		{fps: -1, want: "FPS: --"},
+		{fps: 59.73, want: "FPS: 59.7"},
+		{fps: 120.04, want: "FPS: 120.0"},
+	}
+
+	for _, tc := range tests {
+		if got := formatFPS(tc.fps); got != tc.want {
+			t.Fatalf("formatFPS(%v) = %q, want %q", tc.fps, got, tc.want)
+		}
+	}
+}
