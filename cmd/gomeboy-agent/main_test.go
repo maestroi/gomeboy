@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thelolagemann/gomeboy/pkg/display/web"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
-	"github.com/thelolagemann/gomeboy/pkg/webbridge"
+	"github.com/maestroi/gomeboy/pkg/display/web"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/webbridge"
 )
 
 // testROM is a simple, deterministic ROM that renders a known image.

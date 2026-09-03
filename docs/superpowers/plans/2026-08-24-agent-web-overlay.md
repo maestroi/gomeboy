@@ -28,7 +28,7 @@
 
 **Interfaces:**
 - Consumes: `pkg/gomeboy.Frame` (fields `Width int`, `Height int`, `RGB []byte`) and `pkg/gomeboy.Emulator` methods `Frame() gomeboy.Frame`, `LoadROM(string) error`, `QuickSave() error`, `QuickLoad() error` (all already exist, unchanged).
-- Produces: `webbridge.Emulator` interface, `webbridge.NewAdapter(emu Emulator, fb chan<- []byte) *Adapter`, and `*Adapter` satisfying `github.com/thelolagemann/gomeboy/pkg/emulator.Controller` (`LoadROM(string) error`, `Pause()`, `Resume()`, `Paused() bool`, `Initialised() bool`, `QuickSave() error`, `QuickLoad() error`, `SetSpeed(int)`, `Speed() int`), plus `(*Adapter).PublishFrame()`. Task 3 constructs `webbridge.NewAdapter(emu, fb)` where `emu` is a `*gomeboy.Emulator` and `fb` is `chan []byte`.
+- Produces: `webbridge.Emulator` interface, `webbridge.NewAdapter(emu Emulator, fb chan<- []byte) *Adapter`, and `*Adapter` satisfying `github.com/maestroi/gomeboy/pkg/emulator.Controller` (`LoadROM(string) error`, `Pause()`, `Resume()`, `Paused() bool`, `Initialised() bool`, `QuickSave() error`, `QuickLoad() error`, `SetSpeed(int)`, `Speed() int`), plus `(*Adapter).PublishFrame()`. Task 3 constructs `webbridge.NewAdapter(emu, fb)` where `emu` is a `*gomeboy.Emulator` and `fb` is `chan []byte`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -40,8 +40,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
 )
 
 // fakeEmulator lets tests exercise Adapter without a real ROM.
@@ -225,7 +225,7 @@ package webbridge
 import (
 	"sync/atomic"
 
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
 )
 
 // Emulator is the minimal surface Adapter needs. *gomeboy.Emulator
@@ -522,9 +522,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thelolagemann/gomeboy/pkg/display/web"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
-	"github.com/thelolagemann/gomeboy/pkg/webbridge"
+	"github.com/maestroi/gomeboy/pkg/display/web"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/webbridge"
 )
 
 var testROM = filepath.Join("..", "..", "tests", "roms", "little-things-gb", "firstwhite.gb")
@@ -618,11 +618,11 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/pkg/display"
-	"github.com/thelolagemann/gomeboy/pkg/display/web"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
-	"github.com/thelolagemann/gomeboy/pkg/webbridge"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/pkg/display"
+	"github.com/maestroi/gomeboy/pkg/display/web"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/webbridge"
 )
 
 // runAgentLoop owns emulator advancement and pacing, per the governing

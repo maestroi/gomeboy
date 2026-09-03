@@ -3,7 +3,7 @@ package gomeboy
 import (
 	"errors"
 
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/gameboy"
 )
 
 // Checkpoint is an opaque reusable in-memory emulator checkpoint. Its zero

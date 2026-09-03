@@ -6,7 +6,7 @@ import (
 	"image/png"
 	"io"
 
-	"github.com/thelolagemann/gomeboy/internal/ppu"
+	"github.com/maestroi/gomeboy/internal/ppu"
 )
 
 // Image returns the current frame as a standard image.Image. The returned

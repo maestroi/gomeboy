@@ -6,7 +6,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/thelolagemann/gomeboy/internal/ppu"
+	"github.com/maestroi/gomeboy/internal/ppu"
 	"image/color"
 )
 

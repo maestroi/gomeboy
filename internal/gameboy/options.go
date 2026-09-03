@@ -1,8 +1,8 @@
 package gameboy
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/serial/accessories"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/serial/accessories"
+	"github.com/maestroi/gomeboy/internal/types"
 	"strings"
 )
 

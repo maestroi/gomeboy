@@ -7,8 +7,8 @@ package webbridge
 import (
 	"sync/atomic"
 
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
-	"github.com/thelolagemann/gomeboy/pkg/gomeboy"
+	"github.com/maestroi/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
 )
 
 // Emulator is the minimal surface webbridge needs. pkg/gomeboy.Emulator

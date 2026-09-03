@@ -12,7 +12,7 @@ import (
 const (
 	checkedStateMagic         = "GMBSTATE"
 	checkedStateFormatVersion = uint16(1)
-	gomeboyModulePath         = "github.com/thelolagemann/gomeboy"
+	gomeboyModulePath         = "github.com/maestroi/gomeboy"
 )
 
 type checkedStateEnvelope struct {

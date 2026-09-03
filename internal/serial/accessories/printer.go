@@ -2,8 +2,8 @@ package accessories
 
 import (
 	"fmt"
-	"github.com/thelolagemann/gomeboy/internal/ppu"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/ppu"
+	"github.com/maestroi/gomeboy/internal/types"
 	"image"
 	"image/color"
 	"image/png"

@@ -1,6 +1,6 @@
 package gomeboy
 
-import "github.com/thelolagemann/gomeboy/internal/types"
+import "github.com/maestroi/gomeboy/internal/types"
 
 // CPUState is a compact read-only snapshot of the SM83 CPU and interrupt
 // state. It is intended for debuggers, agent diagnostics, and assertions; it

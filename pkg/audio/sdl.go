@@ -6,7 +6,7 @@ package audio
 // void AudioData(void *userdata, Uint8 *stream, int len);
 import "C"
 import (
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/veandco/go-sdl2/sdl"
 	"time"
 	"unsafe"

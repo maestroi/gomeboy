@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/go-gl/glfw/v3.4/glfw"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/pkg/display"
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/pkg/display"
+	"github.com/maestroi/gomeboy/pkg/emulator"
 )
 
 // resetSeams restores every initialization seam to its default at test end.

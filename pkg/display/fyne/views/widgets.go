@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/thelolagemann/gomeboy/pkg/display/fyne/themes"
+	"github.com/maestroi/gomeboy/pkg/display/fyne/themes"
 	"image"
 	"image/color"
 	"image/png"

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thelolagemann/gomeboy/internal/serial/accessories"
+	"github.com/maestroi/gomeboy/internal/serial/accessories"
 )
 
 // testROM is a simple, deterministic ROM that renders a known image.

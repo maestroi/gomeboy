@@ -5,12 +5,12 @@ import (
 	"encoding/binary"
 	"github.com/cespare/xxhash"
 	"github.com/google/brotli/go/cbrotli"
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/ppu"
-	"github.com/thelolagemann/gomeboy/pkg/display"
-	"github.com/thelolagemann/gomeboy/pkg/emulator"
-	"github.com/thelolagemann/gomeboy/pkg/log"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/ppu"
+	"github.com/maestroi/gomeboy/pkg/display"
+	"github.com/maestroi/gomeboy/pkg/emulator"
+	"github.com/maestroi/gomeboy/pkg/log"
 	"sync"
 )
 

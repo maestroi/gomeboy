@@ -1,9 +1,9 @@
 package io
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/scheduler"
-	"github.com/thelolagemann/gomeboy/internal/types"
-	"github.com/thelolagemann/gomeboy/pkg/utils"
+	"github.com/maestroi/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/pkg/utils"
 	"math/rand"
 )
 

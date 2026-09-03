@@ -1,6 +1,6 @@
 package gameboy
 
-import "github.com/thelolagemann/gomeboy/internal/cpu"
+import "github.com/maestroi/gomeboy/internal/cpu"
 
 // StepInstruction advances the emulator by one debugger-level CPU step while
 // preserving the same save/load serialization guarantee as frame stepping.

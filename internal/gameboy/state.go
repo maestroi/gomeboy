@@ -7,14 +7,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/thelolagemann/gomeboy/internal/apu"
-	"github.com/thelolagemann/gomeboy/internal/cpu"
-	"github.com/thelolagemann/gomeboy/internal/io"
-	"github.com/thelolagemann/gomeboy/internal/ppu"
-	"github.com/thelolagemann/gomeboy/internal/scheduler"
-	"github.com/thelolagemann/gomeboy/internal/serial"
-	"github.com/thelolagemann/gomeboy/internal/timer"
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/apu"
+	"github.com/maestroi/gomeboy/internal/cpu"
+	"github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/ppu"
+	"github.com/maestroi/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/serial"
+	"github.com/maestroi/gomeboy/internal/timer"
+	"github.com/maestroi/gomeboy/internal/types"
 )
 
 // State is a complete snapshot of the emulator's execution state. It

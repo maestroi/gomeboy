@@ -6,7 +6,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/argusdusty/gofft"
-	"github.com/thelolagemann/gomeboy/internal/apu"
+	"github.com/maestroi/gomeboy/internal/apu"
 	"image"
 	"math"
 	"sync"

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/thelolagemann/gomeboy/internal/gameboy"
-	"github.com/thelolagemann/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/internal/io"
 )
 
 const rom = "/home/maestro/Documents/projects/PokePilot/roms/pokemon_red.gb"

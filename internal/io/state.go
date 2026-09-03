@@ -1,7 +1,7 @@
 package io
 
 import (
-	"github.com/thelolagemann/gomeboy/internal/types"
+	"github.com/maestroi/gomeboy/internal/types"
 )
 
 // CartridgeState is a snapshot of a Cartridge's mutable runtime state.
