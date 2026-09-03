@@ -24,6 +24,8 @@ jobs:
           go-version: '1.27'
       - name: install dependencies
         run: go mod download
+      - name: extract test ROMs
+        run: go test -tags test ./tests -run '^$'
       - name: test library package
         run: go test ./pkg/gomeboy
 
