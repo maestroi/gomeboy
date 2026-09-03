@@ -48,11 +48,14 @@ func TestMenuNavigationWraps(t *testing.T) {
 }
 
 func TestMenuTextReflectsControllerState(t *testing.T) {
+	fpsOverlayEnabled = false
+	t.Cleanup(func() { fpsOverlayEnabled = false })
+
 	c := &menuController{speed: 4}
 	m := &menu{open: true, selected: int(menuSpeed)}
 	got := m.Text(c, true)
 
-	for _, want := range []string{"Resume game", "> Speed: 4x", "Fullscreen: on", "arrows D-pad", "Backspace Select"} {
+	for _, want := range []string{"Resume game", "> Speed: 4x", "Fullscreen: on", "Show FPS: off", "arrows D-pad", "Backspace Select"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("menu text %q does not contain %q", got, want)
 		}
@@ -167,5 +170,36 @@ func TestMenuSpeedCyclesExpectedValues(t *testing.T) {
 		if c.speed != want {
 			t.Fatalf("speed = %d, want %d", c.speed, want)
 		}
+	}
+}
+
+func TestMenuFPSToggleIsOffByDefaultAndUpdatesStatus(t *testing.T) {
+	fpsOverlayEnabled = false
+	t.Cleanup(func() { fpsOverlayEnabled = false })
+
+	c := &menuController{paused: true, speed: 1}
+	m := &menu{open: true, selected: int(menuFPS)}
+
+	if got := m.Text(c, false); !strings.Contains(got, "> Show FPS: off") {
+		t.Fatalf("initial menu text %q does not show FPS off", got)
+	}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if !fpsOverlayEnabled {
+		t.Fatal("FPS toggle did not enable overlay")
+	}
+	if got, want := m.status, "FPS counter enabled"; got != want {
+		t.Fatalf("FPS status = %q, want %q", got, want)
+	}
+	if got := m.Text(c, false); !strings.Contains(got, "> Show FPS: on") {
+		t.Fatalf("enabled menu text %q does not show FPS on", got)
+	}
+
+	executeMenuAction(&glfwDriver{}, nil, c, nil, m)
+	if fpsOverlayEnabled {
+		t.Fatal("FPS toggle did not disable overlay")
+	}
+	if got, want := m.status, "FPS counter disabled"; got != want {
+		t.Fatalf("FPS status = %q, want %q", got, want)
 	}
 }
