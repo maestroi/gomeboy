@@ -42,6 +42,9 @@ func AudioData(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 		if speed > 1 {
 			// turbo: mute audio rather than attempting to pitch-shift/resample it.
 			// This is the standard tradeoff other emulators make for fast-forward.
+			// Still drain the APU sample buffer so it doesn't grow unbounded
+			// while turbo is active (Samples() is what resets bufferPos).
+			gb.APU.Samples()
 			for i := 0; i < n; i++ {
 				data[i] = 0
 			}
