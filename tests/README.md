@@ -1,7 +1,7 @@
 # Automated test results
-![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20227,%20failing%2025&width=500)
+![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20228,%20failing%2024&width=500)
 
-#### This document was automatically generated from commit 6a782f9c
+#### This document was automatically generated from commit b6bdd46f
 <hr/>
 GomeBoy is automatically tested against the following test suites:
 
@@ -36,7 +36,7 @@ is compared against a reference image from a known good emulator.
 | acid2 | 75% | 3 | 1 | 4 |
 | bully | 50% | 1 | 1 | 2 |
 | blarrg | 100% | 43 | 0 | 43 |
-| little-things-gb | 75% | 3 | 1 | 4 |
+| little-things-gb | 100% | 4 | 0 | 4 |
 | mooneye | 99% | 113 | 1 | 114 |
 | samesuite | 75% | 59 | 19 | 78 |
 | scribbltests | 100% | 5 | 0 | 5 |
@@ -180,7 +180,7 @@ Explore the individual tests for each suite using the table of contents below.
 | 02-write_timing | ✅ |
 | 03-modify_timing | ✅ |
 # little-things-gb
-![progress](https://progress-bar.xyz/75/?scale=100&title=passing%203,%20failing%201&width=500)
+![progress](https://progress-bar.xyz/100/?scale=100&title=passing%204,%20failing%200&width=500)
 ## firstwhite
 | Test | Passing |
 | ---- | ------- |
@@ -190,7 +190,7 @@ Explore the individual tests for each suite using the table of contents below.
 | Test | Passing |
 | ---- | ------- |
 | tellinglys (DMG) | ✅ |
-| tellinglys (CGB) | ❌ |
+| tellinglys (CGB) | ✅ |
 # mooneye
 ![progress](https://progress-bar.xyz/99/?scale=100&title=passing%20113,%20failing%201&width=500)
 ## acceptance

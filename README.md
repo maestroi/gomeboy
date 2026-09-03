@@ -2,15 +2,15 @@
 
 ![Go version](https://img.shields.io/github/go-mod/go-version/maestroi/gomeboy)
 
-GomeBoy is a Game Boy and Game Boy Color emulator written in Go. It can be used as a desktop emulator, a headless web player, or an in-process library for deterministic automation, testing, search, and AI/agent workloads.
+GomeBoy is a Game Boy and Game Boy Color emulator written in Go. It can be used as a desktop emulator or an in-process library for deterministic automation, testing, search, and AI/agent workloads.
 
 The core is designed to keep hardware-visible behavior accurate while also exposing fast paths for workloads that do not need realtime audio or RGB framebuffer output.
 
 ## Highlights
 
 - Game Boy (DMG) and Game Boy Color (CGB) emulation
-- Desktop frontends with Fyne and GLFW
-- Headless web player and spectator UI
+- GLFW desktop frontend
+- Read-only HTTP spectator UI for library users
 - Deterministic Go library with frame and instruction stepping
 - Fast `Headless()` audio path and optional `WithoutVideo()` rendering path
 - Allocation-free bulk memory observation with `PeekInto`
@@ -62,11 +62,8 @@ The core is designed to keep hardware-visible behavior accurate while also expos
 
 ### Frontends
 
-- Fyne desktop frontend
 - GLFW desktop frontend
-- Headless web frontend with WebSocket-driven UI
 - Read-only HTTP spectator for library users
-- Agent spectator binary that publishes frames and agent state to the web client
 
 ### Deterministic execution
 
@@ -83,16 +80,16 @@ The core is designed to keep hardware-visible behavior accurate while also expos
 
 GomeBoy includes fast paths specifically for headless simulation and agent/search workloads.
 
-The measurements below were collected on GitHub Actions using Ubuntu 24.04, Go 1.27.1, and an AMD EPYC 7763. Each quoted median was sampled five times with a one-second benchmark window. These numbers describe **emulation throughput**, not the Game Boy display refresh rate.
+The measurements below were sampled five times with a one-second benchmark window on an AMD Ryzen 9 7950X (32 logical CPUs) with Go 1.27.0. These numbers describe **emulation throughput**, not the Game Boy display refresh rate; absolute numbers will vary by machine, but the relative video on/off and checkpoint/save-state gaps should hold across hardware.
 
 ### Video output on vs off
 
 | Workload | Video on | `WithoutVideo()` | Improvement |
 | --- | ---: | ---: | ---: |
-| Single headless frame | 705.781 µs | 643.765 µs | 8.79% less time |
-| Simulated throughput | ~1,417 frames/s | ~1,553 frames/s | **+9.63%** |
-| 60-frame batch | 42.399 ms | 38.616 ms | 8.92% less time |
-| 60-frame simulated throughput | ~1,415 frames/s | ~1,554 frames/s | **+9.80%** |
+| Single headless frame | 359.089 µs | 332.199 µs | 7.49% less time |
+| Simulated throughput | ~2,785 frames/s | ~3,010 frames/s | **+8.10%** |
+| 60-frame batch | 21.732 ms | 19.808 ms | 8.86% less time |
+| 60-frame simulated throughput | ~2,761 frames/s | ~3,029 frames/s | **+9.71%** |
 
 Both frame paths remained at **0 B/op and 0 allocs/op** in these benchmarks.
 
@@ -108,16 +105,16 @@ emu, err := gomeboy.New(
 )
 ```
 
-simulated roughly **1.55k Game Boy frames per wall-clock second** on that runner.
+simulated roughly **3k Game Boy frames per wall-clock second** on that machine.
 
 ### Fast checkpoints
 
 | Round trip | Median | Bytes/op | Allocs/op |
 | --- | ---: | ---: | ---: |
-| `CheckpointInto` + `RestoreCheckpoint` | 57.014 µs | 27,264 | 1 |
-| `SaveState` + `LoadState` | 6.879 ms | ~4,118,933 | 24,992 |
+| `CheckpointInto` + `RestoreCheckpoint` | 16.052 µs | 0 | 0 |
+| `SaveState` + `LoadState` | 4.720 ms | ~4,091,664 | 24,991 |
 
-The process-local checkpoint path is approximately **120.7× faster** than serialized save/load, with about **99.17% lower latency** and roughly **151× fewer allocated bytes**.
+The process-local checkpoint path is approximately **294× faster** than serialized save/load, with about **99.66% lower latency**, and allocates nothing per round trip versus ~3.9 MiB for a serialized round trip.
 
 Use checkpoints for search trees, rollback, planning, and repeated local branching. Use serialized or checked save states when the state needs to survive outside the current process.
 
@@ -125,12 +122,10 @@ Use checkpoints for search trees, rollback, planning, and repeated local branchi
 
 | Operation | 4 KiB median | Allocations | Intended use |
 | --- | ---: | ---: | --- |
-| `PeekInto` | ~43.47 ns | 0 | Fast side-effect-free observation |
-| `ReadInto` | 11.506 µs | 0 | CPU-accurate reads with bus semantics |
+| `PeekInto` | ~28.15 ns | 0 | Fast side-effect-free observation |
+| `ReadInto` | 6.350 µs | 0 | CPU-accurate reads with bus semantics |
 
-The bulk `PeekInto` optimization reduced the historical 4 KiB benchmark from about 1.761 µs to 43.47 ns, roughly a **40.5× speedup**. The before/after runs were on different GitHub-hosted EPYC SKUs, so small frame-time differences from that older comparison should be treated cautiously; the `PeekInto` gain is large enough that runner variance is not material to the conclusion.
-
-`PeekInto` ignores DMA conflicts, PPU locks, and lazy IO side effects and is therefore the preferred observation API for agents. `ReadInto` should be used when the caller specifically needs CPU-visible bus behavior.
+`PeekInto` ignores DMA conflicts, PPU locks, and lazy IO side effects, so it runs roughly **225× faster** than `ReadInto` and is the preferred observation API for agents. `ReadInto` should be used when the caller specifically needs CPU-visible bus behavior.
 
 ### Headless execution improvements
 
@@ -142,7 +137,7 @@ The headless path also removes the 96 kHz audio-output sampling event while keep
 
 Requires **Go 1.26+**.
 
-Desktop drivers need the usual Fyne/GLFW system libraries. The web and headless library paths do not require a desktop windowing stack.
+The GLFW driver needs the usual GLFW/OpenGL/SDL2 system libraries for your platform. The headless library path (`pkg/gomeboy`) does not require a desktop windowing stack.
 
 ---
 
@@ -150,8 +145,6 @@ Desktop drivers need the usual Fyne/GLFW system libraries. The web and headless 
 
 ```sh
 go run . -rom game.gb
-go run . -rom game.gb -driver fyne
-go run . -rom game.gb -driver glfw
 ```
 
 | Flag | Default | Description |
@@ -165,61 +158,20 @@ go run . -rom game.gb -driver glfw
 | `-no-saves` | `false` | Disable save-file I/O |
 | `-log-level` | `info` | `debug`, `info`, or `error` |
 | `-pprof` | disabled | `host:port` for `net/http/pprof` |
-| `-driver` | `auto` | `auto`, `glfw`, `fyne`, or `web` |
+| `-driver` | `auto` | `auto` or `glfw` (the only installed driver) |
+| `-fullscreen` | `false` | Start in fullscreen |
+| `-scale` | `1` | Window scale factor |
 
-Display drivers add their own flags, including `-web-listen`, `-fullscreen`, and `-scale` where supported.
-
-| Action | Fyne | GLFW | Web |
-| --- | --- | --- | --- |
-| Quick save | F5 / Emulation → Quick Save | F5 | Save |
-| Quick load | F6 / Emulation → Quick Load | F6 | Load |
-| Speed | F7 / F8 / Emulation → Speed | `+` / `-` | 1x / 2x / 4x |
+| Action | GLFW |
+| --- | --- |
+| Quick save | F5 |
+| Quick load | F6 |
+| Speed | `+` / `-` |
+| Fullscreen | F11 |
 
 Turbo speed mutes audio instead of pitching it up.
 
 Battery saves and quick-save states are named after the ROM and written to the working directory or `-save-dir`. If `<romname>.cheats` exists in the working directory it is loaded automatically; `-cheats` loads an explicit file.
-
----
-
-## Web player
-
-The web binary runs the emulator headlessly and serves the WebSocket/UI path without Fyne or GLFW.
-
-```sh
-go run ./cmd/gomeboy-web -rom game.gb
-# examples:
-# -web-listen :9000
-# -model CGB
-# -pprof 127.0.0.1:6060
-```
-
-The Svelte UI is served from `GOMEBOY_WEB_STATIC_DIR` at `/app/`. The Docker image configures this path.
-
-```sh
-docker build -t gomeboy-web:latest .
-```
-
-Deployment notes live in [`deploy/README.md`](deploy/README.md).
-
----
-
-## Agent spectator binary
-
-`gomeboy-agent` runs the library under a lightweight agent/spectator loop and publishes frames plus goal/action/observation/status fields to the same web client.
-
-```sh
-go run ./cmd/gomeboy-agent -rom game.gb
-# examples:
-# -fps 30
-# -web-listen :9000
-# -model CGB
-# -cheats codes.txt
-# -pprof 127.0.0.1:6060
-```
-
-The binary is intentionally diskless for emulator state and battery saves. It only loads cheats from an explicit `-cheats` path.
-
-The bundled loop is a demonstration/spectator shell rather than a complete game-planning agent. For real controllers, search workers, or RL/AI environments, use `pkg/gomeboy` directly.
 
 ---
 
@@ -505,10 +457,10 @@ Agent/debug additions also have self-contained synthetic-ROM tests covering inst
 
 ## Project status and known limitations
 
-GomeBoy is actively evolving. The core already supports desktop play, web/headless use, deterministic library execution, and agent/debug tooling, but some areas are intentionally still incomplete:
+GomeBoy is actively evolving. The core already supports desktop play, headless/library use, and agent/debug tooling, but some areas are intentionally still incomplete:
 
 - Link cable / local multiplayer support needs reimplementation before it should be considered production-ready.
-- The bundled `gomeboy-agent` executable is a demonstration/spectator loop, not a complete decision-making agent.
+- There is no bundled web player or agent-spectator binary; use the library APIs in `pkg/gomeboy` directly, including `NewSpectator()` for a read-only HTTP frame feed.
 - Some external test suites still contain known failures; the current table above documents the repository's measured status rather than claiming complete hardware accuracy.
 
 For automation and agent workloads, prefer the library APIs in `pkg/gomeboy` and the detailed guide in [`docs/AGENT-TOOLING.md`](docs/AGENT-TOOLING.md).
