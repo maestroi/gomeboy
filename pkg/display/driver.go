@@ -65,9 +65,10 @@ var InstalledDrivers []*InstalledDriver
 const webDriverName = "web"
 
 // autoPriority is the fixed preference order GetDriver("auto") uses when
-// several desktop drivers are installed. Fyne remains first until GLFW has
-// standalone-launch parity (notably opening a ROM without a CLI path).
-// Drivers not listed here are considered afterwards in registration order.
+// several desktop drivers are installed. It makes auto selection
+// independent of the order in which drivers registered themselves.
+// Drivers not listed here are considered after the listed ones, in
+// registration order.
 var autoPriority = []string{"fyne", "glfw"}
 
 // GetDriver returns the driver with the given name, or nil if
