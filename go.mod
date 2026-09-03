@@ -6,11 +6,8 @@ require (
 	github.com/argusdusty/gofft v1.2.1
 	github.com/blackjack/webcam v0.6.1
 	github.com/bodgit/sevenzip v1.6.5
-	github.com/cespare/xxhash v1.1.0
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.2
-	github.com/google/brotli/go/cbrotli v0.0.0-20250131134309-440e03642b89
-	github.com/gorilla/websocket v1.5.3
 	github.com/veandco/go-sdl2 v0.4.40
 	golang.org/x/exp v0.0.0-20260820142414-ca536658362e
 	golang.org/x/image v0.45.0

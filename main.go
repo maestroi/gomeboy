@@ -13,7 +13,6 @@ import (
 	"github.com/maestroi/gomeboy/pkg/audio"
 	"github.com/maestroi/gomeboy/pkg/display"
 	_ "github.com/maestroi/gomeboy/pkg/display/glfw"
-	_ "github.com/maestroi/gomeboy/pkg/display/web"
 	"github.com/maestroi/gomeboy/pkg/log"
 	_ "net/http/pprof"
 )
@@ -25,18 +24,10 @@ func main() {
 	}
 }
 
-// run is the testable boundary of the desktop binary: it parses the CLI
-// options, starts the emulator and the display driver, and returns a
-// contextual error on any failure. main logs the final error and exits
-// non-zero.
 func run(args []string) error {
-	// the display drivers register their own flags (e.g. -web-listen) on
-	// the global flag set, so the shared launch options are registered on
-	// the same set and parsed together
 	fs := flag.CommandLine
 	fs.Init("gomeboy", flag.ContinueOnError)
 
-	// init display package (validates at least one driver is installed)
 	display.Init()
 
 	launch.Register(fs)
@@ -77,10 +68,7 @@ func run(args []string) error {
 		}
 	}
 
-	// create framebuffer
 	fb := make(chan []byte, 120)
-
-	// create various channels
 	pressed := make(chan io.Button, 1)
 	released := make(chan io.Button, 1)
 
@@ -93,12 +81,10 @@ func run(args []string) error {
 		return fmt.Errorf("gomeboy: unknown display driver %q: use auto or one of %s", opts.Driver, installedDriverNames())
 	}
 
-	// is the driver capable of debugging?
 	if debugger, ok := driver.(display.DriverDebugger); ok {
 		debugger.AttachGameboy(gb)
 	}
 
-	// handle input
 	go func() {
 		for {
 			select {
@@ -110,13 +96,10 @@ func run(args []string) error {
 		}
 	}()
 
-	// start the display driver (blocking)
 	if err := driver.Start(gb, fb, pressed, released); err != nil {
 		return fmt.Errorf("gomeboy: start display driver %q: %w", opts.Driver, err)
 	}
 
-	// save after the driver has stopped (TODO: stop audio from driving the
-	// Game Boy before this)
 	if err := gb.Save(); err != nil {
 		return fmt.Errorf("gomeboy: save battery RAM for ROM %s: %w", opts.ROM, err)
 	}
@@ -124,7 +107,6 @@ func run(args []string) error {
 	return nil
 }
 
-// installedDriverNames lists the display drivers compiled into this binary.
 func installedDriverNames() string {
 	names := make([]string, 0, len(display.InstalledDrivers))
 	for _, d := range display.InstalledDrivers {
