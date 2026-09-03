@@ -22,10 +22,10 @@ type CartInfo struct {
 	Accelerometer    bool
 }
 
-// ROM returns the bytes of the loaded ROM. The slice aliases emulator
-// memory and must not be modified.
+// ROM returns a caller-owned copy of the loaded ROM bytes. Mutating the
+// returned slice cannot alter the running emulator or its cartridge state.
 func (e *Emulator) ROM() []byte {
-	return e.gb.ROM
+	return append([]byte(nil), e.gb.ROM...)
 }
 
 // ROMSHA256 returns the SHA-256 of the loaded ROM.
@@ -33,8 +33,12 @@ func (e *Emulator) ROMSHA256() [32]byte {
 	return sha256.Sum256(e.gb.ROM)
 }
 
-// Cartridge returns the loaded cartridge's header metadata.
+// Cartridge returns the loaded cartridge's header metadata. Before a ROM is
+// loaded it returns the zero value.
 func (e *Emulator) Cartridge() CartInfo {
+	if e.gb.Bus == nil {
+		return CartInfo{}
+	}
 	c := e.gb.Bus.Cartridge()
 	if c == nil {
 		return CartInfo{}
