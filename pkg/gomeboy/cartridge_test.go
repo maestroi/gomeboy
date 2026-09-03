@@ -23,6 +23,25 @@ func TestROMBytes(t *testing.T) {
 	}
 }
 
+func TestROMReturnsDefensiveCopy(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+
+	before := e.ROMSHA256()
+	rom := e.ROM()
+	if len(rom) == 0 {
+		t.Fatal("ROM() returned an empty ROM")
+	}
+	rom[0] ^= 0xff
+
+	if got := e.ROMSHA256(); got != before {
+		t.Fatalf("mutating ROM() result changed emulator ROM hash: got %x, want %x", got, before)
+	}
+	if fresh := e.ROM(); fresh[0] == rom[0] {
+		t.Fatal("ROM() aliases emulator storage; want caller-owned copy")
+	}
+}
+
 func TestROMSHA256Stable(t *testing.T) {
 	e := newTestEmulator(t)
 	defer e.Close()
@@ -45,6 +64,18 @@ func TestROMSHA256Stable(t *testing.T) {
 	}
 	if got := e.ROMSHA256(); got != want {
 		t.Errorf("ROMSHA256 after LoadState = %x, want %x", got, want)
+	}
+}
+
+func TestCartridgeBeforeROMLoadReturnsZeroValue(t *testing.T) {
+	e, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer e.Close()
+
+	if got := e.Cartridge(); got != (CartInfo{}) {
+		t.Fatalf("Cartridge() before ROM load = %+v, want zero value", got)
 	}
 }
 
