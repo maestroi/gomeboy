@@ -108,7 +108,7 @@ func TestExplicitWebSelection(t *testing.T) {
 
 			want := driverByName(t, "web")
 			if got := GetDriver("web"); got != want {
-				t.Fatalf("GetDriver(web) with %v installed = %v, want the registered web driver", order)
+				t.Fatalf("GetDriver(web) with %v installed = %v, want the registered web driver", order, got)
 			}
 		})
 	}
