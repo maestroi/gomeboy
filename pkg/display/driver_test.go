@@ -45,9 +45,8 @@ func driverByName(t *testing.T, name string) *fakeDriver {
 	return nil
 }
 
-// WEB-AUTO: auto chooses the preferred installed desktop driver regardless
-// of registration order. Fyne remains first until GLFW has standalone-launch
-// parity; web is never selected implicitly.
+// WEB-AUTO: auto chooses an installed non-web driver regardless of
+// registration order.
 func TestAutoSelectsDesktopDriverRegardlessOfOrder(t *testing.T) {
 	tests := []struct {
 		name  string
