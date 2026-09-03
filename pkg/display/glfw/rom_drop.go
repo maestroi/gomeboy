@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-gl/glfw/v3.4/glfw"
 	"github.com/maestroi/gomeboy/internal/io"
 	"github.com/maestroi/gomeboy/pkg/emulator"
 	"github.com/maestroi/gomeboy/pkg/log"
@@ -32,6 +33,14 @@ type romDropWindow interface {
 	setDropCallback(func(paths []string))
 	setTitle(string)
 }
+
+func (g *glfwWindow) setDropCallback(callback func(paths []string)) {
+	g.w.SetDropCallback(func(_ *glfw.Window, paths []string) {
+		callback(paths)
+	})
+}
+
+func (g *glfwWindow) setTitle(title string) { g.w.SetTitle(title) }
 
 func installROMDrop(w window, c emulator.Controller) {
 	dropWindow, ok := w.(romDropWindow)
