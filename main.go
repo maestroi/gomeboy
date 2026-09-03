@@ -12,7 +12,6 @@ import (
 	"github.com/maestroi/gomeboy/internal/launch"
 	"github.com/maestroi/gomeboy/pkg/audio"
 	"github.com/maestroi/gomeboy/pkg/display"
-	_ "github.com/maestroi/gomeboy/pkg/display/fyne"
 	_ "github.com/maestroi/gomeboy/pkg/display/glfw"
 	_ "github.com/maestroi/gomeboy/pkg/display/web"
 	"github.com/maestroi/gomeboy/pkg/log"
