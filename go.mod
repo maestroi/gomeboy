@@ -3,7 +3,6 @@ module github.com/maestroi/gomeboy
 go 1.26.0
 
 require (
-	fyne.io/fyne/v2 v2.8.0
 	github.com/argusdusty/gofft v1.2.1
 	github.com/blackjack/webcam v0.6.1
 	github.com/bodgit/sevenzip v1.6.5
@@ -13,16 +12,13 @@ require (
 	github.com/google/brotli/go/cbrotli v0.0.0-20250131134309-440e03642b89
 	github.com/gorilla/websocket v1.5.3
 	github.com/veandco/go-sdl2 v0.4.40
-	golang.design/x/clipboard v0.9.0
 	golang.org/x/exp v0.0.0-20260820142414-ca536658362e
 	golang.org/x/image v0.45.0
 	golang.org/x/sys v0.47.0
 )
 
 require (
-	fyne.io/systray v1.12.2 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/FyshOS/fancyfs v0.0.1 // indirect
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/anthonynsimon/bild v0.17.0 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
@@ -31,10 +27,6 @@ require (
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
-	github.com/fyne-io/glfw-js v0.4.0 // indirect
-	github.com/fyne-io/image v0.1.1 // indirect
-	github.com/fyne-io/oksvg v0.2.0 // indirect
 	github.com/go-text/render v0.2.1 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect

@@ -39,8 +39,8 @@ type DriverDebugger interface {
 // configure a display driver.
 type DriverOption struct {
 	Name        string // name of the option
-	Default     any    // default value of the option
-	Value       any    // pointer to the value of the option
+	Default     any    // default value
+	Value       any    // pointer to the value
 	Description string // description of the option
 	Type        string // "int", "bool", "string", "float"
 }
@@ -65,11 +65,9 @@ var InstalledDrivers []*InstalledDriver
 const webDriverName = "web"
 
 // autoPriority is the fixed preference order GetDriver("auto") uses when
-// several desktop drivers are installed. It makes auto selection
-// independent of the order in which drivers registered themselves.
-// Drivers not listed here are considered after the listed ones, in
-// registration order.
-var autoPriority = []string{"fyne", "glfw"}
+// several desktop drivers are installed. GLFW is the primary desktop
+// frontend; the network-based web driver remains explicit-only.
+var autoPriority = []string{"glfw"}
 
 // GetDriver returns the driver with the given name, or nil if
 // no driver with that name is installed.
