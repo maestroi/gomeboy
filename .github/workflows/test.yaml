@@ -27,7 +27,7 @@ jobs:
       - name: extract test ROMs
         run: go test -tags test ./tests -run '^$'
       - name: test library and agent tooling packages
-        run: go test ./pkg/gomeboy ./pkg/memprobe ./cmd/memprobe
+        run: go test ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
 
   test_regressions:
     runs-on: ubuntu-latest
