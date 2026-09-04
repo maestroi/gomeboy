@@ -90,9 +90,11 @@ func Wait(name string, frames int) Action {
 // Run executes every action from one identical emulator checkpoint and returns
 // byte-level diffs against the memory observed at that checkpoint.
 //
-// The emulator is restored before each action and once more before Run
+// The emulation core is restored before each action and once more before Run
 // returns, including when an error occurs. Successful Run therefore leaves the
-// caller's emulator at exactly the state from which the experiment started.
+// core at the state from which the experiment started. Optional diagnostic
+// histories attached to Emulator, such as input recording or a flight
+// recorder, are outside Checkpoint and are not rewound.
 //
 // Changes are returned in region order, then ascending address order. If
 // regions overlap, an address can appear once for each containing region; this
