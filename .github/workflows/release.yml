@@ -24,9 +24,14 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y gcc libgl1-mesa-dev libegl-dev xorg-dev libsdl2-dev libwayland-dev wayland-protocols libxkbcommon-dev
       - name: build
-        run: go build -trimpath -ldflags="-s -w" -o gomeboy-linux-amd64 .
+        run: |
+          go build -trimpath -ldflags="-s -w" -o gomeboy-linux-amd64 .
+          go build -trimpath -ldflags="-s -w" -o gomeboy-stream-linux-amd64 ./cmd/gomeboy-stream
       - name: release
         uses: softprops/action-gh-release@v2
         with:
-          files: gomeboy-linux-amd64
+          files: |
+            gomeboy-linux-amd64
+            gomeboy-stream-linux-amd64
+          body_path: .github/releases/${{ github.ref_name }}.md
           generate_release_notes: true

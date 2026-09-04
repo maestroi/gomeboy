@@ -20,6 +20,9 @@ The core is designed to keep hardware-visible behavior accurate while also expos
 - CPU and PPU debugger state without copying a full save state
 - Bounded flight recorder for inputs, frame samples, and selected RAM changes
 - Deterministic input recording and replay
+- Durable `.gbrun` session recordings with verified replay and later RGB regeneration
+- `gomeboy-stream` CLI for FFmpeg MP4/RTMP encoding and `.gbrun` replay-to-video
+- Causal `memprobe` experiments for agent reverse-engineering
 - State hashing for replay and branch-equivalence checks
 - Checked durable save states with ROM identity, model, version, frame/cycle metadata, and payload integrity
 - SRAM, RTC, cartridge mappers, Game Genie / GameShark, printer, and serial support
@@ -172,6 +175,24 @@ go run . -rom game.gb
 Turbo speed mutes audio instead of pitching it up.
 
 Battery saves and quick-save states are named after the ROM and written to the working directory or `-save-dir`. If `<romname>.cheats` exists in the working directory it is loaded automatically; `-cheats` loads an explicit file.
+
+---
+
+## Utilities
+
+`gomeboy-stream` encodes live RGB24 frames or a `.gbrun` recording through FFmpeg (MP4 or RTMP). FFmpeg must be on `PATH`, or pass `-ffmpeg`.
+
+```sh
+go run ./cmd/gomeboy-stream -rom game.gb -recording run.gbrun -output run.mp4
+```
+
+`memprobe` runs checkpoint-and-compare memory experiments and prints JSON diffs:
+
+```sh
+go run ./cmd/memprobe -rom game.gb
+```
+
+See [docs/RECORDINGS.md](docs/RECORDINGS.md), [docs/STREAMING.md](docs/STREAMING.md), and [docs/MEMPROBE.md](docs/MEMPROBE.md).
 
 ---
 
