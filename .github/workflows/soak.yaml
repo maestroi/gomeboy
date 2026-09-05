@@ -1,0 +1,36 @@
+name: gomeboy memory soak
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  memory_soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v7
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: install dependencies
+        run: go mod download
+      - name: extract test ROMs
+        run: go test -tags test ./tests -run '^$'
+      - name: long headless heap stability soak
+        env:
+          GOMEBOY_MEMORY_STABILITY_FRAMES: '30000'
+        run: go test ./pkg/gomeboy -run '^TestHeadlessMemoryStability$' -count=1 -timeout=20m -v
+      - name: repeated emulator lifecycle leak check
+        run: go test ./pkg/gomeboy -run '^TestEmulatorLifecycleDoesNotLeakGoroutines$' -count=10 -timeout=10m -v
+      - name: repeated race detector pass
+        env:
+          GOMEBOY_MEMORY_STABILITY_FRAMES: '1000'
+        run: go test -race ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream -count=2 -timeout=20m
