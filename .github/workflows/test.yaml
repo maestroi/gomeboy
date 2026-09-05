@@ -27,7 +27,34 @@ jobs:
       - name: extract test ROMs
         run: go test -tags test ./tests -run '^$'
       - name: test library and agent tooling packages
-        run: go test ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+        run: go test ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+
+  memory_safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v7
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: install dependencies
+        run: go mod download
+      - name: extract test ROMs
+        run: go test -tags test ./tests -run '^$'
+      - name: race detector
+        env:
+          GOMEBOY_MEMORY_STABILITY_FRAMES: '400'
+        run: go test -race ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+      - name: strict pointer checks
+        env:
+          GOMEBOY_MEMORY_STABILITY_FRAMES: '400'
+        run: go test -gcflags=all=-d=checkptr=2 ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
 
   test_regressions:
     runs-on: ubuntu-latest
