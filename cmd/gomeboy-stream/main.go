@@ -12,20 +12,20 @@ import (
 )
 
 type config struct {
-	output       string
-	ffmpeg       string
-	width        int
-	height       int
-	fps          float64
-	scale        int
-	realtime     bool
-	codec        string
-	preset       string
-	bitrate      string
-	format       string
-	logLevel     string
-	rom          string
-	recording    string
+	output    string
+	ffmpeg    string
+	width     int
+	height    int
+	fps       float64
+	scale     int
+	realtime  bool
+	codec     string
+	preset    string
+	bitrate   string
+	format    string
+	logLevel  string
+	rom       string
+	recording string
 }
 
 func main() {
@@ -161,6 +161,7 @@ func replayRecording(cfg config, sink *gbstream.FFmpegSink) error {
 	emu, err := gomeboy.New(
 		gomeboy.WithROM(cfg.rom),
 		gomeboy.Headless(),
+		gomeboy.WithModel(recording.Model),
 	)
 	if err != nil {
 		return err
