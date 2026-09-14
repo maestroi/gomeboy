@@ -161,6 +161,7 @@ func replayRecording(cfg config, sink *gbstream.FFmpegSink) error {
 	emu, err := gomeboy.New(
 		gomeboy.WithROM(cfg.rom),
 		gomeboy.Headless(),
+		gomeboy.WithModel(recording.Model),
 	)
 	if err != nil {
 		return err
