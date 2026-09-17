@@ -28,11 +28,12 @@ func _() {
 	_ = x[SerialBitTransfer-17]
 	_ = x[SerialBitInterrupt-18]
 	_ = x[CameraShoot-19]
+	_ = x[SerialExternalClock-20]
 }
 
-const _EventType_name = "APUFrameSequencerAPUFrameSequencer2APUChannel1APUChannel2APUChannel3APUSampleEIPendingEIHaltDelayPPUHandleVisualLinePPUHandleGlitchedLine0PPUHandleOffscreenLineDMAStartTransferDMAEndTransferDMATransferTimerTIMAReloadTimerTIMAFinishReloadTimerTIMAIncrementSerialBitTransferSerialBitInterruptCameraShoot"
+const _EventType_name = "APUFrameSequencerAPUFrameSequencer2APUChannel1APUChannel2APUChannel3APUSampleEIPendingEIHaltDelayPPUHandleVisualLinePPUHandleGlitchedLine0PPUHandleOffscreenLineDMAStartTransferDMAEndTransferDMATransferTimerTIMAReloadTimerTIMAFinishReloadTimerTIMAIncrementSerialBitTransferSerialBitInterruptCameraShootSerialExternalClock"
 
-var _EventType_index = [...]uint16{0, 17, 35, 46, 57, 68, 77, 86, 97, 116, 138, 160, 176, 190, 201, 216, 237, 255, 272, 290, 301}
+var _EventType_index = [...]uint16{0, 17, 35, 46, 57, 68, 77, 86, 97, 116, 138, 160, 176, 190, 201, 216, 237, 255, 272, 290, 301, 320}
 
 func (i EventType) String() string {
 	if i >= EventType(len(_EventType_index)-1) {

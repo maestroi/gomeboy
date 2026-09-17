@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	ticksPerBit = 512
+	ticksPerBit          = 512
+	externalPollInterval = 32
 )
 
 // Controller is the serial controller. It is responsible for sending and
@@ -43,6 +44,9 @@ type Controller struct {
 
 // Attach attaches a Device to the Controller.
 func (c *Controller) Attach(d Device) {
+	if d == nil {
+		d = nullDevice{}
+	}
 	c.AttachedDevice = d
 }
 
@@ -78,11 +82,14 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 			// DIV = 0b0000_0011_1111_1111 (1023)
 			// DIV = 0b0000_0100_0000_0000 (1024) <- falling edge
 
-			// is this GameBoy the master?
 			if c.InternalClock {
 				// a bit is sent every 128 M-cycles (8.192 kHz)
 				ticksToGo := (s.SysClock() + 4) & (ticksPerBit - 1)
 				s.ScheduleEvent(scheduler.SerialBitTransfer, uint64(ticksPerBit-ticksToGo))
+			} else if _, ok := c.AttachedDevice.(ExternalClockDevice); ok {
+				// Network input is received on a goroutine, but consumed here on
+				// the emulator scheduler thread so it never mutates the bus directly.
+				s.ScheduleEvent(scheduler.SerialExternalClock, externalPollInterval)
 			}
 		}
 
@@ -94,14 +101,25 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 		if !c.InternalClock || !c.TransferRequest {
 			return
 		}
-		bit := c.AttachedDevice.Send()
-		c.AttachedDevice.Receive(c.b.Get(types.SB)&types.Bit7 == types.Bit7)
 
-		c.b.Set(types.SB, c.b.Get(types.SB)<<1)
-		if bit {
-			c.b.Set(types.SB, c.b.Get(types.SB)|1)
+		out := c.b.Get(types.SB)&types.Bit7 == types.Bit7
+		var in bool
+		if exchanger, ok := c.AttachedDevice.(BitExchanger); ok {
+			var err error
+			in, err = exchanger.ExchangeBit(out)
+			if err != nil {
+				// An unplugged Game Boy link reads high. Treat network failure the
+				// same way and let the transport expose the detailed error separately.
+				in = true
+			}
+		} else {
+			// Preserve the original Device ordering: sample the peer before
+			// shifting our outgoing bit into it.
+			in = c.AttachedDevice.Send()
+			c.AttachedDevice.Receive(out)
 		}
 
+		c.shiftIncoming(in)
 		c.count++
 		if c.count == 8 {
 			c.count = 0
@@ -113,10 +131,42 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 			s.ScheduleEvent(scheduler.SerialBitTransfer, uint64(ticksPerBit-ticksToGo))
 		}
 	})
+
+	s.RegisterEvent(scheduler.SerialExternalClock, func() {
+		if c.InternalClock || !c.TransferRequest {
+			return
+		}
+		device, ok := c.AttachedDevice.(ExternalClockDevice)
+		if !ok {
+			return
+		}
+
+		pulse, ready := device.PollClock()
+		if !ready {
+			s.ScheduleEvent(scheduler.SerialExternalClock, externalPollInterval)
+			return
+		}
+
+		out := c.b.Get(types.SB)&types.Bit7 == types.Bit7
+		_ = device.ReplyClock(pulse, out)
+		c.shiftIncoming(pulse.Incoming)
+		c.checkTransfer()
+		if c.TransferRequest {
+			s.ScheduleEvent(scheduler.SerialExternalClock, externalPollInterval)
+		}
+	})
+
 	s.RegisterEvent(scheduler.SerialBitInterrupt, func() {
 		c.b.RaiseInterrupt(io.SerialINT)
 	})
 	return c
+}
+
+func (c *Controller) shiftIncoming(bit bool) {
+	c.b.Set(types.SB, c.b.Get(types.SB)<<1)
+	if bit {
+		c.b.Set(types.SB, c.b.Get(types.SB)|1)
+	}
 }
 
 // checkTransfer checks if a transfer has been completed, and if so,
@@ -148,10 +198,7 @@ func (c *Controller) Send() bool {
 // the data register. If the caller is the master, it does nothing.
 func (c *Controller) Receive(bit bool) {
 	if !c.InternalClock {
-		c.b.Set(types.SB, c.b.Get(types.SB)<<1)
-		if bit {
-			c.b.Set(types.SB, c.b.Get(types.SB)|1)
-		}
+		c.shiftIncoming(bit)
 		c.checkTransfer()
 	}
 }
