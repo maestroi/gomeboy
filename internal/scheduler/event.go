@@ -30,6 +30,7 @@ const (
 	SerialBitInterrupt
 
 	CameraShoot
+	SerialExternalClock
 )
 
 type Event struct {
