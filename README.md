@@ -22,6 +22,7 @@ The core is designed to keep hardware-visible behavior accurate while also expos
 - Deterministic input recording and replay
 - Durable `.gbrun` session recordings with verified replay and later RGB regeneration
 - `gomeboy-stream` CLI for FFmpeg MP4/RTMP encoding and `.gbrun` replay-to-video
+- Network Game Boy link cable (direct TCP or `gomeboy-link-broker` sessions) and a public `pkg/link` protocol for virtual peers
 - Causal `memprobe` experiments for agent reverse-engineering
 - State hashing for replay and branch-equivalence checks
 - Checked durable save states with ROM identity, model, version, frame/cycle metadata, and payload integrity
@@ -61,7 +62,7 @@ The core is designed to keep hardware-visible behavior accurate while also expos
 - Cartridge mapper support including ROM, MBC1, MBC2, MBC3, MBC5, MBC7, HuC1, M161, and Pocket Camera-related paths present in the core
 - Game Genie and GameShark cheats
 - Game Boy Printer
-- Serial/link infrastructure
+- Network serial/link cable (direct TCP or multi-session broker; game-specific peers stay outside the core)
 
 ### Frontends
 
@@ -192,7 +193,13 @@ go run ./cmd/gomeboy-stream -rom game.gb -recording run.gbrun -output run.mp4
 go run ./cmd/memprobe -rom game.gb
 ```
 
-See [docs/RECORDINGS.md](docs/RECORDINGS.md), [docs/STREAMING.md](docs/STREAMING.md), and [docs/MEMPROBE.md](docs/MEMPROBE.md).
+`gomeboy-link-broker` pairs two serial endpoints per named session (emulator or virtual peer):
+
+```sh
+go run ./cmd/gomeboy-link-broker -listen :8765
+```
+
+See [docs/RECORDINGS.md](docs/RECORDINGS.md), [docs/STREAMING.md](docs/STREAMING.md), [docs/MEMPROBE.md](docs/MEMPROBE.md), and [docs/LINK_CABLE.md](docs/LINK_CABLE.md).
 
 ---
 
@@ -236,6 +243,17 @@ emu.PeekInto(0xC000, observation[:])
 | `StepInstruction()` | Execute one SM83 instruction or interrupt-service step |
 | `FrameCount()` / `Cycle()` | Read deterministic execution counters |
 | `Reset()` | Return to boot state while preserving battery RAM |
+
+### Network link cable
+
+| API | Purpose |
+| --- | --- |
+| `ConnectBrokerLink` / `DialBrokerLink` | Join a named two-peer broker session |
+| `ConnectDirectLink` / `DialDirectLink` / `NewDirectLink` | Point-to-point TCP (or `net.Pipe` in tests) |
+| `AttachLink` | Attach an already-dialed link after load or `Reset()` |
+| `NetworkLink.PublishMetadata` / `Metadata` | Opaque out-of-band session metadata |
+
+See [docs/LINK_CABLE.md](docs/LINK_CABLE.md). Game-specific trading or battle logic belongs in a `pkg/link` virtual peer, not in GomeBoy.
 
 ### Memory and observation
 
@@ -480,7 +498,7 @@ Agent/debug additions also have self-contained synthetic-ROM tests covering inst
 
 GomeBoy is actively evolving. The core already supports desktop play, headless/library use, and agent/debug tooling, but some areas are intentionally still incomplete:
 
-- Link cable / local multiplayer support needs reimplementation before it should be considered production-ready.
+- Desktop same-process / local multiplayer UI is still not packaged; use the network link APIs or `gomeboy-link-broker` for serial/link sessions.
 - There is no bundled web player or agent-spectator binary; use the library APIs in `pkg/gomeboy` directly, including `NewSpectator()` for a read-only HTTP frame feed.
 - Some external test suites still contain known failures; the current table above documents the repository's measured status rather than claiming complete hardware accuracy.
 

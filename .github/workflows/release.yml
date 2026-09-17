@@ -27,11 +27,13 @@ jobs:
         run: |
           go build -trimpath -ldflags="-s -w" -o gomeboy-linux-amd64 .
           go build -trimpath -ldflags="-s -w" -o gomeboy-stream-linux-amd64 ./cmd/gomeboy-stream
+          go build -trimpath -ldflags="-s -w" -o gomeboy-link-broker-linux-amd64 ./cmd/gomeboy-link-broker
       - name: release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             gomeboy-linux-amd64
             gomeboy-stream-linux-amd64
+            gomeboy-link-broker-linux-amd64
           body_path: .github/releases/${{ github.ref_name }}.md
           generate_release_notes: true
