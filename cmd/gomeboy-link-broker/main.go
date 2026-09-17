@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/maestroi/gomeboy/internal/link"
+	"github.com/maestroi/gomeboy/pkg/link"
 )
 
 func main() {
