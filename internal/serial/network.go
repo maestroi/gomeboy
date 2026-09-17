@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/maestroi/gomeboy/internal/link"
+	"github.com/maestroi/gomeboy/pkg/link"
 )
 
 const defaultNetworkTimeout = 10 * time.Second
@@ -138,8 +138,9 @@ func networkTimeout(timeout time.Duration) time.Duration {
 
 // Send and Receive satisfy the legacy Device interface. Network-aware serial
 // controllers use BitExchanger/ExternalClockDevice instead.
-func (d *NetworkDevice) Send() bool       { return true }
-func (d *NetworkDevice) Receive(bool)     {}
+func (d *NetworkDevice) Send() bool   { return true }
+func (d *NetworkDevice) Receive(bool) {}
+
 func (d *NetworkDevice) Metadata() <-chan link.Message { return d.metadata }
 
 func (d *NetworkDevice) ExchangeBit(out bool) (bool, error) {
