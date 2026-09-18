@@ -3,7 +3,6 @@ package display
 import (
 	"flag"
 	"fmt"
-	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/io"
 	"github.com/maestroi/gomeboy/pkg/emulator"
 	"github.com/maestroi/gomeboy/pkg/log"
@@ -29,10 +28,6 @@ type Driver interface {
 	Start(c emulator.Controller, fb <-chan []byte, pressed, released chan<- io.Button) error
 	// Stop the display driver.
 	Stop() error
-}
-
-type DriverDebugger interface {
-	AttachGameboy(*gameboy.GameBoy) // find a better way to do this
 }
 
 // DriverOption is a display driver option. This is used to
