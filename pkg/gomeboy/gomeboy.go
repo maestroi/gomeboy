@@ -23,10 +23,8 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/io"
-	"github.com/maestroi/gomeboy/internal/ppu"
 	"github.com/maestroi/gomeboy/internal/types"
 	"github.com/maestroi/gomeboy/pkg/utils"
-	"unsafe"
 )
 
 // Button is a joypad button.
@@ -109,6 +107,11 @@ type Frame struct {
 // Emulator is a headless Game Boy emulator instance. It is not safe for
 // concurrent use by multiple goroutines.
 type Emulator struct {
+	core emulationCore
+
+	// gb is a transitional GB/GBC capability handle used by APIs that still
+	// expose system-specific debugger, serial, cartridge, and model details.
+	// Core-neutral lifecycle/frame/state/memory APIs must go through core.
 	gb *gameboy.GameBoy
 
 	// Optional agent/debug tooling. Both are inert unless explicitly enabled.
@@ -247,12 +250,14 @@ func New(opts ...Option) (*Emulator, error) {
 		gbOpts = append(gbOpts, gameboy.WithoutSaves())
 	}
 
-	e := &Emulator{gb: gameboy.NewGameBoy(gbOpts...)}
+	gb := gameboy.NewGameBoy(gbOpts...)
+	e := newEmulatorWithCore(&gameBoyCore{gb: gb})
+	e.gb = gb
 
 	// romName is only ever set by WithROMBytes, so it records whether an
 	// in-memory ROM was supplied (possibly empty, which is an error).
 	if cfg.romName != "" {
-		if err := e.gb.LoadROMBytes(cfg.romBytes, cfg.romName); err != nil {
+		if err := e.core.LoadROMBytes(cfg.romBytes, cfg.romName); err != nil {
 			return nil, err
 		}
 	} else if cfg.romPath != "" {
@@ -283,13 +288,13 @@ func (e *Emulator) Model() Model {
 
 // LoadROM loads a ROM from disk and (re)initializes the emulator.
 func (e *Emulator) LoadROM(path string) error {
-	return e.gb.LoadROM(path)
+	return e.core.LoadROM(path)
 }
 
 // LoadROMBytes loads an in-memory ROM image and (re)initializes the emulator.
 // name is used for save/state file naming and may be empty.
 func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
-	return e.gb.LoadROMBytes(rom, name)
+	return e.core.LoadROMBytes(rom, name)
 }
 
 // Press presses a joypad button.
@@ -306,7 +311,7 @@ func (e *Emulator) Release(b Button) {
 
 // StepFrame advances the emulator by exactly one frame.
 func (e *Emulator) StepFrame() {
-	e.gb.Step()
+	e.core.StepFrame()
 	e.recordFlightFrame()
 }
 
@@ -318,18 +323,18 @@ func (e *Emulator) StepFrames(n int) {
 		}
 		return
 	}
-	e.gb.StepFrames(n)
+	e.core.StepFrames(n)
 }
 
 // FrameCount returns the number of frames this Emulator has advanced since
 // the ROM was loaded or the emulator was last Reset.
 func (e *Emulator) FrameCount() uint64 {
-	return e.gb.FrameCount()
+	return e.core.FrameCount()
 }
 
 // Cycle returns the emulator's current master clock cycle.
 func (e *Emulator) Cycle() uint64 {
-	return e.gb.Cycle()
+	return e.core.Cycle()
 }
 
 // Read8 performs a CPU-accurate read of a single byte from the emulator's
@@ -364,47 +369,42 @@ func (e *Emulator) ReadInto(addr uint16, dst []byte) {
 // valid only until the next call to StepFrame or StepFrames. Copy the bytes
 // if you need to keep them.
 func (e *Emulator) Frame() Frame {
-	fb := e.gb.FrameBuffer()
-	return Frame{
-		Width:  ppu.ScreenWidth,
-		Height: ppu.ScreenHeight,
-		RGB:    unsafe.Slice(&(*fb)[0][0][0], ppu.ScreenWidth*ppu.ScreenHeight*3),
-	}
+	return e.core.Frame()
 }
 
 // Reset returns the emulator to its initial boot state, reusing the ROM that
 // is already loaded (it is not re-read from disk). Battery-backed cartridge
 // RAM is preserved across the reset.
 func (e *Emulator) Reset() error {
-	return e.gb.Reset()
+	return e.core.Reset()
 }
 
 // SaveState serializes the emulator's complete execution state into a byte
 // slice. The bytes can be passed to LoadState (on this or another Emulator
 // running the same ROM) to restore the exact state.
 func (e *Emulator) SaveState() ([]byte, error) {
-	return e.gb.SaveState()
+	return e.core.SaveState()
 }
 
 // LoadState restores the emulator to a state previously produced by
 // SaveState.
 func (e *Emulator) LoadState(data []byte) error {
-	return e.gb.LoadState(data)
+	return e.core.LoadState(data)
 }
 
 // QuickSave writes the complete emulator state to <romname>.state, where
 // romname is the loaded ROM's base name without its extension.
 func (e *Emulator) QuickSave() error {
-	return e.gb.QuickSave()
+	return e.core.QuickSave()
 }
 
 // QuickLoad restores the emulator state from <romname>.state.
 func (e *Emulator) QuickLoad() error {
-	return e.gb.QuickLoad()
+	return e.core.QuickLoad()
 }
 
 // Close flushes any pending battery-backed save data to disk and releases
 // resources held by the emulator.
 func (e *Emulator) Close() error {
-	return e.gb.Save()
+	return e.core.Close()
 }
