@@ -81,10 +81,6 @@ func run(args []string) error {
 		return fmt.Errorf("gomeboy: unknown display driver %q: use auto or one of %s", opts.Driver, installedDriverNames())
 	}
 
-	if debugger, ok := driver.(display.DriverDebugger); ok {
-		debugger.AttachGameboy(gb)
-	}
-
 	go func() {
 		for {
 			select {
