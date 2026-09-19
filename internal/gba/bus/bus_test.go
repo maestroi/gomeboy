@@ -173,4 +173,18 @@ func TestSaveDeviceBoundary(t *testing.T) {
 	if cycles != 5 {
 		t.Fatalf("default SRAM cycles = %d, want 5", cycles)
 	}
+
+	got16, cycles16 := b.Read16(SaveStart+3, Access{})
+	if got16 != 0x9a9a || cycles16 != 5 {
+		t.Fatalf("save halfword = %04x cycles=%d, want 9a9a/5", got16, cycles16)
+	}
+	got32, cycles32 := b.Read32(SaveStart+3, Access{})
+	if got32 != 0x9a9a9a9a || cycles32 != 5 {
+		t.Fatalf("save word = %08x cycles=%d, want 9a9a9a9a/5", got32, cycles32)
+	}
+
+	b.Write32(SaveStart+2, 0x44332211, Access{})
+	if got := save.Read8(2); got != 0x33 {
+		t.Fatalf("save word write selected byte = %02x, want 33", got)
+	}
 }
