@@ -256,11 +256,13 @@ func (c *CPU) executeARMMultiplyLong(instruction uint32) (ExecutionResult, error
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM long multiply requires distinct destination registers")
 	}
 
+	rmValue := c.ReadRegister(rm)
+	rsValue := c.ReadRegister(rs)
 	var result uint64
 	if signed {
-		result = uint64(int64(int32(c.ReadRegister(rm))) * int64(int32(c.ReadRegister(rs))))
+		result = uint64(int64(int32(rmValue)) * int64(int32(rsValue)))
 	} else {
-		result = uint64(c.ReadRegister(rm)) * uint64(c.ReadRegister(rs))
+		result = uint64(rmValue) * uint64(rsValue)
 	}
 	if accumulate {
 		result += uint64(c.ReadRegister(rdHi))<<32 | uint64(c.ReadRegister(rdLo))
@@ -273,7 +275,7 @@ func (c *CPU) executeARMMultiplyLong(instruction uint32) (ExecutionResult, error
 		c.cpsr = c.cpsr.withFlag(FlagZero, result == 0)
 	}
 
-	cycles := multiplyInternalCycles(c.ReadRegister(rs)) + 1
+	cycles := multiplyInternalCycles(rsValue) + 1
 	if accumulate {
 		cycles++
 	}
