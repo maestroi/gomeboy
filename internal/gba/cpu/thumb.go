@@ -248,12 +248,12 @@ func (c *CPU) executeThumbALU(instruction uint16) (ExecutionResult, error) {
 		// ARM7TDMI MUL timing depends on the high bytes of the multiplier.
 		// Expose a conservative internal-cycle estimate now; bus timing is
 		// added by the future GBA memory layer.
-		cycles = thumbMultiplyCycles(right)
+		cycles = multiplyInternalCycles(right)
 	}
 	return ExecutionResult{InternalCycles: cycles}, nil
 }
 
-func thumbMultiplyCycles(multiplier uint32) uint8 {
+func multiplyInternalCycles(multiplier uint32) uint8 {
 	// ARM7TDMI early termination examines progressively larger high portions
 	// of the multiplier. m=1 when bits 31:8 are all zero or all one, m=2 when
 	// bits 31:16 are all zero/all one, m=3 when bits 31:24 are all zero/all
