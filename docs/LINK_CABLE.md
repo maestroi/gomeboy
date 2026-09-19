@@ -68,6 +68,12 @@ incoming pulse. The emulator consumes that queue using a scheduler event and
 updates SB/SC on the emulator thread. Network goroutines therefore never mutate
 Game Boy bus state directly.
 
+If the peer has requested an external-clock transfer but no pulse is ready yet,
+the serial controller backs off unsuccessful polls (32 ticks, doubling up to
+4096). That keeps a halted CPU from spending every scheduler skip on the serial
+event while a slow or mid-negotiation network peer is silent. The pending
+transfer is not cancelled.
+
 A completed eight-bit transfer continues to use the existing serial controller
 to clear SC bit 7 and raise the serial interrupt.
 
