@@ -165,6 +165,144 @@ func TestARMRegisterShiftSpecialCases(t *testing.T) {
 	}
 }
 
+
+func TestARMRegisterSpecifiedShift(t *testing.T) {
+	c := New()
+	if err := c.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	c.WriteRegister(0, 1)
+	c.WriteRegister(1, 4)
+
+	// MOVS r2,r0,LSL r1.
+	result, err := c.ExecuteARM(0xe1b02110)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(2); got != 16 {
+		t.Fatalf("shifted result = %d, want 16", got)
+	}
+	if result.InternalCycles != 2 {
+		t.Fatalf("register shift cycles = %d, want 2", result.InternalCycles)
+	}
+	if c.CPSR().Zero() || c.CPSR().Negative() {
+		t.Fatalf("unexpected flags N=%v Z=%v", c.CPSR().Negative(), c.CPSR().Zero())
+	}
+}
+
+func TestARMMultiplyAndLongMultiply(t *testing.T) {
+	c := New()
+	if err := c.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	c.WriteRegister(0, 7)
+	c.WriteRegister(1, 6)
+
+	// MUL r2,r0,r1.
+	result, err := c.ExecuteARM(0xe0020190)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(2); got != 42 {
+		t.Fatalf("MUL result = %d, want 42", got)
+	}
+	if result.InternalCycles != 1 {
+		t.Fatalf("MUL cycles = %d, want 1", result.InternalCycles)
+	}
+
+	// MLA r3,r0,r1,r2.
+	result, err = c.ExecuteARM(0xe0232190)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(3); got != 84 {
+		t.Fatalf("MLA result = %d, want 84", got)
+	}
+	if result.InternalCycles != 2 {
+		t.Fatalf("MLA cycles = %d, want 2", result.InternalCycles)
+	}
+
+	c.WriteRegister(0, 0xffffffff)
+	c.WriteRegister(1, 2)
+	// UMULL r2,r3,r0,r1.
+	result, err = c.ExecuteARM(0xe0832190)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lo, hi := c.ReadRegister(2), c.ReadRegister(3); lo != 0xfffffffe || hi != 1 {
+		t.Fatalf("UMULL = %08x:%08x, want 00000001:fffffffe", hi, lo)
+	}
+	if result.InternalCycles != 2 {
+		t.Fatalf("UMULL cycles = %d, want 2", result.InternalCycles)
+	}
+
+	c.WriteRegister(0, 0xffffffff) // -1
+	c.WriteRegister(1, 2)
+	// SMULL r4,r5,r0,r1.
+	if _, err := c.ExecuteARM(0xe0c54190); err != nil {
+		t.Fatal(err)
+	}
+	if lo, hi := c.ReadRegister(4), c.ReadRegister(5); lo != 0xfffffffe || hi != 0xffffffff {
+		t.Fatalf("SMULL = %08x:%08x, want ffffffff:fffffffe", hi, lo)
+	}
+}
+
+func TestARMPSRTransfers(t *testing.T) {
+	c := New()
+	if err := c.SetMode(ModeSupervisor); err != nil {
+		t.Fatal(err)
+	}
+
+	// MRS r2,CPSR.
+	if _, err := c.ExecuteARM(0xe10f2000); err != nil {
+		t.Fatal(err)
+	}
+	if got := PSR(c.ReadRegister(2)); got.Mode() != ModeSupervisor {
+		t.Fatalf("MRS CPSR mode = %v, want supervisor", got.Mode())
+	}
+
+	c.WriteRegister(0, uint32(FlagNegative|FlagCarry))
+	// MSR CPSR_f,r0.
+	if _, err := c.ExecuteARM(0xe128f000); err != nil {
+		t.Fatal(err)
+	}
+	if !c.CPSR().Negative() || !c.CPSR().Carry() || c.CPSR().Zero() {
+		t.Fatalf("MSR flags N=%v Z=%v C=%v", c.CPSR().Negative(), c.CPSR().Zero(), c.CPSR().Carry())
+	}
+	if got := c.CPSR().Mode(); got != ModeSupervisor {
+		t.Fatalf("flag-only MSR changed mode to %v", got)
+	}
+
+	c.WriteRegister(0, uint32(ModeIRQ)|uint32(FlagIRQDisable))
+	// MSR CPSR_c,r0.
+	if _, err := c.ExecuteARM(0xe121f000); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.CPSR().Mode(); got != ModeIRQ {
+		t.Fatalf("control MSR mode = %v, want IRQ", got)
+	}
+}
+
+func TestMultiplyEarlyTerminationBoundaries(t *testing.T) {
+	cases := []struct {
+		value uint32
+		want  uint8
+	}{
+		{0x0000007f, 1},
+		{0xffffff80, 1},
+		{0x00008000, 2},
+		{0xffff8000, 2},
+		{0x00ffffff, 3},
+		{0xff000000, 3},
+		{0x12345678, 4},
+	}
+	for _, tc := range cases {
+		if got := multiplyInternalCycles(tc.value); got != tc.want {
+			t.Errorf("multiplyInternalCycles(%08x) = %d, want %d", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestConditionCodes(t *testing.T) {
 	psr := PSR(ModeSystem) | FlagNegative | FlagZero | FlagCarry
 	cases := map[uint8]bool{
