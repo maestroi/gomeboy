@@ -7,10 +7,10 @@ import (
 
 // ExecuteARM executes one already-fetched ARM instruction.
 //
-// Memory-transfer, multiply, coprocessor, and PSR-transfer encodings are left
-// for follow-up slices; unsupported encodings return an error without moving
-// PC. This keeps the initial decoder strict instead of silently mis-decoding
-// special ARM encodings as data-processing instructions.
+// Memory-transfer and coprocessor encodings are left for follow-up slices;
+// unsupported encodings return an error without moving PC. This keeps the
+// decoder strict instead of silently treating overlapping ARM encodings as
+// data-processing instructions.
 func (c *CPU) ExecuteARM(instruction uint32) (ExecutionResult, error) {
 	if c.cpsr.Thumb() {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ExecuteARM called in Thumb state")
@@ -57,8 +57,11 @@ func (c *CPU) ExecuteARM(instruction uint32) (ExecutionResult, error) {
 
 	// Multiply and multiply-long occupy the data-processing major opcode but
 	// have the distinctive 1001 low nibble.
-	if instruction&0x0fc000f0 == 0x00000090 || instruction&0x0f8000f0 == 0x00800090 {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM multiply not implemented: 0x%08x", instruction)
+	if instruction&0x0fc000f0 == 0x00000090 {
+		return c.executeARMMultiply(instruction)
+	}
+	if instruction&0x0f8000f0 == 0x00800090 {
+		return c.executeARMMultiplyLong(instruction)
 	}
 
 	// Halfword/signed transfer encodings also overlap the major opcode.
@@ -67,11 +70,11 @@ func (c *CPU) ExecuteARM(instruction uint32) (ExecutionResult, error) {
 	}
 
 	// MRS/MSR use data-processing-looking encodings with S=0 and special
-	// operand fields. Reject them until explicit PSR-transfer support lands.
+	// operand fields.
 	if instruction&0x0fbf0fff == 0x010f0000 ||
 		instruction&0x0db0f000 == 0x0120f000 ||
 		instruction&0x0db0f000 == 0x0320f000 {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM PSR transfer not implemented: 0x%08x", instruction)
+		return c.executeARMPSRTransfer(instruction)
 	}
 
 	return c.executeARMDataProcessing(instruction)
@@ -83,7 +86,10 @@ func (c *CPU) executeARMDataProcessing(instruction uint32) (ExecutionResult, err
 	rn := int((instruction >> 16) & 0xf)
 	rd := int((instruction >> 12) & 0xf)
 
-	op2, shifterCarry, err := c.armOperand2(instruction)
+	if instruction&(1<<4) != 0 && rn == 15 {
+		return ExecutionResult{}, fmt.Errorf("arm7tdmi: register-shifted data processing with r15 Rn is unsupported")
+	}
+	op2, shifterCarry, coreCycles, err := c.armOperand2(instruction)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
@@ -161,36 +167,215 @@ func (c *CPU) executeARMDataProcessing(instruction uint32) (ExecutionResult, err
 				}
 			}
 			c.SetPC(result)
-			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+			return ExecutionResult{InternalCycles: coreCycles, PipelineFlush: true}, nil
 		}
 		c.WriteRegister(rd, result)
 	}
 
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1}, nil
+	return ExecutionResult{InternalCycles: coreCycles}, nil
 }
 
-func (c *CPU) armOperand2(instruction uint32) (uint32, bool, error) {
+func (c *CPU) armOperand2(instruction uint32) (uint32, bool, uint8, error) {
 	oldCarry := c.cpsr.Carry()
 	if instruction&(1<<25) != 0 {
 		imm := uint32(instruction & 0xff)
 		rotate := int((instruction>>8)&0xf) * 2
 		if rotate == 0 {
-			return imm, oldCarry, nil
+			return imm, oldCarry, 1, nil
 		}
 		value := bits.RotateLeft32(imm, -rotate)
-		return value, value>>31 != 0, nil
-	}
-
-	if instruction&(1<<4) != 0 {
-		return 0, false, fmt.Errorf("arm7tdmi: register-specified ARM shift not implemented: 0x%08x", instruction)
+		return value, value>>31 != 0, 1, nil
 	}
 
 	rm := int(instruction & 0xf)
-	value := c.ReadRegister(rm)
-	shiftType := uint8((instruction >> 5) & 0x3)
-	amount := uint8((instruction >> 7) & 0x1f)
-	return shiftImmediate(value, shiftType, amount, oldCarry)
+	if instruction&(1<<4) == 0 {
+		value := c.ReadRegister(rm)
+		shiftType := uint8((instruction >> 5) & 0x3)
+		amount := uint8((instruction >> 7) & 0x1f)
+		value, carry, err := shiftImmediate(value, shiftType, amount, oldCarry)
+		return value, carry, 1, err
+	}
+
+	// Register-specified shifts take an additional internal cycle. PC operands
+	// observe a different pipeline value (+12), so keep those edge cases
+	// explicit until the fetch pipeline itself is modeled.
+	rs := int((instruction >> 8) & 0xf)
+	if rm == 15 || rs == 15 {
+		return 0, false, 0, fmt.Errorf("arm7tdmi: register-specified shift using r15 is unsupported")
+	}
+	value, carry := shiftRegister(c.ReadRegister(rm), uint8((instruction>>5)&0x3), uint8(c.ReadRegister(rs)), oldCarry)
+	return value, carry, 2, nil
+}
+
+func (c *CPU) executeARMMultiply(instruction uint32) (ExecutionResult, error) {
+	accumulate := instruction&(1<<21) != 0
+	setFlags := instruction&(1<<20) != 0
+	rd := int((instruction >> 16) & 0xf)
+	rn := int((instruction >> 12) & 0xf)
+	rs := int((instruction >> 8) & 0xf)
+	rm := int(instruction & 0xf)
+
+	if rd == 15 || rm == 15 || rs == 15 || (accumulate && rn == 15) {
+		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM multiply using r15 is unpredictable")
+	}
+	if rd == rm {
+		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM multiply with Rd == Rm is unpredictable on ARM7TDMI")
+	}
+
+	result := c.ReadRegister(rm) * c.ReadRegister(rs)
+	cycles := multiplyInternalCycles(c.ReadRegister(rs))
+	if accumulate {
+		result += c.ReadRegister(rn)
+		cycles++
+	}
+	c.WriteRegister(rd, result)
+	if setFlags {
+		// N/Z are architecturally meaningful. C/V are documented as
+		// meaningless/corrupted on ARMv4, so leave their deterministic prior
+		// values untouched instead of inventing a false architectural value.
+		c.setNZ(result)
+	}
+	c.advancePC()
+	return ExecutionResult{InternalCycles: cycles}, nil
+}
+
+func (c *CPU) executeARMMultiplyLong(instruction uint32) (ExecutionResult, error) {
+	signed := instruction&(1<<22) != 0
+	accumulate := instruction&(1<<21) != 0
+	setFlags := instruction&(1<<20) != 0
+	rdHi := int((instruction >> 16) & 0xf)
+	rdLo := int((instruction >> 12) & 0xf)
+	rs := int((instruction >> 8) & 0xf)
+	rm := int(instruction & 0xf)
+
+	if rdHi == 15 || rdLo == 15 || rm == 15 || rs == 15 {
+		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM long multiply using r15 is unpredictable")
+	}
+	if rdHi == rdLo {
+		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM long multiply requires distinct destination registers")
+	}
+
+	var result uint64
+	if signed {
+		result = uint64(int64(int32(c.ReadRegister(rm))) * int64(int32(c.ReadRegister(rs))))
+	} else {
+		result = uint64(c.ReadRegister(rm)) * uint64(c.ReadRegister(rs))
+	}
+	if accumulate {
+		result += uint64(c.ReadRegister(rdHi))<<32 | uint64(c.ReadRegister(rdLo))
+	}
+
+	c.WriteRegister(rdLo, uint32(result))
+	c.WriteRegister(rdHi, uint32(result>>32))
+	if setFlags {
+		c.cpsr = c.cpsr.withFlag(FlagNegative, result>>63 != 0)
+		c.cpsr = c.cpsr.withFlag(FlagZero, result == 0)
+	}
+
+	cycles := multiplyInternalCycles(c.ReadRegister(rs)) + 1
+	if accumulate {
+		cycles++
+	}
+	c.advancePC()
+	return ExecutionResult{InternalCycles: cycles}, nil
+}
+
+func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error) {
+	// MRS: cond 00010 R 001111 Rd 000000000000.
+	if instruction&0x0fbf0fff == 0x010f0000 {
+		useSPSR := instruction&(1<<22) != 0
+		rd := int((instruction >> 12) & 0xf)
+		if rd == 15 {
+			return ExecutionResult{}, fmt.Errorf("arm7tdmi: MRS with r15 destination is unpredictable")
+		}
+		value := c.cpsr
+		if useSPSR {
+			var ok bool
+			value, ok = c.SPSR()
+			if !ok {
+				return ExecutionResult{}, ErrNoSPSR
+			}
+		}
+		c.WriteRegister(rd, uint32(value))
+		c.advancePC()
+		return ExecutionResult{InternalCycles: 1}, nil
+	}
+
+	immediate := instruction&(1<<25) != 0
+	useSPSR := instruction&(1<<22) != 0
+	fieldMask := uint8((instruction >> 16) & 0xf)
+	mask := psrWriteMask(fieldMask)
+	if mask == 0 {
+		c.advancePC()
+		return ExecutionResult{InternalCycles: 1}, nil
+	}
+
+	var source uint32
+	if immediate {
+		imm := uint32(instruction & 0xff)
+		rotate := int((instruction>>8)&0xf) * 2
+		source = bits.RotateLeft32(imm, -rotate)
+	} else {
+		rm := int(instruction & 0xf)
+		if rm == 15 {
+			return ExecutionResult{}, fmt.Errorf("arm7tdmi: MSR with r15 source is unpredictable")
+		}
+		source = c.ReadRegister(rm)
+	}
+
+	if useSPSR {
+		old, ok := c.SPSR()
+		if !ok {
+			return ExecutionResult{}, ErrNoSPSR
+		}
+		next := PSR((uint32(old) &^ mask) | (source & mask))
+		if mask&0xff != 0 && !next.Mode().valid() {
+			return ExecutionResult{}, fmt.Errorf("arm7tdmi: MSR produced invalid SPSR mode 0x%02x", uint8(next.Mode()))
+		}
+		if err := c.SetSPSR(next); err != nil {
+			return ExecutionResult{}, err
+		}
+		c.advancePC()
+		return ExecutionResult{InternalCycles: 1}, nil
+	}
+
+	// User mode may only update the flags field.
+	if c.cpsr.Mode() == ModeUser {
+		mask &= 0xff000000
+	}
+	old := uint32(c.cpsr)
+	next := PSR((old &^ mask) | (source & mask))
+	if mask&0xff != 0 {
+		if !next.Mode().valid() {
+			return ExecutionResult{}, fmt.Errorf("arm7tdmi: MSR produced invalid CPSR mode 0x%02x", uint8(next.Mode()))
+		}
+		if next.Thumb() != c.cpsr.Thumb() {
+			return ExecutionResult{}, fmt.Errorf("arm7tdmi: changing CPSR T bit with MSR is unpredictable")
+		}
+	}
+	if err := c.SetCPSR(next); err != nil {
+		return ExecutionResult{}, err
+	}
+	c.advancePC()
+	return ExecutionResult{InternalCycles: 1}, nil
+}
+
+func psrWriteMask(fields uint8) uint32 {
+	var mask uint32
+	if fields&0x8 != 0 {
+		mask |= 0xff000000
+	}
+	if fields&0x4 != 0 {
+		mask |= 0x00ff0000
+	}
+	if fields&0x2 != 0 {
+		mask |= 0x0000ff00
+	}
+	if fields&0x1 != 0 {
+		mask |= 0x000000ff
+	}
+	return mask
 }
 
 func shiftImmediate(value uint32, shiftType, amount uint8, oldCarry bool) (uint32, bool, error) {
