@@ -8,7 +8,8 @@ import (
 
 const (
 	ticksPerBit          = 512
-	externalPollInterval = 32
+	externalPollInterval    = 32
+	externalPollMaxInterval = 4096
 )
 
 // Controller is the serial controller. It is responsible for sending and
@@ -39,7 +40,8 @@ type Controller struct {
 	b              *io.Bus
 	AttachedDevice Device // the device that is attached to this controller.
 
-	s *scheduler.Scheduler // the scheduler.
+	s                 *scheduler.Scheduler // the scheduler.
+	externalPollDelay uint64
 }
 
 // Attach attaches a Device to the Controller.
@@ -61,7 +63,8 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 	c := &Controller{
 		b:              b,
 		AttachedDevice: nullDevice{},
-		s:              s,
+		s:                 s,
+		externalPollDelay: externalPollInterval,
 	}
 	b.ReserveAddress(types.SB, func(v byte) byte {
 		return v
@@ -69,6 +72,7 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 	b.ReserveAddress(types.SC, func(v byte) byte {
 		c.InternalClock = (v & types.Bit0) == types.Bit0
 		c.TransferRequest = (v & types.Bit7) == types.Bit7
+		c.externalPollDelay = externalPollInterval
 
 		// was the transfer request bit set?
 		if c.TransferRequest {
@@ -143,9 +147,22 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 
 		pulse, ready := device.PollClock()
 		if !ready {
-			s.ScheduleEvent(scheduler.SerialExternalClock, externalPollInterval)
+			// A non-ready external peer is not an emulated hardware event. Polling
+			// it at a fixed 32-tick cadence while the CPU is halted can make
+			// skipHALT spend effectively all of its time on this one event before
+			// reaching frame/interrupt events. Back off unsuccessful polls so
+			// unrelated scheduled work continues to make progress.
+			s.ScheduleEvent(scheduler.SerialExternalClock, c.externalPollDelay)
+			if c.externalPollDelay < externalPollMaxInterval {
+				c.externalPollDelay *= 2
+				if c.externalPollDelay > externalPollMaxInterval {
+					c.externalPollDelay = externalPollMaxInterval
+				}
+			}
 			return
 		}
+
+		c.externalPollDelay = externalPollInterval
 
 		out := c.b.Get(types.SB)&types.Bit7 == types.Bit7
 		_ = device.ReplyClock(pulse, out)
@@ -208,7 +225,8 @@ func (c *Controller) Receive(bit bool) {
 type State struct {
 	Count           uint8
 	InternalClock   bool
-	TransferRequest bool
+	TransferRequest   bool
+	ExternalPollDelay uint64
 }
 
 // Snapshot captures the serial controller's execution state.
@@ -216,7 +234,8 @@ func (c *Controller) Snapshot() State {
 	return State{
 		Count:           c.count,
 		InternalClock:   c.InternalClock,
-		TransferRequest: c.TransferRequest,
+		TransferRequest:   c.TransferRequest,
+		ExternalPollDelay: c.externalPollDelay,
 	}
 }
 
@@ -225,4 +244,8 @@ func (c *Controller) Restore(s State) {
 	c.count = s.Count
 	c.InternalClock = s.InternalClock
 	c.TransferRequest = s.TransferRequest
+	c.externalPollDelay = s.ExternalPollDelay
+	if c.externalPollDelay == 0 {
+		c.externalPollDelay = externalPollInterval
+	}
 }
