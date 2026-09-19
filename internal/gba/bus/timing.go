@@ -60,15 +60,9 @@ func (b *Bus) accessCycles(addr uint32, width uint32, access Access) uint32 {
 		}
 		return b.gamePakROMCycles(addr, width, access.Sequential)
 	case 0x0e, 0x0f:
-		perByte := 1 + firstAccessWait[b.wait.value&0x3]
-		switch width {
-		case 1:
-			return perByte
-		case 2:
-			return perByte * 2
-		default:
-			return perByte * 4
-		}
+		// The save bus is physically 8-bit. Wider CPU loads/stores still issue
+		// one save-bus access; the bus repeats/selects that byte in Bus methods.
+		return 1 + firstAccessWait[b.wait.value&0x3]
 	default:
 		return 1
 	}
