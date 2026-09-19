@@ -131,6 +131,13 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 // halfword and rotate it by 8 bits.
 func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 	cycles := b.accessCycles(addr, 2, access)
+	if isSave(addr) && b.save != nil {
+		value := b.save.Read8(addr - SaveStart)
+		out := uint16(value) * 0x0101
+		b.openBus = uint32(out) | uint32(out)<<16
+		b.afterAccess(addr, 2, access, true)
+		return out, cycles
+	}
 	aligned := addr &^ 1
 	var value uint16
 	var mapped bool
@@ -157,6 +164,13 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 // word right by 8/16/24 bits.
 func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	cycles := b.accessCycles(addr, 4, access)
+	if isSave(addr) && b.save != nil {
+		value := b.save.Read8(addr - SaveStart)
+		out := uint32(value) * 0x01010101
+		b.openBus = out
+		b.afterAccess(addr, 4, access, true)
+		return out, cycles
+	}
 	aligned := addr &^ 3
 	var value uint32
 	var mapped bool
@@ -193,6 +207,12 @@ func (b *Bus) Write8(addr uint32, value byte, access Access) uint32 {
 // Write16 aligns the address down to a halfword boundary.
 func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 	cycles := b.accessCycles(addr, 2, access)
+	if isSave(addr) && b.save != nil {
+		b.save.Write8(addr-SaveStart, byte(value>>((addr&1)*8)))
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, true)
+		return cycles
+	}
 	aligned := addr &^ 1
 	if isIO(aligned) {
 		b.io.Write16(aligned-IOStart, value)
@@ -208,6 +228,12 @@ func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 // Write32 aligns the address down to a word boundary.
 func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	cycles := b.accessCycles(addr, 4, access)
+	if isSave(addr) && b.save != nil {
+		b.save.Write8(addr-SaveStart, byte(value>>((addr&3)*8)))
+		b.openBus = value
+		b.afterAccess(addr, 4, access, true)
+		return cycles
+	}
 	aligned := addr &^ 3
 	if isIO(aligned) {
 		b.io.Write32(aligned-IOStart, value)
@@ -337,4 +363,8 @@ func vramOffset(addr uint32) uint32 {
 
 func isROM(addr uint32) bool {
 	return addr >= ROM0Start && addr < SaveStart
+}
+
+func isSave(addr uint32) bool {
+	return addr >= SaveStart
 }
