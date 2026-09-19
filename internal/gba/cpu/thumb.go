@@ -1,9 +1,6 @@
 package cpu
 
-import (
-	"fmt"
-	"math/bits"
-)
+import "fmt"
 
 // ExecuteThumb executes one already-fetched Thumb instruction.
 func (c *CPU) ExecuteThumb(instruction uint16) (ExecutionResult, error) {
@@ -257,19 +254,18 @@ func (c *CPU) executeThumbALU(instruction uint16) (ExecutionResult, error) {
 }
 
 func thumbMultiplyCycles(multiplier uint32) uint8 {
-	// 1S + mI behavior: m is 1-4 depending on how many significant bytes are
-	// required after sign-extension. Return internal cycles only.
-	s := int32(multiplier)
-	switch {
-	case s >= -0x80 && s <= 0x7f:
+	// ARM7TDMI early termination examines progressively larger high portions
+	// of the multiplier. m=1 when bits 31:8 are all zero or all one, m=2 when
+	// bits 31:16 are all zero/all one, m=3 when bits 31:24 are all zero/all
+	// one, otherwise m=4. Return the internal m cycles only.
+	if hi := multiplier & 0xffffff00; hi == 0 || hi == 0xffffff00 {
 		return 1
-	case s >= -0x8000 && s <= 0x7fff:
-		return 2
-	case s >= -0x800000 && s <= 0x7fffff:
-		return 3
-	default:
-		return 4
 	}
+	if hi := multiplier & 0xffff0000; hi == 0 || hi == 0xffff0000 {
+		return 2
+	}
+	if hi := multiplier & 0xff000000; hi == 0 || hi == 0xff000000 {
+		return 3
+	}
+	return 4
 }
-
-var _ = bits.RotateLeft32
