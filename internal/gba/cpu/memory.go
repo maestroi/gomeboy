@@ -28,6 +28,9 @@ type StepResult struct {
 	InternalCycles uint8
 	TotalCycles    uint32
 	PipelineFlush  bool
+
+	ExceptionTaken bool
+	Exception      Exception
 }
 
 // Step fetches and executes one instruction at the current PC.
@@ -37,6 +40,22 @@ type StepResult struct {
 func (c *CPU) Step(mem Memory) (StepResult, error) {
 	if mem == nil {
 		return StepResult{}, ErrMemoryRequired
+	}
+
+	if kind, ok := c.pendingInterrupt(); ok {
+		// At an IRQ/FIQ boundary c.pc is the address of the instruction that
+		// loses priority to the interrupt. ARM7TDMI records PC+4 in LR for
+		// both ARM and Thumb interrupt entry.
+		if err := c.EnterException(kind, c.pc+4); err != nil {
+			return StepResult{}, err
+		}
+		return StepResult{
+			InternalCycles: 1,
+			TotalCycles:    1,
+			PipelineFlush:  true,
+			ExceptionTaken: true,
+			Exception:      kind,
+		}, nil
 	}
 
 	access := gbamemory.Access{
@@ -75,4 +94,14 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		TotalCycles:    total,
 		PipelineFlush:  exec.PipelineFlush,
 	}, nil
+}
+
+func (c *CPU) pendingInterrupt() (Exception, bool) {
+	if c.fiqLine && !c.cpsr.FIQDisabled() {
+		return ExceptionFIQ, true
+	}
+	if c.irqLine && !c.cpsr.IRQDisabled() {
+		return ExceptionIRQ, true
+	}
+	return 0, false
 }

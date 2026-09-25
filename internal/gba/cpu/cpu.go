@@ -45,7 +45,23 @@ type CPU struct {
 	spsr [5]PSR
 
 	fetchSequential bool
+	irqLine         bool
+	fiqLine         bool
 }
+
+// SetIRQLine drives the external IRQ input level sampled at instruction
+// boundaries. The line is level-sensitive and remains asserted until changed.
+func (c *CPU) SetIRQLine(asserted bool) { c.irqLine = asserted }
+
+// SetFIQLine drives the external FIQ input level sampled at instruction
+// boundaries. FIQ has priority over IRQ when both are eligible.
+func (c *CPU) SetFIQLine(asserted bool) { c.fiqLine = asserted }
+
+// IRQLine reports the currently asserted external IRQ input.
+func (c *CPU) IRQLine() bool { return c.irqLine }
+
+// FIQLine reports the currently asserted external FIQ input.
+func (c *CPU) FIQLine() bool { return c.fiqLine }
 
 // New returns an ARM7TDMI in reset state: ARM state, Supervisor mode, IRQ/FIQ
 // masked, PC at the reset vector.
@@ -272,6 +288,7 @@ func (c *CPU) EnterException(kind Exception, returnAddress uint32) error {
 	c.spsr[idx] = old
 	c.WriteRegister(14, returnAddress)
 	c.pc = vector
+	c.fetchSequential = false
 	return nil
 }
 
