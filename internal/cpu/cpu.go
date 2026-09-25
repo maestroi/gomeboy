@@ -90,15 +90,26 @@ func NewCPU(b *io.Bus, sched *scheduler.Scheduler) *CPU {
 	return c
 }
 
-// Boot emulates the boot process by setting the Registers to the starting value provided
-// by the types.Model.
+// Boot emulates the boot process by setting the CPU state left by the selected
+// hardware model's boot ROM. On CGB-capable hardware, the final register state
+// depends on whether the cartridge requests CGB mode.
 func (c *CPU) Boot(m types.Model) {
-	// PC, SP is the same across all models
+	cgbCart := c.b != nil && c.b.IsGBCCart()
+	c.boot(m, cgbCart)
+}
+
+func (c *CPU) boot(m types.Model, cgbCart bool) {
+	// PC, SP is the same across all models.
 	c.PC = 0x100
 	c.SP = 0xFFFE
 
-	// get the CPU registers
 	startingRegs := types.ModelRegisters[m]
+	if cgbCart {
+		if regs, ok := types.ModelRegistersCGB[m]; ok {
+			startingRegs = regs
+		}
+	}
+
 	for i, reg := range []*uint8{&c.A, &c.F, &c.B, &c.C, &c.D, &c.E, &c.H, &c.L} {
 		*reg = startingRegs[i]
 	}
