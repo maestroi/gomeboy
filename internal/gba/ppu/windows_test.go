@@ -92,10 +92,12 @@ func TestWindowCanRevealLowerPriorityBackground(t *testing.T) {
 	setBGPaletteColor(b, 2, 0x03e0) // green BG1
 
 	set4bppPixel(vram, 0, 1, 0, 0, 1)
+	set4bppPixel(vram, 0, 1, 1, 0, 1)
 	setScreenEntry(vram, 8, 0, 1)
 	b.Write16(bus.IOStart+0x008, 0|(8<<8), bus.Access{})
 
 	set4bppPixel(vram, 1, 1, 0, 0, 2)
+	set4bppPixel(vram, 1, 1, 1, 0, 2)
 	setScreenEntry(vram, 10, 0, 1)
 	b.Write16(bus.IOStart+0x00a, 1|(1<<2)|(10<<8), bus.Access{})
 
