@@ -23,11 +23,7 @@ func (p *PPU) affineBGPixel(bg int, screenX int) ([3]byte, bool) {
 	index := bg - 2
 	cfg := decodeAffineBG(p.bgcnt[bg])
 
-	baseX := p.affineCurrent[index][0]
-	baseY := p.affineCurrent[index][1]
-	sourceX := (baseX + int32(p.affineParam[index][0])*int32(screenX)) >> 8
-	sourceY := (baseY + int32(p.affineParam[index][2])*int32(screenX)) >> 8
-
+	sourceX, sourceY := p.affineSource(index, screenX)
 	x, y := int(sourceX), int(sourceY)
 	if cfg.wrap {
 		x &= cfg.size - 1
@@ -49,6 +45,14 @@ func (p *PPU) affineBGPixel(bg int, screenX int) ([3]byte, bool) {
 		return [3]byte{}, false
 	}
 	return p.paletteColor(paletteIndex), true
+}
+
+func (p *PPU) affineSource(index, screenX int) (int32, int32) {
+	baseX := p.affineCurrent[index][0]
+	baseY := p.affineCurrent[index][1]
+	sourceX := (baseX + int32(p.affineParam[index][0])*int32(screenX)) >> 8
+	sourceY := (baseY + int32(p.affineParam[index][2])*int32(screenX)) >> 8
+	return sourceX, sourceY
 }
 
 func (p *PPU) writeAffineParam(bgIndex, param int, value uint16) {
