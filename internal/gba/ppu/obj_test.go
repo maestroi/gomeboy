@@ -437,7 +437,7 @@ func TestAffineOBJDoubleSizeYWrapAtTop(t *testing.T) {
 	setOBJPaletteColor(b, 1, 0x03e0)
 	// Use a 64x64 source with double-size display (128 pixels high). Put a
 	// source pixel that maps to screen y=0 when OBJ Y=224.
-	setOBJ4bppPixel(b, 0, 0, 32, 1)
+	setOBJ4bppPixel(b, 0, 0, 0, 1)
 	setOBJAffineParams(b, 0, 0x0100, 0, 0, 0x0100)
 	setOBJAttrs(b, 0,
 		uint16(224)|(1<<8)|(1<<9),
