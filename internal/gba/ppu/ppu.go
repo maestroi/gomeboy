@@ -37,9 +37,9 @@ const (
 
 // Hooks connect timing edges to the future DMA/interrupt controller.
 //
-// HBlank is a scanline blanking trigger and is emitted for all 228 scanlines.
-// HBlank IRQ requests themselves are suppressed during VBlank, matching GBA
-// LCD behavior. VBlank is emitted on entry to scanline 160.
+// HBlank is emitted on visible scanlines only, which is the useful trigger for
+// HBlank DMA. The DISPSTAT HBlank flag itself still toggles on all 228
+// scanlines. VBlank is emitted on entry to scanline 160.
 type Hooks struct {
 	HBlank func()
 	VBlank func()
@@ -122,9 +122,10 @@ func (p *PPU) Advance(cycles uint32) {
 }
 
 func (p *PPU) beginHBlank() {
-	if p.vcount < VisibleLines {
-		p.renderLine(int(p.vcount))
+	if p.vcount >= VisibleLines {
+		return
 	}
+	p.renderLine(int(p.vcount))
 	if p.hooks.HBlank != nil {
 		p.hooks.HBlank()
 	}
@@ -132,7 +133,7 @@ func (p *PPU) beginHBlank() {
 
 func (p *PPU) setHBlankFlag() {
 	p.hblank = true
-	if !p.vblank && p.dispstat&(1<<4) != 0 && p.hooks.IRQ != nil {
+	if p.vcount < VisibleLines && p.dispstat&(1<<4) != 0 && p.hooks.IRQ != nil {
 		p.hooks.IRQ(IRQHBlank)
 	}
 }
