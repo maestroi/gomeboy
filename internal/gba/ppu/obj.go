@@ -24,18 +24,16 @@ func (p *PPU) objPixel(screenX, screenY int, mode uint16) objSample {
 		attr1 := readOAM16(oam, base+2)
 		attr2 := readOAM16(oam, base+4)
 
-		// This slice handles regular (non-affine) OBJs only.
-		if attr0&(1<<8) != 0 {
-			continue
-		}
-		// For regular OBJs attr0 bit 9 disables the object.
-		if attr0&(1<<9) != 0 {
+		affine := attr0&(1<<8) != 0
+		// For regular OBJs attr0 bit 9 disables the object. For affine OBJs
+		// the same bit expands the display box to twice the source dimensions.
+		if !affine && attr0&(1<<9) != 0 {
 			continue
 		}
 
 		objMode := (attr0 >> 10) & 0x3
 		// OBJ-window pixels are masks rather than visible pixels; mode 3 is
-		// prohibited on GBA. Both are deferred/non-visible here.
+		// prohibited on GBA. Both remain non-visible in this slice.
 		if objMode >= 2 {
 			continue
 		}
@@ -48,17 +46,26 @@ func (p *PPU) objPixel(screenX, screenY int, mode uint16) objSample {
 		objX := int(attr1 & 0x01ff)
 		objY := int(attr0 & 0x00ff)
 
-		localX := (screenX - objX) & 0x01ff
-		localY := (screenY - objY) & 0x00ff
-		if localX >= width || localY >= height {
-			continue
-		}
+		var localX, localY int
+		if affine {
+			var visible bool
+			localX, localY, visible = p.affineOBJSource(attr0, attr1, width, height, objX, objY, screenX, screenY)
+			if !visible {
+				continue
+			}
+		} else {
+			localX = (screenX - objX) & 0x01ff
+			localY = (screenY - objY) & 0x00ff
+			if localX >= width || localY >= height {
+				continue
+			}
 
-		if attr1&(1<<12) != 0 {
-			localX = width - 1 - localX
-		}
-		if attr1&(1<<13) != 0 {
-			localY = height - 1 - localY
+			if attr1&(1<<12) != 0 {
+				localX = width - 1 - localX
+			}
+			if attr1&(1<<13) != 0 {
+				localY = height - 1 - localY
+			}
 		}
 
 		color, opaque := p.objTilePixel(mode, attr0, attr2, width, localX, localY)
@@ -76,6 +83,47 @@ func (p *PPU) objPixel(screenX, screenY int, mode uint16) objSample {
 	}
 
 	return objSample{}
+}
+
+func (p *PPU) affineOBJSource(attr0, attr1 uint16, sourceWidth, sourceHeight, objX, objY, screenX, screenY int) (int, int, bool) {
+	displayWidth, displayHeight := sourceWidth, sourceHeight
+	if attr0&(1<<9) != 0 {
+		displayWidth *= 2
+		displayHeight *= 2
+	}
+
+	localX := (screenX - objX) & 0x01ff
+	localY := (screenY - objY) & 0x00ff
+	if localX >= displayWidth || localY >= displayHeight {
+		return 0, 0, false
+	}
+
+	group := int((attr1 >> 9) & 0x1f)
+	pa, pb, pc, pd := p.objAffineParams(group)
+
+	dx := int32(localX - displayWidth/2)
+	dy := int32(localY - displayHeight/2)
+	centerX := int32(sourceWidth / 2)
+	centerY := int32(sourceHeight / 2)
+
+	sourceX := (int32(pa)*dx + int32(pb)*dy) >> 8
+	sourceY := (int32(pc)*dx + int32(pd)*dy) >> 8
+	sourceX += centerX
+	sourceY += centerY
+
+	if sourceX < 0 || sourceY < 0 || sourceX >= int32(sourceWidth) || sourceY >= int32(sourceHeight) {
+		return 0, 0, false
+	}
+	return int(sourceX), int(sourceY), true
+}
+
+func (p *PPU) objAffineParams(group int) (pa, pb, pc, pd int16) {
+	oam := p.bus.OAM()
+	base := group * 32
+	return int16(readOAM16(oam, base+6)),
+		int16(readOAM16(oam, base+14)),
+		int16(readOAM16(oam, base+22)),
+		int16(readOAM16(oam, base+30))
 }
 
 func (p *PPU) objTilePixel(mode uint16, attr0, attr2 uint16, width, x, y int) ([3]byte, bool) {
