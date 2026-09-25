@@ -70,6 +70,10 @@ type PPU struct {
 	winIn  uint16
 	winOut uint16
 
+	bldcnt   uint16
+	bldalpha uint16
+	bldy     uint16
+
 	lineCycle uint32
 	hblank    bool
 	vblank    bool
@@ -106,6 +110,9 @@ func (p *PPU) Reset() {
 	clear(p.winV[:])
 	p.winIn = 0
 	p.winOut = 0
+	p.bldcnt = 0
+	p.bldalpha = 0
+	p.bldy = 0
 	p.lineCycle = 0
 	p.hblank = false
 	p.vblank = false
