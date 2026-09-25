@@ -66,16 +66,24 @@ func (p *PPU) objSampleAt(index, screenX, screenY int, mode uint16) (objSample, 
 	objX := int(attr1 & 0x01ff)
 	objY := int(attr0 & 0x00ff)
 
+	// Mosaic repeats a sampled OBJ pixel, but it must not extend the OBJ's
+	// display rectangle. Check the actual screen coordinate first, then sample
+	// from the display-grid-aligned mosaic coordinate.
+	if !objDisplayContains(attr0, width, height, objX, objY, screenX, screenY) {
+		return objSample{}, objMode, false
+	}
+	sampleX, sampleY := p.objMosaicCoordinates(attr0, screenX, screenY)
+
 	var localX, localY int
 	if affine {
 		var visible bool
-		localX, localY, visible = p.affineOBJSource(attr0, attr1, width, height, objX, objY, screenX, screenY)
+		localX, localY, visible = p.affineOBJSource(attr0, attr1, width, height, objX, objY, sampleX, sampleY)
 		if !visible {
 			return objSample{}, objMode, false
 		}
 	} else {
-		localX = (screenX - objX) & 0x01ff
-		localY = (screenY - objY) & 0x00ff
+		localX = (sampleX - objX) & 0x01ff
+		localY = (sampleY - objY) & 0x00ff
 		if localX >= width || localY >= height {
 			return objSample{}, objMode, false
 		}
@@ -100,6 +108,18 @@ func (p *PPU) objSampleAt(index, screenX, screenY int, mode uint16) (objSample, 
 		semiTransparent: objMode == 1,
 		opaque:          true,
 	}, objMode, true
+}
+
+func objDisplayContains(attr0 uint16, sourceWidth, sourceHeight, objX, objY, screenX, screenY int) bool {
+	displayWidth, displayHeight := sourceWidth, sourceHeight
+	if attr0&(1<<8) != 0 && attr0&(1<<9) != 0 {
+		displayWidth *= 2
+		displayHeight *= 2
+	}
+
+	localX := (screenX - objX) & 0x01ff
+	localY := (screenY - objY) & 0x00ff
+	return localX < displayWidth && localY < displayHeight
 }
 
 func (p *PPU) affineOBJSource(attr0, attr1 uint16, sourceWidth, sourceHeight, objX, objY, screenX, screenY int) (int, int, bool) {
