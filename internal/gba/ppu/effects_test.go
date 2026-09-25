@@ -268,3 +268,41 @@ func TestEqualPriorityOBJRemainsAboveBGInEffectStack(t *testing.T) {
 		t.Fatalf("equal-priority stack = %#v count=%d, want OBJ then BG0", stack[:count], count)
 	}
 }
+
+
+func TestWindowEffectBitGatesSemiTransparentOBJAlpha(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setBGPaletteColor(b, 1, 0x7c00)
+	set4bppPixel(b.VRAM(), 0, 1, 0, 0, 1)
+	set4bppPixel(b.VRAM(), 0, 1, 1, 0, 1)
+	setScreenEntry(b.VRAM(), 8, 0, 1)
+	b.Write16(bus.IOStart+0x008, 8<<8, bus.Access{})
+
+	setOBJPaletteColor(b, 1, 0x001f)
+	setOBJ4bppPixel(b, 2, 0, 0, 1)
+	setOBJ4bppPixel(b, 2, 1, 0, 1)
+	setOBJAttrs(b, 0, 1<<10, 0, 2)
+
+	setWindowRect(b, 0, 0, 1, 0, 1)
+	b.Write16(bus.IOStart+0x048, windowBG0|windowOBJ, bus.Access{})
+	b.Write16(bus.IOStart+0x04a, windowBG0|windowOBJ|windowEffect, bus.Access{})
+	b.Write16(bus.IOStart+dispCNTOffset,
+		(1<<8)|dispOBJEnable|dispWIN0Enable,
+		bus.Access{})
+
+	// Semi-transparent OBJ forces alpha only where the selected window allows
+	// color special effects.
+	b.Write16(bus.IOStart+0x050, 1<<8, bus.Access{})
+	b.Write16(bus.IOStart+0x052, 8|(8<<8), bus.Access{})
+
+	p.Advance(VisibleCycles)
+
+	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{255, 0, 0} {
+		t.Fatalf("window-gated semi-transparent OBJ = %v, want opaque red", got)
+	}
+	if got := rgbAt(p.FrameBuffer(), 1, 0); got != [3]byte{123, 0, 123} {
+		t.Fatalf("outside semi-transparent OBJ = %v, want purple blend", got)
+	}
+}
