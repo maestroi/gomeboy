@@ -19,13 +19,14 @@ func (p *PPU) renderLine(y int) {
 	for x := 0; x < ScreenWidth; x++ {
 		color := backdrop
 		bgPriority := uint8(4)
+		windowMask := p.windowMaskAt(mode, x, y)
 
-		if bg := p.backgroundPixel(mode, x, y); bg.opaque {
+		if bg := p.backgroundPixel(mode, x, y, windowMask); bg.opaque {
 			color = bg.color
 			bgPriority = bg.priority
 		}
 
-		if p.dispcnt&dispOBJEnable != 0 {
+		if p.dispcnt&dispOBJEnable != 0 && windowMask&windowOBJ != 0 {
 			if obj := p.objPixel(x, y, mode); obj.opaque && obj.priority <= bgPriority {
 				// On equal numeric priority OBJ is above BG.
 				color = obj.color
@@ -36,12 +37,12 @@ func (p *PPU) renderLine(y int) {
 	}
 }
 
-func (p *PPU) backgroundPixel(mode uint16, x, y int) layerPixel {
+func (p *PPU) backgroundPixel(mode uint16, x, y int, windowMask uint8) layerPixel {
 	switch mode {
 	case 0, 1, 2:
-		return p.tileBackgroundPixel(mode, x, y)
+		return p.tileBackgroundPixel(mode, x, y, windowMask)
 	case 3, 4, 5:
-		if p.dispcnt&dispBG2Enable == 0 {
+		if p.dispcnt&dispBG2Enable == 0 || windowMask&windowBG2 == 0 {
 			return layerPixel{}
 		}
 		color, opaque := p.bitmapBGPixel(mode, x)
@@ -56,12 +57,14 @@ func (p *PPU) backgroundPixel(mode uint16, x, y int) layerPixel {
 	}
 }
 
-func (p *PPU) tileBackgroundPixel(mode uint16, x, y int) layerPixel {
+func (p *PPU) tileBackgroundPixel(mode uint16, x, y int, windowMask uint8) layerPixel {
 	best := layerPixel{priority: 4, index: 4}
 
 	for bg := 0; bg < 4; bg++ {
 		kind := bgKindForMode(mode, bg)
-		if kind == bgUnavailable || p.dispcnt&(1<<(8+bg)) == 0 {
+		if kind == bgUnavailable ||
+			p.dispcnt&(1<<(8+bg)) == 0 ||
+			windowMask&(1<<bg) == 0 {
 			continue
 		}
 
