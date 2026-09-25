@@ -20,6 +20,9 @@ const (
 	controlEnable     uint16 = 1 << 15
 
 	timingImmediate uint16 = 0
+	timingVBlank    uint16 = 1 << 12
+	timingHBlank    uint16 = 2 << 12
+	timingSpecial   uint16 = 3 << 12
 )
 
 var irqSources = [4]gbairq.Source{
@@ -34,10 +37,21 @@ type IRQSink interface {
 	Request(gbairq.Source)
 }
 
-// Hooks exposes completed transfers to later scheduler/debug integration.
-// Cycles includes bus read/write cycles plus the DMA processing overhead.
+// StartEvent identifies an external DMA start condition.
+type StartEvent uint8
+
+const (
+	StartVBlank StartEvent = iota + 1
+	StartHBlank
+	StartSpecial
+)
+
+// Hooks exposes DMA timing to scheduler/debug integration.
+// Complete fires once per completed channel. Stall fires once for a serviced
+// request batch with the total number of CPU-stall cycles consumed by DMA.
 type Hooks struct {
 	Complete func(channel int, units uint32, cycles uint32)
+	Stall    func(cycles uint32)
 }
 
 type channel struct {
@@ -61,6 +75,9 @@ type DMA struct {
 	hooks Hooks
 
 	ch [4]channel
+
+	pending   uint8
+	servicing bool
 }
 
 // New maps DMA0-DMA3 onto b.
@@ -183,7 +200,8 @@ func (d *DMA) writeControl(index int, value uint16) {
 
 	d.latch(index)
 	if c.control&controlTimingMask == timingImmediate {
-		d.run(index)
+		d.pending |= 1 << index
+		d.servicePending()
 	}
 }
 
@@ -213,11 +231,73 @@ func (d *DMA) width(index int) uint32 {
 	return 2
 }
 
-func (d *DMA) run(index int) {
+// Trigger queues all enabled channels matching event, then services them in
+// hardware priority order (DMA0 highest through DMA3 lowest). The returned
+// value is the total CPU-stall time consumed by the batch.
+func (d *DMA) Trigger(event StartEvent) uint32 {
+	timing, ok := timingForEvent(event)
+	if !ok {
+		return 0
+	}
+
+	for index := 0; index < 4; index++ {
+		c := &d.ch[index]
+		if c.control&controlEnable == 0 || c.control&controlTimingMask != timing {
+			continue
+		}
+		d.pending |= 1 << index
+	}
+	return d.servicePending()
+}
+
+func timingForEvent(event StartEvent) (uint16, bool) {
+	switch event {
+	case StartVBlank:
+		return timingVBlank, true
+	case StartHBlank:
+		return timingHBlank, true
+	case StartSpecial:
+		return timingSpecial, true
+	default:
+		return 0, false
+	}
+}
+
+func (d *DMA) servicePending() uint32 {
+	if d.servicing {
+		return 0
+	}
+	d.servicing = true
+	defer func() { d.servicing = false }()
+
+	var total uint32
+	for d.pending != 0 {
+		for index := 0; index < 4; index++ {
+			mask := uint8(1 << index)
+			if d.pending&mask == 0 {
+				continue
+			}
+			d.pending &^= mask
+
+			// Software may have disabled the channel after it was queued.
+			if d.ch[index].control&controlEnable != 0 {
+				total += d.run(index)
+			}
+			break
+		}
+	}
+
+	if total != 0 && d.hooks.Stall != nil {
+		d.hooks.Stall(total)
+	}
+	return total
+}
+
+func (d *DMA) run(index int) uint32 {
 	c := &d.ch[index]
 	units := c.countCurrent
 	if units == 0 {
-		return
+		return 0
 	}
 
 	width := d.width(index)
@@ -265,13 +345,23 @@ func (d *DMA) run(index int) {
 		d.irq.Request(irqSources[index])
 	}
 
-	// Immediate mode is one-shot even if Repeat is set; repeat is meaningful
-	// for event-driven start modes that will be implemented separately.
-	c.control &^= controlEnable
+	timing := c.control & controlTimingMask
+	repeat := timing != timingImmediate && c.control&controlRepeat != 0
+	if repeat {
+		c.countCurrent = effectiveCount(index, c.countInitial)
+		if destMode == 3 {
+			alignMask := ^uint32(width - 1)
+			c.destCurrent = c.destInitial & alignMask
+		}
+	} else {
+		c.control &^= controlEnable
+		c.countCurrent = 0
+	}
 
 	if d.hooks.Complete != nil {
 		d.hooks.Complete(index, units, cycles)
 	}
+	return cycles
 }
 
 func adjustAddress(address uint32, mode uint16, width uint32, destination bool) uint32 {
@@ -303,6 +393,8 @@ func isGamePak(address uint32) bool {
 // Reset clears initial/internal state and disables all channels.
 func (d *DMA) Reset() {
 	d.ch = [4]channel{}
+	d.pending = 0
+	d.servicing = false
 }
 
 // Source returns the programmed initial source address.
