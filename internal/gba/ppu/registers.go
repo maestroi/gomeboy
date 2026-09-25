@@ -41,6 +41,34 @@ func (p *PPU) installRegisters() {
 			func(value uint16) { p.bgvofs[bg] = value & 0x01ff },
 		)
 	}
+
+	for affine := 0; affine < 2; affine++ {
+		affine := affine
+		base := uint32(0x020 + affine*0x10)
+
+		for param := 0; param < 4; param++ {
+			param := param
+			offset := base + uint32(param*2)
+			io.Register16(offset,
+				func() uint16 { return p.affineOpenBusHalfword(offset) },
+				func(value uint16) { p.writeAffineParam(affine, param, value) },
+			)
+		}
+
+		for axis := 0; axis < 2; axis++ {
+			axis := axis
+			lowOffset := base + 0x08 + uint32(axis*4)
+			highOffset := lowOffset + 2
+			io.Register16(lowOffset,
+				func() uint16 { return p.affineOpenBusHalfword(lowOffset) },
+				func(value uint16) { p.writeAffineReferenceHalf(affine, axis, false, value) },
+			)
+			io.Register16(highOffset,
+				func() uint16 { return p.affineOpenBusHalfword(highOffset) },
+				func(value uint16) { p.writeAffineReferenceHalf(affine, axis, true, value) },
+			)
+		}
+	}
 }
 
 func (p *PPU) writeDISPCNT(value uint16) {

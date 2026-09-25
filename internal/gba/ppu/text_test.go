@@ -215,8 +215,8 @@ func TestMode1UsesOnlyBG0AndBG1AsTextBackgrounds(t *testing.T) {
 	setBGPaletteColor(b, 0, 0x7c00)
 	setBGPaletteColor(b, 1, 0x001f)
 
-	// Put a valid red text tile on BG2. Mode 1 BG2 is affine, so the text
-	// renderer must not accidentally render it.
+	// Put text-format data on BG2. Mode 1 BG2 is affine, so that data must not
+	// be interpreted using the regular text-background format.
 	set4bppPixel(vram, 0, 1, 0, 0, 1)
 	setScreenEntry(vram, 8, 0, 1)
 	b.Write16(bus.IOStart+0x00c, 8<<8, bus.Access{})
@@ -241,7 +241,7 @@ func TestMode1UsesOnlyBG0AndBG1AsTextBackgrounds(t *testing.T) {
 	}
 }
 
-func TestMode2DefersAffineBackgroundsToBackdrop(t *testing.T) {
+func TestMode2DoesNotInterpretAffineBackgroundAsText(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
 	setBGPaletteColor(b, 0, 0x03e0)
 	setBGPaletteColor(b, 1, 0x001f)
