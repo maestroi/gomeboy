@@ -27,7 +27,7 @@ func (p *PPU) renderLine(y int) {
 		}
 		switch mode {
 		case 3:
-			p.renderMode3(y)
+			p.renderMode3(y, backdrop)
 		case 4:
 			p.renderMode4(y, backdrop)
 		case 5:
@@ -38,10 +38,16 @@ func (p *PPU) renderLine(y int) {
 	}
 }
 
-func (p *PPU) renderMode3(y int) {
+func (p *PPU) renderMode3(y int, backdrop [3]byte) {
 	vram := p.bus.VRAM()
 	for x := 0; x < ScreenWidth; x++ {
-		offset := (y*ScreenWidth + x) * 2
+		sourceX, sourceY := p.affineSource(0, x)
+		sx, sy := int(sourceX), int(sourceY)
+		if sx < 0 || sy < 0 || sx >= 240 || sy >= 160 {
+			p.setPixel(x, y, backdrop)
+			continue
+		}
+		offset := (sy*240 + sx) * 2
 		color := binary.LittleEndian.Uint16(vram[offset : offset+2])
 		p.setPixel(x, y, bgr555(color))
 	}
@@ -56,7 +62,14 @@ func (p *PPU) renderMode4(y int, backdrop [3]byte) {
 	palette := p.bus.PaletteRAM()
 
 	for x := 0; x < ScreenWidth; x++ {
-		index := vram[page+y*ScreenWidth+x]
+		sourceX, sourceY := p.affineSource(0, x)
+		sx, sy := int(sourceX), int(sourceY)
+		if sx < 0 || sy < 0 || sx >= 240 || sy >= 160 {
+			p.setPixel(x, y, backdrop)
+			continue
+		}
+
+		index := vram[page+sy*240+sx]
 		if index == 0 {
 			p.setPixel(x, y, backdrop)
 			continue
@@ -68,11 +81,6 @@ func (p *PPU) renderMode4(y int, backdrop [3]byte) {
 }
 
 func (p *PPU) renderMode5(y int, backdrop [3]byte) {
-	if y >= 128 {
-		p.fillLineColor(y, backdrop)
-		return
-	}
-
 	vram := p.bus.VRAM()
 	page := 0
 	if p.dispcnt&dispFrameSelect != 0 {
@@ -80,11 +88,13 @@ func (p *PPU) renderMode5(y int, backdrop [3]byte) {
 	}
 
 	for x := 0; x < ScreenWidth; x++ {
-		if x >= 160 {
+		sourceX, sourceY := p.affineSource(0, x)
+		sx, sy := int(sourceX), int(sourceY)
+		if sx < 0 || sy < 0 || sx >= 160 || sy >= 128 {
 			p.setPixel(x, y, backdrop)
 			continue
 		}
-		offset := page + (y*160+x)*2
+		offset := page + (sy*160+sx)*2
 		color := binary.LittleEndian.Uint16(vram[offset : offset+2])
 		p.setPixel(x, y, bgr555(color))
 	}
