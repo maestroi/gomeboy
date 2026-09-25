@@ -12,6 +12,16 @@ import (
 // decoder strict instead of silently treating overlapping ARM encodings as
 // data-processing instructions.
 func (c *CPU) ExecuteARM(instruction uint32) (ExecutionResult, error) {
+	return c.executeARM(instruction, nil)
+}
+
+// ExecuteARMWithMemory executes one fetched ARM instruction with data-memory
+// access enabled for load/store encodings.
+func (c *CPU) ExecuteARMWithMemory(instruction uint32, mem Memory) (ExecutionResult, error) {
+	return c.executeARM(instruction, mem)
+}
+
+func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error) {
 	if c.cpsr.Thumb() {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ExecuteARM called in Thumb state")
 	}
@@ -51,6 +61,12 @@ func (c *CPU) ExecuteARM(instruction uint32) (ExecutionResult, error) {
 		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 	}
 
+	if instruction&0x0c000000 == 0x04000000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeARMSingleTransfer(instruction, mem)
+	}
 	if instruction&0x0c000000 != 0 {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: unsupported ARM instruction 0x%08x", instruction)
 	}
@@ -66,7 +82,10 @@ func (c *CPU) ExecuteARM(instruction uint32) (ExecutionResult, error) {
 
 	// Halfword/signed transfer encodings also overlap the major opcode.
 	if instruction&0x0e000090 == 0x00000090 {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM halfword transfer not implemented: 0x%08x", instruction)
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeARMHalfwordTransfer(instruction, mem)
 	}
 
 	// MRS/MSR use data-processing-looking encodings with S=0 and special
