@@ -73,8 +73,8 @@ func TestDMAByteWritesMergeAgainstProgrammedLatches(t *testing.T) {
 	b.Write32(base, 0x01234567, bus.Access{})
 	b.Write8(base+1, 0xaa, bus.Access{})
 	b.Write8(base+3, 0x0b, bus.Access{})
-	if got := d.Source(1); got != 0x0baa4567 {
-		t.Fatalf("byte-written SAD = %08x, want 0baa4567", got)
+	if got := d.Source(1); got != 0x0b23aa67 {
+		t.Fatalf("byte-written SAD = %08x, want 0b23aa67", got)
 	}
 
 	b.Write16(base+8, 0x1234, bus.Access{})
