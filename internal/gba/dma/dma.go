@@ -226,6 +226,8 @@ func (d *DMA) run(index int) {
 
 	source := c.sourceCurrent
 	dest := c.destCurrent
+	startSource := source
+	startDest := dest
 	var cycles uint32
 
 	for unit := uint32(0); unit < units; unit++ {
@@ -251,7 +253,7 @@ func (d *DMA) run(index int) {
 	// DMA processing adds two internal cycles normally. If both ends are on
 	// the Game Pak bus, ARM7/GBA documentation specifies four internal cycles.
 	internal := uint32(2)
-	if isGamePak(c.sourceCurrent) && isGamePak(c.destCurrent) {
+	if isGamePak(startSource) && isGamePak(startDest) {
 		internal = 4
 	}
 	cycles += internal
