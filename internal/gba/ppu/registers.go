@@ -64,6 +64,19 @@ func (p *PPU) installRegisters() {
 		func(value uint16) { p.winOut = value & 0x3f3f },
 	)
 
+	io.Register16(0x050,
+		func() uint16 { return p.bldcnt },
+		func(value uint16) { p.bldcnt = value & 0x3fff },
+	)
+	io.Register16(0x052,
+		func() uint16 { return p.bldalpha },
+		func(value uint16) { p.bldalpha = value & 0x1f1f },
+	)
+	io.Register16(0x054,
+		func() uint16 { return p.openBusHalfword(0x054) },
+		func(value uint16) { p.bldy = value & 0x001f },
+	)
+
 	for affine := 0; affine < 2; affine++ {
 		affine := affine
 		base := uint32(0x020 + affine*0x10)
