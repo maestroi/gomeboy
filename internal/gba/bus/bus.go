@@ -115,6 +115,12 @@ func (b *Bus) SetOpenBus(value uint32) { b.openBus = value }
 // Read8 performs an 8-bit bus read and returns the access duration in cycles.
 func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 	cycles := b.accessCycles(addr, 1, access)
+	if access.DMA && isSave(addr) {
+		value := byte(b.openBus >> ((addr & 3) * 8))
+		b.openBus = uint32(value) * 0x01010101
+		b.afterAccess(addr, 1, access, false)
+		return value, cycles
+	}
 	value, mapped := b.readByte(addr)
 	if !mapped {
 		value = byte(b.openBus >> ((addr & 3) * 8))
@@ -128,6 +134,15 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 // halfword and rotate it by 8 bits.
 func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 	cycles := b.accessCycles(addr, 2, access)
+	if access.DMA && isSave(addr) {
+		value := uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+		if addr&1 != 0 {
+			value = value>>8 | value<<8
+		}
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, false)
+		return value, cycles
+	}
 	if isSave(addr) && b.save != nil {
 		value := b.save.Read8(addr - SaveStart)
 		out := uint16(value) * 0x0101
@@ -161,6 +176,12 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 // word right by 8/16/24 bits.
 func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	cycles := b.accessCycles(addr, 4, access)
+	if access.DMA && isSave(addr) {
+		value := bits.RotateLeft32(b.openBus, -int((addr&3)*8))
+		b.openBus = value
+		b.afterAccess(addr, 4, access, false)
+		return value, cycles
+	}
 	if isSave(addr) && b.save != nil {
 		value := b.save.Read8(addr - SaveStart)
 		out := uint32(value) * 0x01010101
@@ -195,6 +216,11 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 // Write8 performs an 8-bit write and returns the access duration in cycles.
 func (b *Bus) Write8(addr uint32, value byte, access Access) uint32 {
 	cycles := b.accessCycles(addr, 1, access)
+	if access.DMA && isSave(addr) {
+		b.openBus = uint32(value) * 0x01010101
+		b.afterAccess(addr, 1, access, false)
+		return cycles
+	}
 	b.writeByte(addr, value)
 	b.openBus = uint32(value) * 0x01010101
 	b.afterAccess(addr, 1, access, true)
@@ -204,6 +230,11 @@ func (b *Bus) Write8(addr uint32, value byte, access Access) uint32 {
 // Write16 aligns the address down to a halfword boundary.
 func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 	cycles := b.accessCycles(addr, 2, access)
+	if access.DMA && isSave(addr) {
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, false)
+		return cycles
+	}
 	if isSave(addr) && b.save != nil {
 		b.save.Write8(addr-SaveStart, byte(value>>((addr&1)*8)))
 		b.openBus = uint32(value) | uint32(value)<<16
@@ -225,6 +256,11 @@ func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 // Write32 aligns the address down to a word boundary.
 func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	cycles := b.accessCycles(addr, 4, access)
+	if access.DMA && isSave(addr) {
+		b.openBus = value
+		b.afterAccess(addr, 4, access, false)
+		return cycles
+	}
 	if isSave(addr) && b.save != nil {
 		b.save.Write8(addr-SaveStart, byte(value>>((addr&3)*8)))
 		b.openBus = value
