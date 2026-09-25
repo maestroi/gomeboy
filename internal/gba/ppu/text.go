@@ -1,7 +1,5 @@
 package ppu
 
-import "encoding/binary"
-
 type textBGConfig struct {
 	priority   uint8
 	charBase   int
@@ -138,5 +136,5 @@ func (p *PPU) textBGPixel(bg int, cfg textBGConfig, screenX, screenY int) ([3]by
 func readBGVRAM16(vram []byte, offset int) uint16 {
 	lo := vram[offset&0xffff]
 	hi := vram[(offset+1)&0xffff]
-	return binary.LittleEndian.Uint16([]byte{lo, hi})
+	return uint16(lo) | uint16(hi)<<8
 }
