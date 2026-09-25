@@ -16,6 +16,15 @@ func put16(mem []byte, offset int, value uint16) {
 	binary.LittleEndian.PutUint16(mem[offset:offset+2], value)
 }
 
+func setBG2Identity(b *bus.Bus) {
+	b.Write16(bus.IOStart+0x020, 0x0100, bus.Access{}) // PA
+	b.Write16(bus.IOStart+0x022, 0x0000, bus.Access{}) // PB
+	b.Write16(bus.IOStart+0x024, 0x0000, bus.Access{}) // PC
+	b.Write16(bus.IOStart+0x026, 0x0100, bus.Access{}) // PD
+	b.Write32(bus.IOStart+0x028, 0, bus.Access{})      // X
+	b.Write32(bus.IOStart+0x02c, 0, bus.Access{})      // Y
+}
+
 func TestBGR555Conversion(t *testing.T) {
 	cases := []struct {
 		in   uint16
@@ -35,6 +44,7 @@ func TestBGR555Conversion(t *testing.T) {
 
 func TestMode3RendersDirectColor(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
+	setBG2Identity(b)
 	vram := b.VRAM()
 
 	put16(vram, 0, 0x001f)
@@ -58,6 +68,7 @@ func TestMode3RendersDirectColor(t *testing.T) {
 
 func TestMode4PaletteAndPageSelection(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
+	setBG2Identity(b)
 	vram := b.VRAM()
 	pal := b.PaletteRAM()
 
@@ -90,6 +101,7 @@ func TestMode4PaletteAndPageSelection(t *testing.T) {
 
 func TestMode5Uses160x128AndBackdropOutside(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
+	setBG2Identity(b)
 	vram := b.VRAM()
 	pal := b.PaletteRAM()
 
@@ -109,6 +121,7 @@ func TestMode5Uses160x128AndBackdropOutside(t *testing.T) {
 
 	// Page 1 check on a fresh PPU so line zero renders again.
 	p2, b2 := newTestPPU(t, Hooks{})
+	setBG2Identity(b2)
 	put16(b2.PaletteRAM(), 0, 0x03e0)
 	put16(b2.VRAM(), 0xa000, 0x7c00)
 	b2.Write16(bus.IOStart+dispCNTOffset, 5|dispBG2Enable|dispFrameSelect, bus.Access{})
@@ -120,6 +133,7 @@ func TestMode5Uses160x128AndBackdropOutside(t *testing.T) {
 
 func TestMode5BottomOutsideUsesBackdrop(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
+	setBG2Identity(b)
 	put16(b.PaletteRAM(), 0, 0x001f)
 	b.Write16(bus.IOStart+dispCNTOffset, 5|dispBG2Enable, bus.Access{})
 
