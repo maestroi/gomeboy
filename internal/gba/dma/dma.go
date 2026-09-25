@@ -231,7 +231,7 @@ func (d *DMA) run(index int) {
 	var cycles uint32
 
 	for unit := uint32(0); unit < units; unit++ {
-		access := bus.Access{Sequential: unit != 0}
+		access := bus.Access{Sequential: unit != 0, DMA: true}
 		if width == 4 {
 			value, readCycles := d.bus.Read32(source, access)
 			writeCycles := d.bus.Write32(dest, value, access)
