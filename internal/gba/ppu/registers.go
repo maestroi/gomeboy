@@ -64,6 +64,11 @@ func (p *PPU) installRegisters() {
 		func(value uint16) { p.winOut = value & 0x3f3f },
 	)
 
+	io.Register16(0x04c,
+		func() uint16 { return p.openBusHalfword(0x04c) },
+		func(value uint16) { p.mosaic = value },
+	)
+
 	io.Register16(0x050,
 		func() uint16 { return p.bldcnt },
 		func(value uint16) { p.bldcnt = value & 0x3fff },
