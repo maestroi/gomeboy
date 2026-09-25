@@ -151,8 +151,8 @@ func TestSemiTransparentOBJFallsBackToBrightnessWithoutSecondTarget(t *testing.T
 
 	p.Advance(VisibleCycles)
 
-	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{189, 0, 0} {
-		t.Fatalf("semi-transparent brightness fallback = %v, want [189 0 0]", got)
+	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{189, 123, 123} {
+		t.Fatalf("semi-transparent brightness fallback = %v, want [189 123 123]", got)
 	}
 }
 
@@ -195,8 +195,8 @@ func TestBrightnessOnlyAffectsSelectedFirstTarget(t *testing.T) {
 	if got := render(false); got != [3]byte{132, 0, 0} {
 		t.Fatalf("unselected brightness target changed: %v", got)
 	}
-	if got := render(true); got != [3]byte{189, 0, 0} {
-		t.Fatalf("selected brightness target = %v, want [189 0 0]", got)
+	if got := render(true); got != [3]byte{189, 123, 123} {
+		t.Fatalf("selected brightness target = %v, want [189 123 123]", got)
 	}
 }
 
