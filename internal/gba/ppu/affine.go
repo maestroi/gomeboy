@@ -20,10 +20,14 @@ func decodeAffineBG(value uint16) affineBGConfig {
 }
 
 func (p *PPU) affineBGPixel(bg int, screenX int) ([3]byte, bool) {
+	return p.affineBGPixelAt(bg, screenX, 0)
+}
+
+func (p *PPU) affineBGPixelAt(bg int, screenX, verticalBack int) ([3]byte, bool) {
 	index := bg - 2
 	cfg := decodeAffineBG(p.bgcnt[bg])
 
-	sourceX, sourceY := p.affineSource(index, screenX)
+	sourceX, sourceY := p.affineSourceAt(index, screenX, verticalBack)
 	x, y := int(sourceX), int(sourceY)
 	if cfg.wrap {
 		x &= cfg.size - 1
@@ -48,8 +52,12 @@ func (p *PPU) affineBGPixel(bg int, screenX int) ([3]byte, bool) {
 }
 
 func (p *PPU) affineSource(index, screenX int) (int32, int32) {
-	baseX := p.affineCurrent[index][0]
-	baseY := p.affineCurrent[index][1]
+	return p.affineSourceAt(index, screenX, 0)
+}
+
+func (p *PPU) affineSourceAt(index, screenX, verticalBack int) (int32, int32) {
+	baseX := p.affineCurrent[index][0] - int32(p.affineParam[index][1])*int32(verticalBack)
+	baseY := p.affineCurrent[index][1] - int32(p.affineParam[index][3])*int32(verticalBack)
 	sourceX := (baseX + int32(p.affineParam[index][0])*int32(screenX)) >> 8
 	sourceY := (baseY + int32(p.affineParam[index][2])*int32(screenX)) >> 8
 	return sourceX, sourceY
