@@ -37,6 +37,10 @@ func TestPPUIRQFlowsThroughIFToCPU(t *testing.T) {
 		t.Fatal("HBlank acknowledge did not deassert CPU IRQ")
 	}
 
+	// Disable further HBlank IRQ requests so later checks isolate the other
+	// source bits; keep VBlank/VCount enabled and compare against line 1.
+	b.Write16(bus.IOStart+0x004, (1<<3)|(1<<5)|(1<<8), bus.Access{})
+
 	// Finishing line 0 enters VCOUNT=1 and requests VCount IRQ.
 	p.Advance(ppu.CyclesPerLine - ppu.HBlankFlagCycle)
 	if irq.IF() != uint16(gbairq.VCount) || !c.IRQLine() {
