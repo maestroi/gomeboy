@@ -4,6 +4,16 @@ import "fmt"
 
 // ExecuteThumb executes one already-fetched Thumb instruction.
 func (c *CPU) ExecuteThumb(instruction uint16) (ExecutionResult, error) {
+	return c.executeThumb(instruction, nil)
+}
+
+// ExecuteThumbWithMemory executes one fetched Thumb instruction with
+// data-memory access enabled for load/store encodings.
+func (c *CPU) ExecuteThumbWithMemory(instruction uint16, mem Memory) (ExecutionResult, error) {
+	return c.executeThumb(instruction, mem)
+}
+
+func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, error) {
 	if !c.cpsr.Thumb() {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ExecuteThumb called in ARM state")
 	}
@@ -76,6 +86,56 @@ func (c *CPU) ExecuteThumb(instruction uint16) (ExecutionResult, error) {
 		}
 		c.advancePC()
 		return ExecutionResult{InternalCycles: 1}, nil
+	}
+
+	// Format 6: PC-relative LDR.
+	if instruction&0xf800 == 0x4800 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbLiteralLoad(instruction, mem)
+	}
+
+	// Formats 7/8: register-offset and signed/halfword transfers.
+	if instruction&0xf000 == 0x5000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbRegisterTransfer(instruction, mem)
+	}
+
+	// Format 9: immediate word/byte transfer.
+	if instruction&0xe000 == 0x6000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbImmediateTransfer(instruction, mem)
+	}
+
+	// Format 10: immediate halfword transfer.
+	if instruction&0xf000 == 0x8000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbHalfwordImmediate(instruction, mem)
+	}
+
+	// Format 11: SP-relative word transfer.
+	if instruction&0xf000 == 0x9000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbSPRelativeTransfer(instruction, mem)
+	}
+
+	// Format 12: load address from PC/SP.
+	if instruction&0xf000 == 0xa000 {
+		return c.executeThumbLoadAddress(instruction)
+	}
+
+	// Format 13: add/subtract immediate to SP.
+	if instruction&0xff00 == 0xb000 {
+		return c.executeThumbAdjustSP(instruction)
 	}
 
 	// Format 4: ALU operations.
