@@ -15,6 +15,26 @@ func (p *PPU) installRegisters() {
 		func() uint16 { return p.vcount },
 		nil,
 	)
+
+	for bg := 0; bg < 4; bg++ {
+		bg := bg
+		controlOffset := uint32(0x008 + bg*2)
+		hofsOffset := uint32(0x010 + bg*4)
+		vofsOffset := hofsOffset + 2
+
+		io.Register16(controlOffset,
+			func() uint16 { return p.bgcnt[bg] },
+			func(value uint16) { p.bgcnt[bg] = value & 0xffcf },
+		)
+		io.Register16(hofsOffset,
+			func() uint16 { return p.bghofs[bg] },
+			func(value uint16) { p.bghofs[bg] = value & 0x01ff },
+		)
+		io.Register16(vofsOffset,
+			func() uint16 { return p.bgvofs[bg] },
+			func(value uint16) { p.bgvofs[bg] = value & 0x01ff },
+		)
+	}
 }
 
 func (p *PPU) writeDISPCNT(value uint16) {
