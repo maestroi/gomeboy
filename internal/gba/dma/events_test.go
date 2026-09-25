@@ -133,8 +133,8 @@ func TestTriggerServicesChannelsInHardwarePriorityOrder(t *testing.T) {
 	})
 
 	for _, index := range []int{3, 1, 0, 2} {
-		source := uint32(bus.EWRAMStart + 0x500 + index*0x20)
-		dest := uint32(bus.IWRAMStart + 0x500 + index*0x20)
+		source := bus.EWRAMStart + 0x500 + uint32(index*0x20)
+		dest := bus.IWRAMStart + 0x500 + uint32(index*0x20)
 		b.Write16(source, uint16(index+1), bus.Access{})
 		programDMA(b, index, source, dest, 1, controlEnable|timingVBlank)
 	}
