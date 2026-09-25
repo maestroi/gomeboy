@@ -170,7 +170,7 @@ func (p *PPU) beginHBlank() {
 
 func (p *PPU) setHBlankFlag() {
 	p.hblank = true
-	if p.vcount < VisibleLines && p.dispstat&(1<<4) != 0 && p.hooks.IRQ != nil {
+	if p.dispstat&(1<<4) != 0 && p.hooks.IRQ != nil {
 		p.hooks.IRQ(IRQHBlank)
 	}
 }
