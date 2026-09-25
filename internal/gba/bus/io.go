@@ -4,6 +4,7 @@ import "encoding/binary"
 
 type read16Handler func() uint16
 type write16Handler func(uint16)
+type write8Handler func(uint32, byte)
 
 // IO is the 1KB GBA I/O register block. Unknown registers retain ordinary
 // byte-backed storage until a hardware component installs a handler.
@@ -11,17 +12,26 @@ type IO struct {
 	data    [IOSize]byte
 	read16  map[uint32]read16Handler
 	write16 map[uint32]write16Handler
+	write8   map[uint32]write8Handler
 }
 
 func NewIO() *IO {
 	return &IO{
 		read16:  make(map[uint32]read16Handler),
 		write16: make(map[uint32]write16Handler),
+		write8:   make(map[uint32]write8Handler),
 	}
 }
 
 // Register16 installs optional read/write callbacks for one aligned halfword.
 func (io *IO) Register16(offset uint32, read func() uint16, write func(uint16)) {
+	io.Register16WithByteWrite(offset, read, write, nil)
+}
+
+// Register16WithByteWrite installs a 16-bit register and optionally overrides
+// byte writes. Most registers can use the default read-modify-write behavior;
+// write-one-to-clear registers such as IF need to know which byte was written.
+func (io *IO) Register16WithByteWrite(offset uint32, read func() uint16, write func(uint16), write8 func(byteOffset uint32, value byte)) {
 	if offset >= IOSize || offset&1 != 0 {
 		panic("gba bus: invalid 16-bit I/O register offset")
 	}
@@ -30,6 +40,9 @@ func (io *IO) Register16(offset uint32, read func() uint16, write func(uint16)) 
 	}
 	if write != nil {
 		io.write16[offset] = write
+	}
+	if write8 != nil {
+		io.write8[offset] = write8
 	}
 }
 
@@ -53,6 +66,10 @@ func (io *IO) Write8(offset uint32, value byte) {
 		return
 	}
 	base := offset &^ 1
+	if write := io.write8[base]; write != nil {
+		write(offset-base, value)
+		return
+	}
 	if write := io.write16[base]; write != nil {
 		current, _ := io.Read16(base)
 		if offset&1 == 0 {

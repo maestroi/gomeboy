@@ -48,3 +48,33 @@ func TestIO32ComposesAdjacentHalfwordHandlers(t *testing.T) {
 		t.Fatalf("Read32 = %08x ok=%v", got, ok)
 	}
 }
+
+
+func TestIORegisterCustomByteWrite(t *testing.T) {
+	io := NewIO()
+	var value uint16 = 0xa55a
+	var byteOffset uint32 = 99
+	var byteValue byte
+
+	io.Register16WithByteWrite(0x90,
+		func() uint16 { return value },
+		func(v uint16) { value = v },
+		func(offset uint32, v byte) {
+			byteOffset = offset
+			byteValue = v
+		},
+	)
+
+	io.Write8(0x91, 0x3c)
+	if byteOffset != 1 || byteValue != 0x3c {
+		t.Fatalf("custom byte write offset=%d value=%02x, want 1/3c", byteOffset, byteValue)
+	}
+	if value != 0xa55a {
+		t.Fatalf("custom byte write unexpectedly used 16-bit RMW: value=%04x", value)
+	}
+
+	io.Write16(0x90, 0xbeef)
+	if value != 0xbeef {
+		t.Fatalf("16-bit write bypassed normal handler: value=%04x", value)
+	}
+}

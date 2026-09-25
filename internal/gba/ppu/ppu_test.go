@@ -135,10 +135,11 @@ func TestVBlankRangeAndFrameLength(t *testing.T) {
 	}
 
 	before := hblankIRQs
-	p.Advance(CyclesPerLine)
-	if hblankIRQs != before {
-		t.Fatalf("HBlank IRQ fired during VBlank: before=%d after=%d", before, hblankIRQs)
+	p.Advance(HBlankFlagCycle)
+	if hblankIRQs != before+1 {
+		t.Fatalf("HBlank IRQ did not fire during VBlank: before=%d after=%d", before, hblankIRQs)
 	}
+	p.Advance(CyclesPerLine - HBlankFlagCycle)
 
 	remainingTo227 := uint32(VBlankEndLine-VBlankStartLine-1) * CyclesPerLine
 	p.Advance(remainingTo227)

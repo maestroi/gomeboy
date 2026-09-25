@@ -3,6 +3,7 @@ package ppu
 
 import (
 	"github.com/maestroi/gomeboy/internal/gba/bus"
+	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 )
 
 const (
@@ -26,13 +27,14 @@ const (
 	vcountOffset   uint32 = 0x006
 )
 
-// IRQSource identifies one LCD interrupt request.
-type IRQSource uint8
+// IRQSource is retained as a compatibility alias for the shared GBA
+// interrupt-source bitmask used by IE/IF.
+type IRQSource = gbairq.Source
 
 const (
-	IRQVBlank IRQSource = iota
-	IRQHBlank
-	IRQVCount
+	IRQVBlank = gbairq.VBlank
+	IRQHBlank = gbairq.HBlank
+	IRQVCount = gbairq.VCount
 )
 
 // Hooks connect timing edges to the future DMA/interrupt controller.
@@ -168,7 +170,7 @@ func (p *PPU) beginHBlank() {
 
 func (p *PPU) setHBlankFlag() {
 	p.hblank = true
-	if p.vcount < VisibleLines && p.dispstat&(1<<4) != 0 && p.hooks.IRQ != nil {
+	if p.dispstat&(1<<4) != 0 && p.hooks.IRQ != nil {
 		p.hooks.IRQ(IRQHBlank)
 	}
 }
