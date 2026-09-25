@@ -62,6 +62,8 @@ type channel struct {
 	sourceCurrent uint32
 	destCurrent   uint32
 	countCurrent  uint32
+	destReload    uint32
+	countReload   uint32
 
 	lastCycles uint32
 	lastUnits  uint32
@@ -209,8 +211,10 @@ func (d *DMA) latch(index int) {
 	width := d.width(index)
 	alignMask := ^uint32(width - 1)
 	c.sourceCurrent = c.sourceInitial & alignMask
-	c.destCurrent = c.destInitial & alignMask
-	c.countCurrent = effectiveCount(index, c.countInitial)
+	c.destReload = c.destInitial & alignMask
+	c.destCurrent = c.destReload
+	c.countReload = effectiveCount(index, c.countInitial)
+	c.countCurrent = c.countReload
 }
 
 func effectiveCount(index int, value uint16) uint32 {
@@ -345,10 +349,9 @@ func (d *DMA) run(index int) uint32 {
 	timing := c.control & controlTimingMask
 	repeat := timing != timingImmediate && c.control&controlRepeat != 0
 	if repeat {
-		c.countCurrent = effectiveCount(index, c.countInitial)
+		c.countCurrent = c.countReload
 		if destMode == 3 {
-			alignMask := ^uint32(width - 1)
-			c.destCurrent = c.destInitial & alignMask
+			c.destCurrent = c.destReload
 		}
 	} else {
 		c.control &^= controlEnable
