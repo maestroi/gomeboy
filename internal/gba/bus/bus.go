@@ -4,6 +4,8 @@ package bus
 import (
 	"encoding/binary"
 	"math/bits"
+
+	"github.com/maestroi/gomeboy/internal/gba/memory"
 )
 
 const (
@@ -29,14 +31,9 @@ const (
 	SaveWindowSize      = 0x02000000
 )
 
-// Access describes the bus context for timing.
-type Access struct {
-	// Sequential selects S-cycle timing for the first Game Pak halfword.
-	Sequential bool
-	// Instruction marks an opcode fetch. It allows the Game Pak prefetch buffer
-	// to satisfy reads when WAITCNT prefetch is enabled.
-	Instruction bool
-}
+// Access is retained as a compatibility alias for the shared GBA access
+// descriptor used by CPU, DMA, and the memory bus.
+type Access = memory.Access
 
 // SaveDevice is the byte-wide Game Pak save-memory boundary. SRAM/Flash/EEPROM
 // protocols are implemented by cartridge devices in a later layer.
