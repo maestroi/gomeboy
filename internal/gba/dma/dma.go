@@ -126,7 +126,7 @@ func (d *DMA) registerWriteOnly32(io *bus.IO, offset uint32, get func() uint32, 
 			func(byteOffset uint32, value byte) {
 				current := get()
 				shift := uint((half*2)+int(byteOffset)) * 8
-				current = current&^(0xff<<shift) | uint32(value)<<shift
+				current = current&^(uint32(0xff)<<shift) | uint32(value)<<shift
 				set(current)
 			},
 		)
