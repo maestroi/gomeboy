@@ -74,6 +74,13 @@ func NewController(b *io.Bus, s *scheduler.Scheduler) *Controller {
 		c.TransferRequest = (v & types.Bit7) == types.Bit7
 		c.externalPollDelay = externalPollInterval
 
+		// Games rewrite SC while a transfer is still pending (Pokemon Red's
+		// Cable Club re-arms it every frame). The scheduler pools one node per
+		// event type, so scheduling again without descheduling links that node
+		// into the list twice and the next list walk never terminates.
+		s.DescheduleEvent(scheduler.SerialBitTransfer)
+		s.DescheduleEvent(scheduler.SerialExternalClock)
+
 		// was the transfer request bit set?
 		if c.TransferRequest {
 			// we need to determine when to schedule the first bit transfer,

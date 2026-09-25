@@ -2,6 +2,7 @@ package serial
 
 import (
 	"testing"
+	"time"
 
 	"github.com/maestroi/gomeboy/internal/io"
 	"github.com/maestroi/gomeboy/internal/scheduler"
@@ -52,5 +53,35 @@ func TestExternalClockPollingDoesNotStarveOtherEvents(t *testing.T) {
 	}
 	if !c.TransferRequest {
 		t.Fatal("pending external transfer was incorrectly cancelled")
+	}
+}
+
+// Pokemon Red's Pokemon Center script re-arms an external-clock transfer
+// (SC=$80) every frame while the previous poll is still pending, and its Cable
+// Club re-arms internal clock the same way. The scheduler pools one node per
+// event type, so scheduling again without descheduling linked that node into
+// the list twice: the next list walk never terminated and StepFrame hung.
+func TestRearmingSCWhilePendingKeepsSchedulerFinite(t *testing.T) {
+	for _, sc := range []byte{types.Bit7, types.Bit7 | types.Bit0} {
+		s := scheduler.NewScheduler()
+		b := io.NewBus(s, make([]byte, 0x8000))
+		c := NewController(b, s)
+		c.Attach(&neverReadyExternalClock{})
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for i := 0; i < 4; i++ {
+				b.Write(types.SC, sc)
+				s.Tick(40) // the first poll/bit reschedules itself
+				b.Write(types.SC, sc)
+				s.Tick(16384)
+			}
+		}()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("SC=%#02x: scheduler looped forever after SC was re-armed mid-transfer", sc)
+		}
 	}
 }
