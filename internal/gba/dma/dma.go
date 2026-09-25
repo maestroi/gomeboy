@@ -43,7 +43,6 @@ type StartEvent uint8
 const (
 	StartVBlank StartEvent = iota + 1
 	StartHBlank
-	StartSpecial
 )
 
 // Hooks exposes DMA timing to scheduler/debug integration.
@@ -256,8 +255,6 @@ func timingForEvent(event StartEvent) (uint16, bool) {
 		return timingVBlank, true
 	case StartHBlank:
 		return timingHBlank, true
-	case StartSpecial:
-		return timingSpecial, true
 	default:
 		return 0, false
 	}
