@@ -23,7 +23,7 @@ func (p *PPU) renderLine(y int) {
 
 	switch mode {
 	case 3:
-		p.renderMode3(y, backdrop)
+		p.renderMode3(y)
 	case 4:
 		p.renderMode4(y, backdrop)
 	case 5:
@@ -31,7 +31,7 @@ func (p *PPU) renderLine(y int) {
 	}
 }
 
-func (p *PPU) renderMode3(y int, backdrop [3]byte) {
+func (p *PPU) renderMode3(y int) {
 	vram := p.bus.VRAM()
 	for x := 0; x < ScreenWidth; x++ {
 		offset := (y*ScreenWidth + x) * 2
