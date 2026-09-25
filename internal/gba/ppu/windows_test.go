@@ -193,13 +193,9 @@ func TestOBJWindowUsesNonTransparentPixelsAndDoesNotDraw(t *testing.T) {
 	setOBJ4bppPixel(b, 2, 0, 0, 1)
 	setOBJAttrs(b, 0, 2<<10, 0, 2)
 
-	// Outside allows BG0; inside OBJ window disables all layers.
-	b.Write16(bus.IOStart+0x04a, windowBG0, bus.Access{})
-	b.Write16(bus.IOStart+0x04a, windowBG0, bus.Access{})
-	// High byte is OBJ-window control.
+	// Outside allows BG0; the OBJ-window high-byte mask is zero, so an
+	// opaque OBJ-window pixel exposes only the backdrop.
 	b.Write16(bus.IOStart+0x04a, uint16(windowBG0), bus.Access{})
-	p.winOut = uint16(windowBG0) // outside
-	p.winOut |= 0 << 8           // OBJ window: backdrop only
 
 	b.Write16(bus.IOStart+dispCNTOffset,
 		(1<<8)|dispOBJEnable|dispOBJWINEnable,
