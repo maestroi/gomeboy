@@ -16,18 +16,25 @@ func (p *PPU) renderLine(y int) {
 
 	backdrop := p.paletteColor(0)
 	mode := p.dispcnt & 0x7
-	if p.dispcnt&dispBG2Enable == 0 || mode < 3 || mode > 5 {
-		p.fillLineColor(y, backdrop)
-		return
-	}
 
 	switch mode {
-	case 3:
-		p.renderMode3(y)
-	case 4:
-		p.renderMode4(y, backdrop)
-	case 5:
-		p.renderMode5(y, backdrop)
+	case 0, 1, 2:
+		p.renderTextMode(y, mode, backdrop)
+	case 3, 4, 5:
+		if p.dispcnt&dispBG2Enable == 0 {
+			p.fillLineColor(y, backdrop)
+			return
+		}
+		switch mode {
+		case 3:
+			p.renderMode3(y)
+		case 4:
+			p.renderMode4(y, backdrop)
+		case 5:
+			p.renderMode5(y, backdrop)
+		}
+	default:
+		p.fillLineColor(y, backdrop)
 	}
 }
 
