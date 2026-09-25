@@ -24,8 +24,8 @@ func TestVBlankDMAOneShotClearsEnable(t *testing.T) {
 	if got, _ := b.Read16(dest, bus.Access{}); got != 0x1234 {
 		t.Fatalf("VBlank DMA result = %04x, want 1234", got)
 	}
-	if stall != 4 {
-		t.Fatalf("VBlank DMA stall = %d, want 4", stall)
+	if stall != 6 {
+		t.Fatalf("VBlank DMA stall = %d, want 6", stall)
 	}
 	if d.Control(0)&controlEnable != 0 {
 		t.Fatal("one-shot VBlank DMA did not clear Enable")
@@ -90,7 +90,7 @@ func TestRepeatWithoutDestinationReloadContinuesDestination(t *testing.T) {
 	}
 }
 
-func TestRepeatReloadUsesUpdatedProgrammedCountAndDestination(t *testing.T) {
+func TestRepeatReloadUsesValuesLatchedOnEnable(t *testing.T) {
 	b := bus.New(nil, nil)
 	d := New(b, nil, Hooks{})
 
@@ -105,17 +105,32 @@ func TestRepeatReloadUsesUpdatedProgrammedCountAndDestination(t *testing.T) {
 	programDMA(b, 0, source, destA, 1, control)
 	d.Trigger(StartHBlank)
 
-	// Programmed latches may be changed while the channel remains enabled.
-	// The next repeat reload picks up CNT_L and DAD, but SAD keeps progressing.
+	// Writes while enabled update the programmer-visible latches but do not
+	// replace the internal repeat reload values captured on the enable edge.
 	base := dmaBase(0)
 	b.Write32(base+4, destB, bus.Access{})
 	b.Write16(base+8, 2, bus.Access{})
 
 	d.Trigger(StartHBlank)
+	if got, _ := b.Read16(destA, bus.Access{}); got != 2 {
+		t.Fatalf("repeat destination changed before re-enable: %04x, want 0002 at original DAD", got)
+	}
+	if got, _ := b.Read16(destB, bus.Access{}); got != 0 {
+		t.Fatalf("updated DAD affected enabled repeat early: %04x", got)
+	}
+	if got := d.ch[0].countCurrent; got != 1 {
+		t.Fatalf("repeat count reload = %d, want originally latched 1", got)
+	}
+
+	// A new enable edge re-latches the newly programmed DAD/CNT_L.
+	b.Write16(base+10, controlRepeat|timingHBlank|(3<<5), bus.Access{})
+	b.Write16(base+10, control, bus.Access{})
+	d.Trigger(StartHBlank)
+
 	got0, _ := b.Read16(destB, bus.Access{})
 	got1, _ := b.Read16(destB+2, bus.Access{})
-	if got0 != 2 || got1 != 3 {
-		t.Fatalf("updated repeat latches produced %04x/%04x, want 0002/0003", got0, got1)
+	if got0 != 3 || got1 != 0 {
+		t.Fatalf("re-enabled repeat produced %04x/%04x, want 0003/0000 from remaining source", got0, got1)
 	}
 }
 
@@ -149,8 +164,8 @@ func TestTriggerServicesChannelsInHardwarePriorityOrder(t *testing.T) {
 			t.Fatalf("completion order = %v, want %v", order, wantOrder)
 		}
 	}
-	if stall != 16 || stallHook != 16 {
-		t.Fatalf("priority batch stall return/hook = %d/%d, want 16/16", stall, stallHook)
+	if stall != 24 || stallHook != 24 {
+		t.Fatalf("priority batch stall return/hook = %d/%d, want 24/24", stall, stallHook)
 	}
 }
 
@@ -164,11 +179,11 @@ func TestStallHookAlsoAccountsImmediateDMA(t *testing.T) {
 	b.Write16(source, 0xbeef, bus.Access{})
 	programDMA(b, 0, source, dest, 1, controlEnable)
 
-	if stall != 4 {
-		t.Fatalf("immediate DMA stall hook = %d, want 4", stall)
+	if stall != 6 {
+		t.Fatalf("immediate DMA stall hook = %d, want 6", stall)
 	}
-	if units, cycles := d.LastTransfer(0); units != 1 || cycles != 4 {
-		t.Fatalf("immediate LastTransfer = %d/%d, want 1/4", units, cycles)
+	if units, cycles := d.LastTransfer(0); units != 1 || cycles != 6 {
+		t.Fatalf("immediate LastTransfer = %d/%d, want 1/6", units, cycles)
 	}
 }
 
