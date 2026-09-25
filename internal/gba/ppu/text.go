@@ -10,12 +10,6 @@ type textBGConfig struct {
 }
 
 func (p *PPU) renderTextMode(y int, mode uint16, backdrop [3]byte) {
-	enabled := p.textBGMask(mode)
-	if enabled == 0 {
-		p.fillLineColor(y, backdrop)
-		return
-	}
-
 	for x := 0; x < ScreenWidth; x++ {
 		color := backdrop
 		bestPriority := uint8(4)
@@ -24,21 +18,30 @@ func (p *PPU) renderTextMode(y int, mode uint16, backdrop [3]byte) {
 		// Lower BG number wins ties at equal priority, so scan BG0 -> BG3 and
 		// replace only for a strictly better priority.
 		for bg := 0; bg < 4; bg++ {
-			if enabled&(1<<bg) == 0 || p.dispcnt&(1<<(8+bg)) == 0 {
+			kind := bgKindForMode(mode, bg)
+			if kind == bgUnavailable || p.dispcnt&(1<<(8+bg)) == 0 {
 				continue
 			}
 
-			cfg := decodeTextBG(p.bgcnt[bg])
-			if found && cfg.priority >= bestPriority {
+			priority := uint8(p.bgcnt[bg] & 0x3)
+			if found && priority >= bestPriority {
 				continue
 			}
 
-			pixel, opaque := p.textBGPixel(bg, cfg, x, y)
+			var pixel [3]byte
+			var opaque bool
+			switch kind {
+			case bgText:
+				pixel, opaque = p.textBGPixel(bg, decodeTextBG(p.bgcnt[bg]), x, y)
+			case bgAffine:
+				pixel, opaque = p.affineBGPixel(bg, x)
+			}
 			if !opaque {
 				continue
 			}
+
 			color = pixel
-			bestPriority = cfg.priority
+			bestPriority = priority
 			found = true
 		}
 
@@ -46,17 +49,31 @@ func (p *PPU) renderTextMode(y int, mode uint16, backdrop [3]byte) {
 	}
 }
 
-func (p *PPU) textBGMask(mode uint16) uint8 {
+type bgKind uint8
+
+const (
+	bgUnavailable bgKind = iota
+	bgText
+	bgAffine
+)
+
+func bgKindForMode(mode uint16, bg int) bgKind {
 	switch mode {
 	case 0:
-		return 0x0f
+		return bgText
 	case 1:
-		// BG0/BG1 are text backgrounds; BG2 is affine.
-		return 0x03
-	default:
-		// Mode 2 contains affine BG2/BG3 only.
-		return 0
+		switch bg {
+		case 0, 1:
+			return bgText
+		case 2:
+			return bgAffine
+		}
+	case 2:
+		if bg == 2 || bg == 3 {
+			return bgAffine
+		}
 	}
+	return bgUnavailable
 }
 
 func decodeTextBG(value uint16) textBGConfig {
