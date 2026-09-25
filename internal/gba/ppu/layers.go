@@ -61,13 +61,14 @@ func (p *PPU) visibleLayerStack(mode uint16, x, y int, windowMask uint8) ([6]lay
 				continue
 			}
 
+			sampleX, sampleY := p.bgMosaicCoordinates(bg, x, y)
 			var color [3]byte
 			var opaque bool
 			switch kind {
 			case bgText:
-				color, opaque = p.textBGPixel(bg, decodeTextBG(p.bgcnt[bg]), x, y)
+				color, opaque = p.textBGPixel(bg, decodeTextBG(p.bgcnt[bg]), sampleX, sampleY)
 			case bgAffine:
-				color, opaque = p.affineBGPixel(bg, x)
+				color, opaque = p.affineBGPixelAt(bg, sampleX, y-sampleY)
 			}
 			if !opaque {
 				continue
@@ -83,7 +84,8 @@ func (p *PPU) visibleLayerStack(mode uint16, x, y int, windowMask uint8) ([6]lay
 
 	case 3, 4, 5:
 		if p.dispcnt&dispBG2Enable != 0 && windowMask&windowBG2 != 0 {
-			if color, opaque := p.bitmapBGPixel(mode, x); opaque {
+			sampleX, sampleY := p.bgMosaicCoordinates(2, x, y)
+			if color, opaque := p.bitmapBGPixelAt(mode, sampleX, y-sampleY); opaque {
 				add(layerPixel{
 					color:    color,
 					layer:    layerBG2,

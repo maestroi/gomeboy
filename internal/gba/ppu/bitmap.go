@@ -9,8 +9,12 @@ const (
 )
 
 func (p *PPU) bitmapBGPixel(mode uint16, screenX int) ([3]byte, bool) {
+	return p.bitmapBGPixelAt(mode, screenX, 0)
+}
+
+func (p *PPU) bitmapBGPixelAt(mode uint16, screenX, verticalBack int) ([3]byte, bool) {
 	vram := p.bus.VRAM()
-	sourceX, sourceY := p.affineSource(0, screenX)
+	sourceX, sourceY := p.affineSourceAt(0, screenX, verticalBack)
 	sx, sy := int(sourceX), int(sourceY)
 
 	switch mode {

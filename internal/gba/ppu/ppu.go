@@ -73,6 +73,7 @@ type PPU struct {
 	bldcnt   uint16
 	bldalpha uint16
 	bldy     uint16
+	mosaic   uint16
 
 	lineCycle uint32
 	hblank    bool
@@ -113,6 +114,7 @@ func (p *PPU) Reset() {
 	p.bldcnt = 0
 	p.bldalpha = 0
 	p.bldy = 0
+	p.mosaic = 0
 	p.lineCycle = 0
 	p.hblank = false
 	p.vblank = false
