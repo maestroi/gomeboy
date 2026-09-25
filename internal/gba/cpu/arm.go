@@ -61,6 +61,13 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 	}
 
+	if instruction&0x0e000000 == 0x08000000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeARMBlockTransfer(instruction, mem)
+	}
+
 	if instruction&0x0c000000 == 0x04000000 {
 		if mem == nil {
 			return ExecutionResult{}, ErrMemoryRequired
