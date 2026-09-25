@@ -14,75 +14,92 @@ type objSample struct {
 }
 
 func (p *PPU) objPixel(screenX, screenY int, mode uint16) objSample {
-	oam := p.bus.OAM()
-
 	// GBA OBJ-to-OBJ ordering is OAM-index order: the first non-transparent
-	// pixel from OBJ0..OBJ127 wins. Attr2 priority only decides OBJ vs BG.
+	// visible pixel from OBJ0..OBJ127 wins. Attr2 priority only decides OBJ
+	// versus BG.
 	for index := 0; index < 128; index++ {
-		base := index * 8
-		attr0 := readOAM16(oam, base)
-		attr1 := readOAM16(oam, base+2)
-		attr2 := readOAM16(oam, base+4)
-
-		affine := attr0&(1<<8) != 0
-		// For regular OBJs attr0 bit 9 disables the object. For affine OBJs
-		// the same bit expands the display box to twice the source dimensions.
-		if !affine && attr0&(1<<9) != 0 {
+		sample, objMode, ok := p.objSampleAt(index, screenX, screenY, mode)
+		if !ok || objMode >= 2 {
 			continue
 		}
+		return sample
+	}
+	return objSample{}
+}
 
-		objMode := (attr0 >> 10) & 0x3
-		// OBJ-window pixels are masks rather than visible pixels; mode 3 is
-		// prohibited on GBA. Both remain non-visible in this slice.
-		if objMode >= 2 {
-			continue
+func (p *PPU) objWindowPixel(screenX, screenY int, mode uint16) bool {
+	// OBJ-window sprites contribute only their non-transparent shape. Their
+	// palette color and priority are ignored, and they are never drawn.
+	for index := 0; index < 128; index++ {
+		_, objMode, ok := p.objSampleAt(index, screenX, screenY, mode)
+		if ok && objMode == 2 {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *PPU) objSampleAt(index, screenX, screenY int, mode uint16) (objSample, uint16, bool) {
+	oam := p.bus.OAM()
+	base := index * 8
+	attr0 := readOAM16(oam, base)
+	attr1 := readOAM16(oam, base+2)
+	attr2 := readOAM16(oam, base+4)
+
+	affine := attr0&(1<<8) != 0
+	// For regular OBJs attr0 bit 9 disables the object. For affine OBJs the
+	// same bit expands the display box to twice the source dimensions.
+	if !affine && attr0&(1<<9) != 0 {
+		return objSample{}, 0, false
+	}
+
+	objMode := (attr0 >> 10) & 0x3
+	if objMode == 3 {
+		return objSample{}, objMode, false
+	}
+
+	width, height, ok := objDimensions((attr0>>14)&0x3, (attr1>>14)&0x3)
+	if !ok {
+		return objSample{}, objMode, false
+	}
+
+	objX := int(attr1 & 0x01ff)
+	objY := int(attr0 & 0x00ff)
+
+	var localX, localY int
+	if affine {
+		var visible bool
+		localX, localY, visible = p.affineOBJSource(attr0, attr1, width, height, objX, objY, screenX, screenY)
+		if !visible {
+			return objSample{}, objMode, false
+		}
+	} else {
+		localX = (screenX - objX) & 0x01ff
+		localY = (screenY - objY) & 0x00ff
+		if localX >= width || localY >= height {
+			return objSample{}, objMode, false
 		}
 
-		width, height, ok := objDimensions((attr0>>14)&0x3, (attr1>>14)&0x3)
-		if !ok {
-			continue
+		if attr1&(1<<12) != 0 {
+			localX = width - 1 - localX
 		}
-
-		objX := int(attr1 & 0x01ff)
-		objY := int(attr0 & 0x00ff)
-
-		var localX, localY int
-		if affine {
-			var visible bool
-			localX, localY, visible = p.affineOBJSource(attr0, attr1, width, height, objX, objY, screenX, screenY)
-			if !visible {
-				continue
-			}
-		} else {
-			localX = (screenX - objX) & 0x01ff
-			localY = (screenY - objY) & 0x00ff
-			if localX >= width || localY >= height {
-				continue
-			}
-
-			if attr1&(1<<12) != 0 {
-				localX = width - 1 - localX
-			}
-			if attr1&(1<<13) != 0 {
-				localY = height - 1 - localY
-			}
-		}
-
-		color, opaque := p.objTilePixel(mode, attr0, attr2, width, localX, localY)
-		if !opaque {
-			continue
-		}
-
-		return objSample{
-			color:           color,
-			priority:        uint8((attr2 >> 10) & 0x3),
-			oamIndex:        index,
-			semiTransparent: objMode == 1,
-			opaque:          true,
+		if attr1&(1<<13) != 0 {
+			localY = height - 1 - localY
 		}
 	}
 
-	return objSample{}
+	color, opaque := p.objTilePixel(mode, attr0, attr2, width, localX, localY)
+	if !opaque {
+		return objSample{}, objMode, false
+	}
+
+	return objSample{
+		color:           color,
+		priority:        uint8((attr2 >> 10) & 0x3),
+		oamIndex:        index,
+		semiTransparent: objMode == 1,
+		opaque:          true,
+	}, objMode, true
 }
 
 func (p *PPU) affineOBJSource(attr0, attr1 uint16, sourceWidth, sourceHeight, objX, objY, screenX, screenY int) (int, int, bool) {

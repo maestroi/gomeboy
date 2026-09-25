@@ -65,6 +65,11 @@ type PPU struct {
 	affineRefRaw  [2][2]uint32
 	affineCurrent [2][2]int32
 
+	winH   [2]uint16
+	winV   [2]uint16
+	winIn  uint16
+	winOut uint16
+
 	lineCycle uint32
 	hblank    bool
 	vblank    bool
@@ -97,6 +102,10 @@ func (p *PPU) Reset() {
 	clear(p.affineParam[:])
 	clear(p.affineRefRaw[:])
 	clear(p.affineCurrent[:])
+	clear(p.winH[:])
+	clear(p.winV[:])
+	p.winIn = 0
+	p.winOut = 0
 	p.lineCycle = 0
 	p.hblank = false
 	p.vblank = false

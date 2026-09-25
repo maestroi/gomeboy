@@ -42,6 +42,28 @@ func (p *PPU) installRegisters() {
 		)
 	}
 
+	for window := 0; window < 2; window++ {
+		window := window
+		hOffset := uint32(0x040 + window*2)
+		vOffset := uint32(0x044 + window*2)
+		io.Register16(hOffset,
+			func() uint16 { return p.openBusHalfword(hOffset) },
+			func(value uint16) { p.winH[window] = value },
+		)
+		io.Register16(vOffset,
+			func() uint16 { return p.openBusHalfword(vOffset) },
+			func(value uint16) { p.winV[window] = value },
+		)
+	}
+	io.Register16(0x048,
+		func() uint16 { return p.winIn },
+		func(value uint16) { p.winIn = value & 0x3f3f },
+	)
+	io.Register16(0x04a,
+		func() uint16 { return p.winOut },
+		func(value uint16) { p.winOut = value & 0x3f3f },
+	)
+
 	for affine := 0; affine < 2; affine++ {
 		affine := affine
 		base := uint32(0x020 + affine*0x10)
