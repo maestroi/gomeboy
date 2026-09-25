@@ -83,6 +83,29 @@ func TestScanlineTimingAndHBlankFlagDelay(t *testing.T) {
 	}
 }
 
+func TestHiddenScanlinesKeepHBlankFlagButDoNotTriggerDMAHook(t *testing.T) {
+	var hblankSignals int
+	p, _ := newTestPPU(t, Hooks{
+		HBlank: func() { hblankSignals++ },
+	})
+
+	p.Advance(uint32(VBlankStartLine)*CyclesPerLine + VisibleCycles)
+	if hblankSignals != int(VisibleLines) {
+		t.Fatalf("HBlank DMA signals = %d, want %d visible lines", hblankSignals, VisibleLines)
+	}
+	if p.InHBlank() {
+		t.Fatal("HBlank status flag asserted before its delayed flag point")
+	}
+
+	p.Advance(HBlankFlagCycle - VisibleCycles)
+	if !p.InHBlank() {
+		t.Fatal("hidden scanline did not assert DISPSTAT HBlank flag")
+	}
+	if hblankSignals != int(VisibleLines) {
+		t.Fatalf("hidden line triggered HBlank DMA hook: %d", hblankSignals)
+	}
+}
+
 func TestVBlankRangeAndFrameLength(t *testing.T) {
 	var vblankSignals, vblankIRQs, hblankIRQs int
 	p, b := newTestPPU(t, Hooks{
