@@ -9,6 +9,7 @@ import (
 // instruction. Bus fetch/refill timing is deliberately not included.
 type ExecutionResult struct {
 	InternalCycles uint8
+	MemoryCycles   uint32
 	PipelineFlush  bool
 }
 
@@ -42,6 +43,8 @@ type CPU struct {
 	pc   uint32
 	cpsr PSR
 	spsr [5]PSR
+
+	fetchSequential bool
 }
 
 // New returns an ARM7TDMI in reset state: ARM state, Supervisor mode, IRQ/FIQ
@@ -149,6 +152,7 @@ func (c *CPU) VisiblePC() uint32 {
 func (c *CPU) SetPC(pc uint32) {
 	c.pc = pc
 	c.alignPC()
+	c.fetchSequential = false
 }
 
 func (c *CPU) alignPC() {
