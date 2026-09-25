@@ -32,20 +32,36 @@ func set8bppPixel(vram []byte, charBaseBlock, tile, x, y int, color byte) {
 }
 
 func TestBGControlAndScrollRegisters(t *testing.T) {
-	_, b := newTestPPU(t, Hooks{})
+	p, b := newTestPPU(t, Hooks{})
 
 	b.Write16(bus.IOStart+0x008, 0xffff, bus.Access{})
-	if got, _ := b.Read16(bus.IOStart+0x008, bus.Access{}); got != 0xffcf {
-		t.Fatalf("BG0CNT = %04x, want ffcf with unused bits cleared", got)
+	if got, _ := b.Read16(bus.IOStart+0x008, bus.Access{}); got != 0xdfcf {
+		t.Fatalf("BG0CNT = %04x, want dfcf with unused bits cleared", got)
+	}
+
+	// BG2/BG3 retain bit 13 because it is the affine overflow control.
+	b.Write16(bus.IOStart+0x00c, 1<<13, bus.Access{})
+	if got, _ := b.Read16(bus.IOStart+0x00c, bus.Access{}); got != 1<<13 {
+		t.Fatalf("BG2CNT bit13 = %04x, want 2000", got)
 	}
 
 	b.Write16(bus.IOStart+0x010, 0xffff, bus.Access{})
 	b.Write16(bus.IOStart+0x012, 0x1234, bus.Access{})
-	if got, _ := b.Read16(bus.IOStart+0x010, bus.Access{}); got != 0x01ff {
-		t.Fatalf("BG0HOFS = %04x, want 01ff", got)
+	if p.bghofs[0] != 0x01ff {
+		t.Fatalf("BG0HOFS latch = %04x, want 01ff", p.bghofs[0])
 	}
-	if got, _ := b.Read16(bus.IOStart+0x012, bus.Access{}); got != 0x0034 {
-		t.Fatalf("BG0VOFS = %04x, want 0034", got)
+	if p.bgvofs[0] != 0x0034 {
+		t.Fatalf("BG0VOFS latch = %04x, want 0034", p.bgvofs[0])
+	}
+
+	// Scroll registers are write-only; CPU reads see the current open-bus lane.
+	b.SetOpenBus(0x44332211)
+	if got, _ := b.Read16(bus.IOStart+0x010, bus.Access{}); got != 0x2211 {
+		t.Fatalf("BG0HOFS read = %04x, want open-bus low lane 2211", got)
+	}
+	b.SetOpenBus(0x44332211)
+	if got, _ := b.Read16(bus.IOStart+0x012, bus.Access{}); got != 0x4433 {
+		t.Fatalf("BG0VOFS read = %04x, want open-bus high lane 4433", got)
 	}
 }
 
