@@ -47,6 +47,15 @@ func setOBJ8bppPixel(b *bus.Bus, tile, x, y int, color byte) {
 	b.VRAM()[addr] = color
 }
 
+func setOBJAffineParams(b *bus.Bus, group int, pa, pb, pc, pd int16) {
+	oam := b.OAM()
+	base := group * 32
+	putOAM16(oam, base+6, uint16(pa))
+	putOAM16(oam, base+14, uint16(pb))
+	putOAM16(oam, base+22, uint16(pc))
+	putOAM16(oam, base+30, uint16(pd))
+}
+
 func TestOBJ4bppPaletteBank(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
 	disableAllOBJ(b)
@@ -240,13 +249,12 @@ func TestLowerOAMIndexWinsBetweenOBJRegardlessOfBGPriorityField(t *testing.T) {
 	}
 }
 
-func TestOBJDisableAffineAndWindowModesAreNotVisibleInBaseSlice(t *testing.T) {
+func TestOBJDisableAndWindowModesAreNotVisible(t *testing.T) {
 	cases := []struct {
 		name  string
 		attr0 uint16
 	}{
 		{"disabled regular", 1 << 9},
-		{"affine deferred", 1 << 8},
 		{"OBJ window", 2 << 10},
 		{"prohibited mode", 3 << 10},
 	}
@@ -322,5 +330,173 @@ func TestOBJDisplayEnableBit(t *testing.T) {
 
 	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{0, 0, 255} {
 		t.Fatalf("disabled OBJ display = %v, want backdrop blue", got)
+	}
+}
+
+
+func TestAffineOBJIdentityMatchesRegularSampling(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x001f)
+	setOBJ4bppPixel(b, 0, 0, 0, 1)
+	setOBJAffineParams(b, 0, 0x0100, 0, 0, 0x0100)
+	setOBJAttrs(b, 0,
+		1<<8,
+		0, // affine group 0
+		0,
+	)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable, bus.Access{})
+	p.Advance(VisibleCycles)
+
+	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{255, 0, 0} {
+		t.Fatalf("affine identity pixel = %v, want red", got)
+	}
+}
+
+func TestAffineOBJUsesSelectedMatrixGroup(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x001f)
+	setOBJPaletteColor(b, 2, 0x03e0)
+
+	// Source x=2 is red, x=4 is green.
+	setOBJ4bppPixel(b, 0, 2, 4, 1)
+	setOBJ4bppPixel(b, 0, 4, 4, 2)
+
+	setOBJAffineParams(b, 0, 0x0100, 0, 0, 0x0100)
+	// Group 1 scales X by 0.5. Screen x=0 maps to source x=2.
+	setOBJAffineParams(b, 1, 0x0080, 0, 0, 0x0100)
+
+	setOBJAttrs(b, 0,
+		1<<8,
+		1<<9, // affine group 1
+		0,
+	)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable, bus.Access{})
+	p.Advance(4*CyclesPerLine + VisibleCycles)
+
+	if got := rgbAt(p.FrameBuffer(), 0, 4); got != [3]byte{255, 0, 0} {
+		t.Fatalf("selected affine group pixel = %v, want red from source x2", got)
+	}
+}
+
+func TestAffineOBJOffDiagonalMatrixTerms(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x7c00)
+	// With PA=0, PB=1, PC=-1, PD=0, screen local (4,0) maps
+	// to source (0,4).
+	setOBJ4bppPixel(b, 0, 0, 4, 1)
+	setOBJAffineParams(b, 0, 0, 0x0100, -0x0100, 0)
+	setOBJAttrs(b, 0, 1<<8, 0, 0)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable, bus.Access{})
+	p.Advance(VisibleCycles)
+
+	if got := rgbAt(p.FrameBuffer(), 4, 0); got != [3]byte{0, 0, 255} {
+		t.Fatalf("affine PB/PC pixel = %v, want blue", got)
+	}
+}
+
+func TestAffineOBJDoubleSizeCentersSourceImage(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x001f)
+	setOBJ4bppPixel(b, 0, 0, 0, 1)
+	setOBJAffineParams(b, 0, 0x0100, 0, 0, 0x0100)
+
+	// 8x8 source, 16x16 display box. Identity transform centers the source,
+	// so source (0,0) appears at display-local (4,4).
+	setOBJAttrs(b, 0,
+		(1<<8)|(1<<9),
+		0,
+		0,
+	)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable, bus.Access{})
+	p.Advance(4*CyclesPerLine + VisibleCycles)
+
+	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{} {
+		t.Fatalf("double-size border pixel = %v, want transparent/backdrop black", got)
+	}
+	if got := rgbAt(p.FrameBuffer(), 4, 4); got != [3]byte{255, 0, 0} {
+		t.Fatalf("double-size centered source = %v, want red", got)
+	}
+}
+
+func TestAffineOBJDoubleSizeYWrapAtTop(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x03e0)
+	// Use a 64x64 source with double-size display (128 pixels high). Put a
+	// source pixel that maps to screen y=0 when OBJ Y=224.
+	setOBJ4bppPixel(b, 0, 0, 32, 1)
+	setOBJAffineParams(b, 0, 0x0100, 0, 0, 0x0100)
+	setOBJAttrs(b, 0,
+		uint16(224)|(1<<8)|(1<<9),
+		3<<14, // square 64x64
+		0,
+	)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable, bus.Access{})
+	p.Advance(VisibleCycles)
+
+	// localY=(0-224)&255 = 32; double-size center is 64, so sourceY=0.
+	if got := rgbAt(p.FrameBuffer(), 32, 0); got != [3]byte{0, 255, 0} {
+		t.Fatalf("wrapped double-size affine OBJ = %v, want green", got)
+	}
+}
+
+func TestAffineOBJAttr1FlipBitsAreMatrixSelectionBits(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x001f)
+	setOBJ4bppPixel(b, 0, 0, 0, 1)
+
+	// Attr1 bits 12/13 are part of affine group selection. Group 24 uses
+	// both bits and is identity; treating them as flips would sample (7,7).
+	setOBJAffineParams(b, 24, 0x0100, 0, 0, 0x0100)
+	setOBJAttrs(b, 0,
+		1<<8,
+		24<<9,
+		0,
+	)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable, bus.Access{})
+	p.Advance(VisibleCycles)
+
+	if got := rgbAt(p.FrameBuffer(), 0, 0); got != [3]byte{255, 0, 0} {
+		t.Fatalf("affine Attr1 selection/flip overlap = %v, want red", got)
+	}
+}
+
+func TestAffineOBJStillObeysBitmapTileRestriction(t *testing.T) {
+	render := func(tile uint16) [3]byte {
+		p, b := newTestPPU(t, Hooks{})
+		disableAllOBJ(b)
+		setBGPaletteColor(b, 0, 0x7c00)
+		setOBJPaletteColor(b, 1, 0x001f)
+		setOBJ4bppPixel(b, int(tile), 0, 0, 1)
+		setOBJAffineParams(b, 0, 0x0100, 0, 0, 0x0100)
+		setOBJAttrs(b, 0, 1<<8, 0, tile)
+
+		b.Write16(bus.IOStart+dispCNTOffset, 3|dispOBJEnable, bus.Access{})
+		p.Advance(VisibleCycles)
+		return rgbAt(p.FrameBuffer(), 0, 0)
+	}
+
+	if got := render(511); got != [3]byte{0, 0, 255} {
+		t.Fatalf("affine bitmap tile511 = %v, want backdrop blue", got)
+	}
+	if got := render(512); got != [3]byte{255, 0, 0} {
+		t.Fatalf("affine bitmap tile512 = %v, want OBJ red", got)
 	}
 }
