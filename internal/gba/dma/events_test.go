@@ -129,8 +129,8 @@ func TestRepeatReloadUsesValuesLatchedOnEnable(t *testing.T) {
 
 	got0, _ := b.Read16(destB, bus.Access{})
 	got1, _ := b.Read16(destB+2, bus.Access{})
-	if got0 != 3 || got1 != 0 {
-		t.Fatalf("re-enabled repeat produced %04x/%04x, want 0003/0000 from remaining source", got0, got1)
+	if got0 != 1 || got1 != 2 {
+		t.Fatalf("re-enabled repeat produced %04x/%04x, want 0001/0002 from re-latched SAD", got0, got1)
 	}
 }
 
