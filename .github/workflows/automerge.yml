@@ -1,0 +1,103 @@
+# Squash-merge maestroi's non-draft same-repo PRs into main after the
+# complete gomeboy PR test workflow passes. Everyone else's PRs stay manual.
+#
+# gomeboy does not currently have GitHub's repository-level auto-merge setting
+# enabled, so this workflow performs the merge from the successful workflow_run
+# instead of queueing native auto-merge.
+name: Automerge
+
+on:
+  workflow_run:
+    workflows: ["gomeboy"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: automerge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Squash-merge passing PR
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge eligible maestroi PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          ALLOWED_AUTHOR: maestroi
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # The commit -> PR association can lag briefly after a workflow
+          # completes. Retry only while GitHub returns no associated PRs.
+          pr_json='[]'
+          association_found=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if pr_json="$(gh api -H 'Accept: application/vnd.github+json'               "/repos/${REPO}/commits/${HEAD_SHA}/pulls")"; then
+              if jq -e 'length > 0' >/dev/null <<<"$pr_json"; then
+                association_found=1
+                break
+              fi
+            else
+              pr_json='[]'
+            fi
+
+            if [[ "$attempt" -lt 10 ]]; then
+              echo "No PR association for ${HEAD_SHA} yet (attempt ${attempt}/10); retrying..."
+              sleep 3
+            fi
+          done
+
+          if [[ "$association_found" -ne 1 ]]; then
+            echo "No PR association for ${HEAD_SHA} after retries."
+            exit 1
+          fi
+
+          # Require the PR's current head SHA to be the exact commit whose full
+          # CI run just passed. This prevents an older successful run from
+          # merging a newer push that has not finished testing yet.
+          pr_number="$(jq -r             --arg repo "$REPO"             --arg author "$ALLOWED_AUTHOR"             --arg sha "$HEAD_SHA" '
+              [.[] |
+                select(.state == "open") |
+                select(.base.ref == "main") |
+                select(.draft == false) |
+                select(.head.repo.full_name == $repo) |
+                select(.head.sha == $sha) |
+                select(.user.login == $author)
+              ] | first | .number // empty
+            ' <<<"$pr_json")"
+
+          if [[ -z "$pr_number" ]]; then
+            echo "No eligible ${ALLOWED_AUTHOR} PR into main for ${HEAD_SHA}; leaving it manual."
+            exit 0
+          fi
+
+          head_ref="$(jq -r             --argjson number "$pr_number"             '.[] | select(.number == $number) | .head.ref'             <<<"$pr_json")"
+
+          echo "Squash-merging PR #${pr_number} at tested head ${HEAD_SHA}."
+
+          # GitHub's merge API accepts the expected head SHA. If the PR moves
+          # after the check above, the merge is rejected rather than merging
+          # an untested commit.
+          merge_json="$(gh api --method PUT             "/repos/${REPO}/pulls/${pr_number}/merge"             -f merge_method=squash             -f sha="$HEAD_SHA")"
+
+          if [[ "$(jq -r '.merged' <<<"$merge_json")" != "true" ]]; then
+            echo "$merge_json"
+            exit 1
+          fi
+
+          echo "$merge_json"
+
+          # Match the PokePilot behavior of deleting the merged source branch.
+          if [[ -n "$head_ref" && "$head_ref" != "main" ]]; then
+            gh api --method DELETE               "/repos/${REPO}/git/refs/heads/${head_ref}" ||               echo "Merged PR #${pr_number}, but could not delete branch ${head_ref}."
+          fi
