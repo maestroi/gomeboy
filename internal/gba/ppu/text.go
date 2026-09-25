@@ -9,46 +9,6 @@ type textBGConfig struct {
 	height     int
 }
 
-func (p *PPU) renderTextMode(y int, mode uint16, backdrop [3]byte) {
-	for x := 0; x < ScreenWidth; x++ {
-		color := backdrop
-		bestPriority := uint8(4)
-		found := false
-
-		// Lower BG number wins ties at equal priority, so scan BG0 -> BG3 and
-		// replace only for a strictly better priority.
-		for bg := 0; bg < 4; bg++ {
-			kind := bgKindForMode(mode, bg)
-			if kind == bgUnavailable || p.dispcnt&(1<<(8+bg)) == 0 {
-				continue
-			}
-
-			priority := uint8(p.bgcnt[bg] & 0x3)
-			if found && priority >= bestPriority {
-				continue
-			}
-
-			var pixel [3]byte
-			var opaque bool
-			switch kind {
-			case bgText:
-				pixel, opaque = p.textBGPixel(bg, decodeTextBG(p.bgcnt[bg]), x, y)
-			case bgAffine:
-				pixel, opaque = p.affineBGPixel(bg, x)
-			}
-			if !opaque {
-				continue
-			}
-
-			color = pixel
-			bestPriority = priority
-			found = true
-		}
-
-		p.setPixel(x, y, color)
-	}
-}
-
 type bgKind uint8
 
 const (

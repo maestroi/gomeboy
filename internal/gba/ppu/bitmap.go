@@ -8,96 +8,51 @@ const (
 	dispBG2Enable   = 1 << 10
 )
 
-func (p *PPU) renderLine(y int) {
-	if p.dispcnt&dispForcedBlank != 0 {
-		p.fillLine(y, 0xff, 0xff, 0xff)
-		return
-	}
-
-	backdrop := p.paletteColor(0)
-	mode := p.dispcnt & 0x7
+func (p *PPU) bitmapBGPixel(mode uint16, screenX int) ([3]byte, bool) {
+	vram := p.bus.VRAM()
+	sourceX, sourceY := p.affineSource(0, screenX)
+	sx, sy := int(sourceX), int(sourceY)
 
 	switch mode {
-	case 0, 1, 2:
-		p.renderTextMode(y, mode, backdrop)
-	case 3, 4, 5:
-		if p.dispcnt&dispBG2Enable == 0 {
-			p.fillLineColor(y, backdrop)
-			return
-		}
-		switch mode {
-		case 3:
-			p.renderMode3(y, backdrop)
-		case 4:
-			p.renderMode4(y, backdrop)
-		case 5:
-			p.renderMode5(y, backdrop)
-		}
-	default:
-		p.fillLineColor(y, backdrop)
-	}
-}
-
-func (p *PPU) renderMode3(y int, backdrop [3]byte) {
-	vram := p.bus.VRAM()
-	for x := 0; x < ScreenWidth; x++ {
-		sourceX, sourceY := p.affineSource(0, x)
-		sx, sy := int(sourceX), int(sourceY)
+	case 3:
 		if sx < 0 || sy < 0 || sx >= 240 || sy >= 160 {
-			p.setPixel(x, y, backdrop)
-			continue
+			return [3]byte{}, false
 		}
 		offset := (sy*240 + sx) * 2
 		color := binary.LittleEndian.Uint16(vram[offset : offset+2])
-		p.setPixel(x, y, bgr555(color))
-	}
-}
+		return bgr555(color), true
 
-func (p *PPU) renderMode4(y int, backdrop [3]byte) {
-	vram := p.bus.VRAM()
-	page := 0
-	if p.dispcnt&dispFrameSelect != 0 {
-		page = 0xa000
-	}
-	palette := p.bus.PaletteRAM()
-
-	for x := 0; x < ScreenWidth; x++ {
-		sourceX, sourceY := p.affineSource(0, x)
-		sx, sy := int(sourceX), int(sourceY)
+	case 4:
 		if sx < 0 || sy < 0 || sx >= 240 || sy >= 160 {
-			p.setPixel(x, y, backdrop)
-			continue
+			return [3]byte{}, false
 		}
-
+		page := 0
+		if p.dispcnt&dispFrameSelect != 0 {
+			page = 0xa000
+		}
 		index := vram[page+sy*240+sx]
 		if index == 0 {
-			p.setPixel(x, y, backdrop)
-			continue
+			return [3]byte{}, false
 		}
+		palette := p.bus.PaletteRAM()
 		offset := int(index) * 2
 		color := binary.LittleEndian.Uint16(palette[offset : offset+2])
-		p.setPixel(x, y, bgr555(color))
-	}
-}
+		return bgr555(color), true
 
-func (p *PPU) renderMode5(y int, backdrop [3]byte) {
-	vram := p.bus.VRAM()
-	page := 0
-	if p.dispcnt&dispFrameSelect != 0 {
-		page = 0xa000
-	}
-
-	for x := 0; x < ScreenWidth; x++ {
-		sourceX, sourceY := p.affineSource(0, x)
-		sx, sy := int(sourceX), int(sourceY)
+	case 5:
 		if sx < 0 || sy < 0 || sx >= 160 || sy >= 128 {
-			p.setPixel(x, y, backdrop)
-			continue
+			return [3]byte{}, false
+		}
+		page := 0
+		if p.dispcnt&dispFrameSelect != 0 {
+			page = 0xa000
 		}
 		offset := page + (sy*160+sx)*2
 		color := binary.LittleEndian.Uint16(vram[offset : offset+2])
-		p.setPixel(x, y, bgr555(color))
+		return bgr555(color), true
 	}
+
+	return [3]byte{}, false
 }
 
 func (p *PPU) paletteColor(index int) [3]byte {
