@@ -59,6 +59,12 @@ type PPU struct {
 	bghofs [4]uint16
 	bgvofs [4]uint16
 
+	// Affine state is indexed 0=BG2, 1=BG3. Parameters are signed 8.8
+	// fixed-point values; reference/current coordinates are signed 20.8.
+	affineParam   [2][4]int16 // PA, PB, PC, PD
+	affineRefRaw  [2][2]uint32
+	affineCurrent [2][2]int32
+
 	lineCycle uint32
 	hblank    bool
 	vblank    bool
@@ -88,6 +94,9 @@ func (p *PPU) Reset() {
 	clear(p.bgcnt[:])
 	clear(p.bghofs[:])
 	clear(p.bgvofs[:])
+	clear(p.affineParam[:])
+	clear(p.affineRefRaw[:])
+	clear(p.affineCurrent[:])
 	p.lineCycle = 0
 	p.hblank = false
 	p.vblank = false
@@ -133,6 +142,7 @@ func (p *PPU) beginHBlank() {
 		return
 	}
 	p.renderLine(int(p.vcount))
+	p.advanceAffineLine()
 	if p.hooks.HBlank != nil {
 		p.hooks.HBlank()
 	}
@@ -159,6 +169,7 @@ func (p *PPU) endScanline() {
 	p.vblank = p.vcount >= VBlankStartLine && p.vcount < VBlankEndLine
 
 	if !wasVBlank && p.vblank {
+		p.reloadAffineReferences()
 		if p.hooks.VBlank != nil {
 			p.hooks.VBlank()
 		}
