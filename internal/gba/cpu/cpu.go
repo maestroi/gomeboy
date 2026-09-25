@@ -194,6 +194,36 @@ func (c *CPU) ReadRegister(reg int) uint32 {
 	}
 }
 
+func (c *CPU) readUserRegister(reg int) uint32 {
+	if reg < 0 || reg > 15 {
+		panic(fmt.Sprintf("arm7tdmi: invalid user register r%d", reg))
+	}
+	switch {
+	case reg < 8:
+		return c.low[reg]
+	case reg < 13:
+		return c.userHigh[reg-8]
+	case reg < 15:
+		return c.userSPLR[reg-13]
+	default:
+		return c.VisiblePC()
+	}
+}
+
+func (c *CPU) writeUserRegister(reg int, value uint32) {
+	if reg < 0 || reg >= 15 {
+		panic(fmt.Sprintf("arm7tdmi: invalid writable user register r%d", reg))
+	}
+	switch {
+	case reg < 8:
+		c.low[reg] = value
+	case reg < 13:
+		c.userHigh[reg-8] = value
+	default:
+		c.userSPLR[reg-13] = value
+	}
+}
+
 // WriteRegister writes r0-r15. Writing r15 branches using current state.
 func (c *CPU) WriteRegister(reg int, value uint32) {
 	if reg < 0 || reg > 15 {
