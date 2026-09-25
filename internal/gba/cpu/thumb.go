@@ -138,6 +138,22 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		return c.executeThumbAdjustSP(instruction)
 	}
 
+	// Format 14: PUSH/POP.
+	if instruction&0xf600 == 0xb400 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbPushPop(instruction, mem)
+	}
+
+	// Format 15: LDMIA/STMIA.
+	if instruction&0xf000 == 0xc000 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeThumbMultiple(instruction, mem)
+	}
+
 	// Format 4: ALU operations.
 	if instruction&0xfc00 == 0x4000 {
 		return c.executeThumbALU(instruction)
