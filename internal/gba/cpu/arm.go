@@ -78,6 +78,14 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: unsupported ARM instruction 0x%08x", instruction)
 	}
 
+	// SWP/SWPB overlap the data-processing/multiply major opcode.
+	if instruction&0x0fb00ff0 == 0x01000090 {
+		if mem == nil {
+			return ExecutionResult{}, ErrMemoryRequired
+		}
+		return c.executeARMSwap(instruction, mem)
+	}
+
 	// Multiply and multiply-long occupy the data-processing major opcode but
 	// have the distinctive 1001 low nibble.
 	if instruction&0x0fc000f0 == 0x00000090 {
