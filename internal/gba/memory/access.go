@@ -4,11 +4,13 @@ package memory
 //
 // Sequential selects sequential timing for the first Game Pak halfword.
 // Instruction marks an opcode fetch so WAITCNT prefetch may satisfy it.
-// Locked marks the read/write pair of an atomic ARM SWP transaction. The
-// current bus timing model does not change access duration for Locked traffic,
-// but exposing it here lets future DMA/arbitration code keep the pair indivisible.
+// Locked marks the read/write pair of an atomic ARM SWP transaction.
+// DMA marks a transfer driven by a DMA channel rather than the CPU.
+// The current bus timing model does not arbitrate these classes yet, but the
+// distinction lets memory restrictions and future scheduling stay centralized.
 type Access struct {
 	Sequential  bool
 	Instruction bool
 	Locked      bool
+	DMA         bool
 }
