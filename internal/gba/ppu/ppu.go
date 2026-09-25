@@ -55,6 +55,10 @@ type PPU struct {
 	dispstat uint16 // writable control bits only; status bits are synthesized
 	vcount   uint16
 
+	bgcnt  [4]uint16
+	bghofs [4]uint16
+	bgvofs [4]uint16
+
 	lineCycle uint32
 	hblank    bool
 	vblank    bool
@@ -81,6 +85,9 @@ func (p *PPU) Reset() {
 	p.dispcnt = 0
 	p.dispstat = 0
 	p.vcount = 0
+	clear(p.bgcnt[:])
+	clear(p.bghofs[:])
+	clear(p.bgvofs[:])
 	p.lineCycle = 0
 	p.hblank = false
 	p.vblank = false
