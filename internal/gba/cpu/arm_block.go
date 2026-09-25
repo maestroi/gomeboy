@@ -30,6 +30,11 @@ func (c *CPU) executeARMBlockTransfer(instruction uint32, mem Memory) (Execution
 	}
 
 	hasPC := registerList&(1<<15) != 0
+	if load && psrOrUser && hasPC {
+		if _, ok := c.SPSR(); !ok {
+			return ExecutionResult{}, ErrNoSPSR
+		}
+	}
 	userBank := psrOrUser && (!load || !hasPC)
 	if userBank && writeBack {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: user-bank LDM/STM with writeback is unpredictable")
