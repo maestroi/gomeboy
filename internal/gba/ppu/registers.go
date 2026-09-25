@@ -15,6 +15,32 @@ func (p *PPU) installRegisters() {
 		func() uint16 { return p.vcount },
 		nil,
 	)
+
+	for bg := 0; bg < 4; bg++ {
+		bg := bg
+		controlOffset := uint32(0x008 + bg*2)
+		hofsOffset := uint32(0x010 + bg*4)
+		vofsOffset := hofsOffset + 2
+
+		controlMask := uint16(0xffcf)
+		if bg < 2 {
+			// BG0/BG1 bit 13 is unused on GBA. BG2/BG3 use it as the
+			// affine display-area overflow bit.
+			controlMask &^= 1 << 13
+		}
+		io.Register16(controlOffset,
+			func() uint16 { return p.bgcnt[bg] },
+			func(value uint16) { p.bgcnt[bg] = value & controlMask },
+		)
+		io.Register16(hofsOffset,
+			func() uint16 { return p.openBusHalfword(hofsOffset) },
+			func(value uint16) { p.bghofs[bg] = value & 0x01ff },
+		)
+		io.Register16(vofsOffset,
+			func() uint16 { return p.openBusHalfword(vofsOffset) },
+			func(value uint16) { p.bgvofs[bg] = value & 0x01ff },
+		)
+	}
 }
 
 func (p *PPU) writeDISPCNT(value uint16) {
@@ -49,4 +75,12 @@ func (p *PPU) writeDISPSTAT(value uint16) {
 	// Status bits 0-2 and unused bits 6-7 are read-only/zero on GBA.
 	p.dispstat = value & 0xff38
 	p.updateVCountMatch(true)
+}
+
+func (p *PPU) openBusHalfword(ioOffset uint32) uint16 {
+	value := p.bus.OpenBus()
+	if ioOffset&2 != 0 {
+		return uint16(value >> 16)
+	}
+	return uint16(value)
 }
