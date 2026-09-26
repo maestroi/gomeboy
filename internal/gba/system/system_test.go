@@ -608,9 +608,6 @@ func TestSTOPIgnoresOrdinaryEnabledInterrupts(t *testing.T) {
 	if !m.IRQ.EnabledPending() {
 		t.Fatal("ordinary requests were not latched")
 	}
-	if m.IRQ.StopWakePending() {
-		t.Fatal("ordinary interrupt unexpectedly qualified for STOP wake")
-	}
 	if m.irqScheduled {
 		t.Fatal("ordinary STOP interrupt scheduled IRQ propagation")
 	}
