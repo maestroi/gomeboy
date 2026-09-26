@@ -229,3 +229,35 @@ func TestDeferredLineHookReportsQualificationWithoutDrivingSink(t *testing.T) {
 			evaluations[len(evaluations)-1])
 	}
 }
+
+func TestStopWakePendingAcceptsOnlyStopCapableEnabledSources(t *testing.T) {
+	c, b, _ := newTestController(t)
+
+	ordinary := VBlank | Timer0 | DMA3
+	b.Write16(bus.IOStart+ieOffset, uint16(ordinary|Serial|Keypad|GamePak), bus.Access{})
+	c.Request(ordinary)
+	if c.StopWakePending() {
+		t.Fatal("ordinary enabled requests unexpectedly qualified for STOP wake")
+	}
+	if !c.EnabledPending() {
+		t.Fatal("ordinary requests should still qualify for HALT wake")
+	}
+
+	for _, source := range []Source{Serial, Keypad, GamePak} {
+		c.Reset()
+		b.Write16(bus.IOStart+ieOffset, uint16(source), bus.Access{})
+		c.Request(source)
+		if !c.StopWakePending() {
+			t.Fatalf("%v did not qualify for STOP wake", source)
+		}
+		if c.IRQAsserted() {
+			t.Fatalf("%v STOP wake incorrectly required/asserted IME", source)
+		}
+	}
+
+	c.Reset()
+	c.Request(Keypad)
+	if c.StopWakePending() {
+		t.Fatal("disabled Keypad IF unexpectedly qualified for STOP wake")
+	}
+}
