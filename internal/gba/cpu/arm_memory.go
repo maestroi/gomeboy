@@ -156,9 +156,7 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 		var value uint32
 		switch kind {
 		case 1: // LDRH
-			var raw uint16
-			raw, cycles = mem.Read16(address, access)
-			value = uint32(raw)
+			value, cycles = loadUnsignedHalfword(mem, address, access)
 		case 2: // LDRSB
 			var raw byte
 			raw, cycles = mem.Read8(address, access)
