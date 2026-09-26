@@ -36,9 +36,9 @@ func (c *CPU) executeThumbRegisterTransfer(instruction uint16, mem Memory) (Exec
 		cycles = n
 		c.WriteRegister(rd, value)
 	case 5: // LDRH
-		value, n := mem.Read16(address, access)
+		value, n := loadUnsignedHalfword(mem, address, access)
 		cycles = n
-		c.WriteRegister(rd, uint32(value))
+		c.WriteRegister(rd, value)
 	case 6: // LDRB
 		value, n := mem.Read8(address, access)
 		cycles = n
@@ -102,9 +102,9 @@ func (c *CPU) executeThumbHalfwordImmediate(instruction uint16, mem Memory) (Exe
 
 	var cycles uint32
 	if load {
-		value, n := mem.Read16(address, access)
+		value, n := loadUnsignedHalfword(mem, address, access)
 		cycles = n
-		c.WriteRegister(rd, uint32(value))
+		c.WriteRegister(rd, value)
 	} else {
 		cycles = mem.Write16(address, uint16(c.ReadRegister(rd)), access)
 	}
