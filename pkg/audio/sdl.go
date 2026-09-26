@@ -5,91 +5,141 @@ package audio
 // typedef unsigned char Uint8;
 // void AudioData(void *userdata, Uint8 *stream, int len);
 import "C"
+
 import (
-	"github.com/maestroi/gomeboy/internal/gameboy"
-	"github.com/veandco/go-sdl2/sdl"
 	"time"
 	"unsafe"
+
+	"github.com/maestroi/gomeboy/internal/gameboy"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
+	"github.com/veandco/go-sdl2/sdl"
 )
 
-var sampleBuffer []uint8
-var frame [144][160][3]uint8
+type audioVideoSource interface {
+	Paused() bool
+	Initialised() bool
+	Speed() int
+	StepFrames(int)
+	Samples() ([]float32, uint32)
+	FrameRGB() []byte
+}
+
+type gameBoySource struct{ gb *gameboy.GameBoy }
+
+func (s gameBoySource) Paused() bool      { return s.gb.Paused() }
+func (s gameBoySource) Initialised() bool { return s.gb.Initialised() }
+func (s gameBoySource) Speed() int        { return s.gb.Speed() }
+func (s gameBoySource) StepFrames(n int)  { s.gb.StepFrames(n) }
+func (s gameBoySource) Samples() ([]float32, uint32) {
+	return s.gb.APU.Samples()
+}
+func (s gameBoySource) FrameRGB() []byte {
+	fb := s.gb.FrameBuffer()
+	return unsafe.Slice(&(*fb)[0][0][0], 160*144*3)
+}
+
+type emulatorSource struct{ e *gomeboy.Emulator }
+
+func (s emulatorSource) Paused() bool      { return s.e.Paused() }
+func (s emulatorSource) Initialised() bool { return s.e.Initialised() }
+func (s emulatorSource) Speed() int        { return s.e.Speed() }
+func (s emulatorSource) StepFrames(n int)  { s.e.StepFrames(n) }
+func (s emulatorSource) Samples() ([]float32, uint32) {
+	return s.e.Samples()
+}
+func (s emulatorSource) FrameRGB() []byte { return s.e.Frame().RGB }
+
+var (
+	sampleBuffer []byte
+	source       audioVideoSource
+	frameBuffer  chan []byte
+	tempFrame    []byte
+	audioDeviceID sdl.AudioDeviceID
+)
 
 //export AudioData
 func AudioData(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 	n := int(length)
 	data := unsafe.Slice(stream, n)
+	clear(data)
 
-	// if we already have a frame's worth of buffered samples then no need to step
-	if len(sampleBuffer) > n {
-		for i := 0; i < n; i++ {
-			data[i] = C.Uint8(sampleBuffer[i])
-		}
+	if len(sampleBuffer) >= n {
+		copy(data, sampleBuffer[:n])
 		sampleBuffer = sampleBuffer[n:]
-	} else {
-		// output silence if gameboy is paused
-		if gb.Paused() || !gb.Initialised() {
-			for i := 0; i < n; i++ {
-				data[i] = 0
-			}
-			return
-		}
+		return
+	}
+	if source == nil || source.Paused() || !source.Initialised() {
+		return
+	}
 
-		speed := gb.Speed()
-		for i := 0; i < speed; i++ {
-			frame = gb.Frame()
-		}
-		if speed > 1 {
-			// turbo: mute audio rather than attempting to pitch-shift/resample it.
-			// This is the standard tradeoff other emulators make for fast-forward.
-			// Still drain the APU sample buffer so it doesn't grow unbounded
-			// while turbo is active (Samples() is what resets bufferPos).
-			gb.APU.Samples()
-			for i := 0; i < n; i++ {
-				data[i] = 0
-			}
-			copy((*[maxArraySize]byte)(frameBufferPtr)[:frameSize:frameSize], (*[maxArraySize]byte)(unsafe.Pointer(&frame[0]))[:frameSize:frameSize])
-			frameBuffer <- tempFb
-			return
-		}
-		s, sN := gb.APU.Samples()
-		if sN > 0 {
+	speed := source.Speed()
+	source.StepFrames(speed)
 
-			samples := append(sampleBuffer, unsafe.Slice((*byte)(unsafe.Pointer(&s[0])), len(s)*4)...)
-			for i := 0; i < n; i++ {
-				if uint32(i) < sN*4 {
-					data[i] = C.Uint8(samples[i])
-				}
-			}
+	if speed > 1 {
+		// Turbo preserves hardware audio state while muting host output.
+		source.Samples()
+		publishFrame()
+		return
+	}
 
-			if len(samples) > n {
-				sampleBuffer = samples[n:]
-			} else {
-				sampleBuffer = sampleBuffer[0:]
-			}
+	samples, count := source.Samples()
+	if count > 0 && len(samples) > 0 {
+		byteCount := int(count) * 4
+		if byteCount > len(samples)*4 {
+			byteCount = len(samples) * 4
+		}
+		bytes := unsafe.Slice((*byte)(unsafe.Pointer(&samples[0])), byteCount)
+		combined := append(sampleBuffer, bytes...)
+		copied := copy(data, combined)
+		if copied < len(combined) {
+			sampleBuffer = append(sampleBuffer[:0], combined[copied:]...)
+		} else {
+			sampleBuffer = sampleBuffer[:0]
 		}
 	}
 
-	copy((*[maxArraySize]byte)(frameBufferPtr)[:frameSize:frameSize], (*[maxArraySize]byte)(unsafe.Pointer(&frame[0]))[:frameSize:frameSize])
-	frameBuffer <- tempFb
+	publishFrame()
 }
 
-var gb *gameboy.GameBoy
-var (
-	frameBuffer chan []byte
+func publishFrame() {
+	if source == nil || frameBuffer == nil {
+		return
+	}
+	frame := source.FrameRGB()
+	if cap(tempFrame) < len(frame) {
+		tempFrame = make([]byte, len(frame))
+	} else {
+		tempFrame = tempFrame[:len(frame)]
+	}
+	copy(tempFrame, frame)
+	frameBuffer <- tempFrame
+}
 
-	tempFb         = make([]byte, 144*160*3)
-	frameBufferPtr = unsafe.Pointer(&tempFb[0])
-)
-
+// OpenAudio retains the legacy internal Game Boy entry point.
 func OpenAudio(g *gameboy.GameBoy, fb chan []byte) error {
+	if g == nil {
+		return nil
+	}
+	return openSource(gameBoySource{gb: g}, fb)
+}
+
+// OpenEmulator opens audio for the core-neutral public emulator, including GBA.
+func OpenEmulator(e *gomeboy.Emulator, fb chan []byte) error {
+	if e == nil {
+		return nil
+	}
+	return openSource(emulatorSource{e: e}, fb)
+}
+
+func openSource(s audioVideoSource, fb chan []byte) error {
 	if err := sdl.AudioInit("pulsewire"); err != nil {
 		if err := sdl.InitSubSystem(sdl.INIT_AUDIO); err != nil {
 			return err
 		}
 	}
+	source = s
 	frameBuffer = fb
-	gb = g
+	sampleBuffer = sampleBuffer[:0]
 
 	var err error
 	if audioDeviceID, err = sdl.OpenAudioDevice("", false, &sdl.AudioSpec{
@@ -99,15 +149,13 @@ func OpenAudio(g *gameboy.GameBoy, fb chan []byte) error {
 		Samples:  bufferSize,
 		Callback: sdl.AudioCallback(C.AudioData),
 	}, nil, 0); err != nil {
-		// if we can't initialize any audio, we need to fall back to a dummy driver
-		// otherwise there won't be any output
+		// Keep emulation advancing even when the host has no audio device.
 		go func() {
-			dummyBuffer := make([]C.Uint8, bufferSize*4) // Assuming 4 bytes per sample (32-bit float)
+			dummyBuffer := make([]C.Uint8, bufferSize*4)
 			ticker := time.NewTicker(time.Second / time.Duration(sampleRate/bufferSize))
 			defer ticker.Stop()
-
 			for range ticker.C {
-				if gb != nil {
+				if source != nil {
 					AudioData(nil, (*C.Uint8)(unsafe.Pointer(&dummyBuffer[0])), C.int(len(dummyBuffer)))
 				}
 			}
@@ -116,17 +164,10 @@ func OpenAudio(g *gameboy.GameBoy, fb chan []byte) error {
 	}
 
 	sdl.PauseAudioDevice(audioDeviceID, false)
-
 	return nil
 }
 
-var (
-	audioDeviceID sdl.AudioDeviceID
-)
-
 const (
-	bufferSize   = 1634
-	sampleRate   = 96000
-	frameSize    = 144 * 160 * 3
-	maxArraySize = 144 * 160 * 4
+	bufferSize = 1634
+	sampleRate = 96000
 )
