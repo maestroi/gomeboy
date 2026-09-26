@@ -48,15 +48,13 @@ type Machine struct {
 	cycles uint64
 	memory timedMemory
 
-	dmaStartAt    uint64
-	dmaScheduled  bool
-	dmaRunning    bool
-	dmaCompleting bool
-	dmaStalls     uint64
+	dmaStartAt   [4]uint64
+	dmaScheduled uint8
+	dmaRunning   bool
+	dmaStalls    uint64
 
 	irqEventAt   uint64
 	irqScheduled bool
-	irqAfterDMA  bool
 	haltWakeSeq  uint64
 
 	halted        bool
@@ -188,13 +186,6 @@ func (m *Machine) evaluateIRQ(enabledPending bool, irqAsserted bool) {
 		return
 	}
 
-	// DMA raises its IF bit synchronously when ServicePending returns, while the
-	// scheduler advances the transfer's bus time immediately afterward. Timestamp
-	// its IRQ propagation from the actual end of that transfer, not its start.
-	if m.dmaCompleting {
-		m.irqAfterDMA = true
-		return
-	}
 	m.scheduleIRQEvent()
 }
 
@@ -234,14 +225,8 @@ func (m *Machine) advanceHaltedEvent() {
 	if untilTimer := uint64(m.Timers.CyclesUntilEvent()); untilTimer < step {
 		step = untilTimer
 	}
-	if m.dmaScheduled {
-		untilDMA := uint64(0)
-		if m.dmaStartAt > m.cycles {
-			untilDMA = m.dmaStartAt - m.cycles
-		}
-		if untilDMA < step {
-			step = untilDMA
-		}
+	if untilDMA, ok := m.cyclesUntilDMAStart(); ok && untilDMA < step {
+		step = untilDMA
 	}
 	if m.irqScheduled {
 		untilIRQ := uint64(0)
@@ -260,30 +245,73 @@ func (m *Machine) advanceHaltedEvent() {
 	m.advanceCPU(uint32(step))
 }
 
-func (m *Machine) requestDMAStart() {
-	if !m.DMA.Pending() {
+func (m *Machine) requestDMAStart(channels uint8) {
+	channels &= m.DMA.PendingMask()
+	if channels == 0 {
 		return
 	}
 	// DMA Enable can be written by the CPU in the middle of a timed I/O bus
 	// access. In that case the start latency begins when that access completes.
 	if m.memory.inBusCall {
-		m.memory.requestAfterAccess = true
+		m.memory.requestAfterAccess |= channels
 		return
 	}
-	m.scheduleDMAStart()
+	m.scheduleDMAStart(channels)
 }
 
-func (m *Machine) cancelDMAStart() {
-	if !m.DMA.Pending() {
-		m.dmaScheduled = false
+func (m *Machine) cancelDMAStart(channel int) {
+	if channel < 0 || channel >= 4 {
+		return
+	}
+	bit := uint8(1 << channel)
+	m.dmaScheduled &^= bit
+	m.memory.requestAfterAccess &^= bit
+}
+
+func (m *Machine) scheduleDMAStart(channels uint8) {
+	channels &= m.DMA.PendingMask()
+	for channel := 0; channel < 4; channel++ {
+		bit := uint8(1 << channel)
+		if channels&bit == 0 || m.dmaScheduled&bit != 0 {
+			continue
+		}
+		m.dmaStartAt[channel] = m.cycles + DMAStartLatency
+		m.dmaScheduled |= bit
 	}
 }
 
-func (m *Machine) scheduleDMAStart() {
-	at := m.cycles + DMAStartLatency
-	if !m.dmaScheduled || at < m.dmaStartAt {
-		m.dmaStartAt = at
-		m.dmaScheduled = true
+func (m *Machine) cyclesUntilDMAStart() (uint64, bool) {
+	var best uint64
+	found := false
+	for channel := 0; channel < 4; channel++ {
+		bit := uint8(1 << channel)
+		if m.dmaScheduled&bit == 0 {
+			continue
+		}
+		remaining := uint64(0)
+		if m.dmaStartAt[channel] > m.cycles {
+			remaining = m.dmaStartAt[channel] - m.cycles
+		}
+		if !found || remaining < best {
+			best = remaining
+			found = true
+		}
+	}
+	return best, found
+}
+
+func (m *Machine) activateDueDMA() {
+	var ready uint8
+	for channel := 0; channel < 4; channel++ {
+		bit := uint8(1 << channel)
+		if m.dmaScheduled&bit == 0 || m.dmaStartAt[channel] > m.cycles {
+			continue
+		}
+		m.dmaScheduled &^= bit
+		ready |= bit
+	}
+	if ready != 0 {
+		m.DMA.ActivatePending(ready)
 	}
 }
 
@@ -296,10 +324,8 @@ func (m *Machine) advanceCPU(cycles uint32) {
 		m.serviceDueEvents()
 
 		step := remaining
-		if m.dmaScheduled && m.dmaStartAt > m.cycles {
-			if untilDMA := m.dmaStartAt - m.cycles; untilDMA < step {
-				step = untilDMA
-			}
+		if untilDMA, ok := m.cyclesUntilDMAStart(); ok && untilDMA < step {
+			step = untilDMA
 		}
 		if m.irqScheduled && m.irqEventAt > m.cycles {
 			if untilIRQ := m.irqEventAt - m.cycles; untilIRQ < step {
@@ -317,34 +343,36 @@ func (m *Machine) serviceDueDMA() {
 	if m.dmaRunning {
 		return
 	}
-	for m.dmaScheduled && m.dmaStartAt <= m.cycles {
-		m.dmaScheduled = false
-		if !m.DMA.Pending() {
-			continue
+
+	m.activateDueDMA()
+	if !m.DMA.Active() {
+		return
+	}
+
+	m.dmaRunning = true
+	defer func() { m.dmaRunning = false }()
+
+	for m.DMA.Active() {
+		// A request whose start latency expired during the previous unit becomes
+		// active here. ServiceUnit then re-arbitrates DMA0..DMA3, allowing a
+		// higher-priority channel to preempt before the next lower-priority unit.
+		m.activateDueDMA()
+
+		unit := m.DMA.ServiceUnit()
+		if unit.Cycles == 0 {
+			return
 		}
 
-		m.dmaRunning = true
-		m.dmaCompleting = true
-		stall := m.DMA.ServicePending()
-		m.dmaCompleting = false
-		if stall == 0 {
-			m.dmaRunning = false
-			continue
+		m.dmaStalls += uint64(unit.Cycles)
+		m.advanceHardware(unit.Cycles)
+
+		if unit.Completed {
+			// Completion/IRQ state becomes visible only after the final unit's
+			// bus/internal cycles have elapsed.
+			m.DMA.FinishUnit(unit.Channel)
 		}
 
-		m.dmaStalls += uint64(stall)
-		m.advanceHardware(stall)
-		m.dmaRunning = false
-
-		if m.irqAfterDMA {
-			m.irqAfterDMA = false
-			if m.IRQ.EnabledPending() {
-				m.scheduleIRQEvent()
-			}
-		}
-		// PPU/timer edges crossed during the transfer may have queued another
-		// request. Fine-grained mid-transfer DMA preemption is a later slice;
-		// queued work begins as soon as the current batch releases the bus.
+		m.activateDueDMA()
 	}
 }
 
@@ -382,7 +410,7 @@ type timedMemory struct {
 	m                  *Machine
 	cpuCycles          uint32
 	inBusCall          bool
-	requestAfterAccess bool
+	requestAfterAccess uint8
 }
 
 func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32) {
@@ -441,11 +469,12 @@ func (t *timedMemory) consume(cycles uint32) {
 }
 
 func (t *timedMemory) flushDeferredDMARequest() {
-	if !t.requestAfterAccess {
+	if t.requestAfterAccess == 0 {
 		return
 	}
-	t.requestAfterAccess = false
+	channels := t.requestAfterAccess
+	t.requestAfterAccess = 0
 	if t.m.DMA.Pending() {
-		t.m.scheduleDMAStart()
+		t.m.scheduleDMAStart(channels)
 	}
 }
