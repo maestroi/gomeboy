@@ -120,14 +120,17 @@ func (c *CPU) executeARMDataProcessing(instruction uint32) (ExecutionResult, err
 	rn := int((instruction >> 16) & 0xf)
 	rd := int((instruction >> 12) & 0xf)
 
-	if instruction&(1<<4) != 0 && rn == 15 {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: register-shifted data processing with r15 Rn is unsupported")
-	}
 	op2, shifterCarry, coreCycles, err := c.armOperand2(instruction)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
 	op1 := c.ReadRegister(rn)
+	// Register-specified shifts take an extra cycle before the ALU stage. On
+	// ARM7TDMI that makes R15 as Rn observe current instruction +12 rather than
+	// the normal ARM visible PC of +8.
+	if instruction&(1<<25) == 0 && instruction&(1<<4) != 0 && rn == 15 {
+		op1 += 4
+	}
 
 	var result uint32
 	var carry, overflow bool
@@ -231,14 +234,16 @@ func (c *CPU) armOperand2(instruction uint32) (uint32, bool, uint8, error) {
 		return value, carry, 1, err
 	}
 
-	// Register-specified shifts take an additional internal cycle. PC operands
-	// observe a different pipeline value (+12), so keep those edge cases
-	// explicit until the fetch pipeline itself is modeled.
+	// Register-specified shifts take an additional internal cycle. ARM7TDMI
+	// exposes current instruction +12 when R15 is the shifted Rm operand. R15
+	// used as Rs still supplies the normal visible PC (+8), of which only the
+	// low byte is used as the shift amount.
 	rs := int((instruction >> 8) & 0xf)
-	if rm == 15 || rs == 15 {
-		return 0, false, 0, fmt.Errorf("arm7tdmi: register-specified shift using r15 is unsupported")
+	value := c.ReadRegister(rm)
+	if rm == 15 {
+		value += 4
 	}
-	value, carry := shiftRegister(c.ReadRegister(rm), uint8((instruction>>5)&0x3), uint8(c.ReadRegister(rs)), oldCarry)
+	value, carry := shiftRegister(value, uint8((instruction>>5)&0x3), uint8(c.ReadRegister(rs)), oldCarry)
 	return value, carry, 2, nil
 }
 

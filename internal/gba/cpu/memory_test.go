@@ -186,6 +186,17 @@ func TestARMHalfwordAndSignedTransfers(t *testing.T) {
 		t.Fatalf("LDRH = %08x, want 000080ff", got)
 	}
 
+	// ARM7TDMI odd-address LDRH aligns the bus read, zero-extends the
+	// halfword, then rotates the 32-bit result right by 8.
+	b.Write16(bus.IWRAMStart+0x106, 0x00ff, bus.Access{})
+	oddLDRH := armHalfTransfer(true, true, true, true, false, 0, 6, 1, 7)
+	if _, err := c.ExecuteARMWithMemory(oddLDRH, b); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(6); got != 0xff000000 {
+		t.Fatalf("odd ARM LDRH = %08x, want ff000000", got)
+	}
+
 	ldrsh := armHalfTransfer(true, true, true, true, false, 0, 2, 3, 2)
 	if _, err := c.ExecuteARMWithMemory(ldrsh, b); err != nil {
 		t.Fatal(err)
@@ -307,6 +318,16 @@ func TestThumbSignedAndHalfwordRegisterTransfers(t *testing.T) {
 	}
 	if got := c.ReadRegister(3); got != 0xffffff80 {
 		t.Fatalf("Thumb odd LDRSH = %08x, want ffffff80", got)
+	}
+
+	// jsmolka/gba-tests Thumb memory #211: 0x00ff loaded as an odd LDRH
+	// becomes 0xff000000, not the 16-bit byte swap 0x0000ff00.
+	b.Write16(bus.IWRAMStart+0x200, 0x00ff, bus.Access{})
+	if _, err := c.ExecuteThumbWithMemory(thumbRegisterTransfer(5, 1, 0, 5), b); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(5); got != 0xff000000 {
+		t.Fatalf("Thumb odd LDRH = %08x, want ff000000", got)
 	}
 
 	c.WriteRegister(4, 0x1234)

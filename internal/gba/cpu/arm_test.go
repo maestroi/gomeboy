@@ -190,6 +190,54 @@ func TestARMRegisterSpecifiedShift(t *testing.T) {
 	}
 }
 
+func TestARMRegisterSpecifiedShiftR15Semantics(t *testing.T) {
+	c := New()
+	if err := c.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+
+	// jsmolka/gba-tests #224: MOV r0,pc,LSL r0. With a register-specified
+	// shift, R15 as Rm observes current instruction +12.
+	c.SetPC(0x100)
+	c.WriteRegister(0, 0)
+	result, err := c.ExecuteARM(0xe1a0001f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(0); got != 0x10c {
+		t.Fatalf("register-shifted Rm=pc = %08x, want 0000010c", got)
+	}
+	if result.InternalCycles != 2 {
+		t.Fatalf("register-shifted pc cycles = %d, want 2", result.InternalCycles)
+	}
+	if got := c.PC(); got != 0x104 {
+		t.Fatalf("PC after register-shifted MOV = %08x, want 00000104", got)
+	}
+
+	// R15 as Rn observes the same +12 value because the extra register-shift
+	// cycle delays the ALU operand read.
+	c.SetPC(0x200)
+	c.WriteRegister(0, 0)
+	c.WriteRegister(1, 1)
+	if _, err := c.ExecuteARM(0xe08f2011); err != nil { // ADD r2,pc,r1,LSL r0
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(2); got != 0x20d {
+		t.Fatalf("register-shifted Rn=pc result = %08x, want 0000020d", got)
+	}
+
+	// R15 as Rs supplies the normal visible PC (+8); only its low byte is
+	// consumed as the shift amount.
+	c.SetPC(0x300)
+	c.WriteRegister(1, 1)
+	if _, err := c.ExecuteARM(0xe1a02f11); err != nil { // MOV r2,r1,LSL pc
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(2); got != 0x100 {
+		t.Fatalf("register-shifted Rs=pc result = %08x, want 00000100", got)
+	}
+}
+
 func TestARMMultiplyAndLongMultiply(t *testing.T) {
 	c := New()
 	if err := c.SetMode(ModeSystem); err != nil {
