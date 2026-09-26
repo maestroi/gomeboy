@@ -197,3 +197,35 @@ func TestEnabledPendingIgnoresIMEForHaltWake(t *testing.T) {
 		t.Fatal("IME did not promote enabled pending request to CPU IRQ")
 	}
 }
+
+func TestDeferredLineHookReportsQualificationWithoutDrivingSink(t *testing.T) {
+	b := bus.New(nil, nil)
+	sink := &testLineSink{}
+	var evaluations [][2]bool
+	c := NewWithHooks(b, sink, Hooks{
+		DeferLine: true,
+		Evaluate: func(enabledPending bool, irqAsserted bool) {
+			evaluations = append(evaluations, [2]bool{enabledPending, irqAsserted})
+		},
+	})
+
+	c.Request(VBlank)
+	b.Write16(bus.IOStart+ieOffset, uint16(VBlank), bus.Access{})
+	b.Write16(bus.IOStart+imeOffset, 1, bus.Access{})
+
+	if sink.line || sink.changes != 0 {
+		t.Fatalf("deferred controller drove sink: line=%v changes=%d", sink.line, sink.changes)
+	}
+	if !c.EnabledPending() || !c.IRQAsserted() {
+		t.Fatal("deferred controller lost combinational IRQ state")
+	}
+	if len(evaluations) == 0 || evaluations[len(evaluations)-1] != [2]bool{true, true} {
+		t.Fatalf("last deferred evaluation = %v, want [true true]", evaluations)
+	}
+
+	b.Write16(bus.IOStart+imeOffset, 0, bus.Access{})
+	if evaluations[len(evaluations)-1] != [2]bool{true, false} {
+		t.Fatalf("IME-clear deferred evaluation = %v, want [true false]",
+			evaluations[len(evaluations)-1])
+	}
+}
