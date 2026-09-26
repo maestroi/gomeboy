@@ -21,6 +21,7 @@ package gomeboy
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/io"
@@ -308,7 +309,7 @@ func New(opts ...Option) (*Emulator, error) {
 }
 
 func isGBAROMPath(path string) bool {
-	return filepath.Ext(path) == ".gba" || filepath.Ext(path) == ".GBA"
+	return strings.EqualFold(filepath.Ext(path), ".gba")
 }
 
 func (e *Emulator) setCore(core emulationCore) {
@@ -454,6 +455,12 @@ func (e *Emulator) Read(addr uint16, length int) []byte {
 // ReadInto performs CPU-accurate reads into dst without allocating. Reads can
 // be affected by DMA conflicts and PPU region locks, just like Read8 and Read.
 func (e *Emulator) ReadInto(addr uint16, dst []byte) {
+	if e != nil && e.gb != nil {
+		for i := range dst {
+			dst[i] = e.gb.Bus.Read(addr + uint16(i))
+		}
+		return
+	}
 	_ = e.ReadIntoAt(uint32(addr), dst)
 }
 
