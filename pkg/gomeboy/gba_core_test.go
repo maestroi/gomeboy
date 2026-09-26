@@ -13,7 +13,10 @@ func gbaLoopROM() []byte {
 }
 
 func TestGBAInMemoryCoreLaunchAndFrame(t *testing.T) {
-	e, err := New(WithROMBytes(gbaLoopROM()), WithModel(ModelAGB))
+	e, err := New()
+	if err == nil {
+		err = e.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
 	if err != nil {
 		t.Fatalf("New GBA: %v", err)
 	}
@@ -54,7 +57,10 @@ func TestGBAInMemoryCoreLaunchAndFrame(t *testing.T) {
 }
 
 func TestGBAHeadlessKeepsHardwareButDropsAudioBuffer(t *testing.T) {
-	e, err := New(WithROMBytes(gbaLoopROM()), WithModel(ModelAGB), Headless())
+	e, err := New(Headless())
+	if err == nil {
+		err = e.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +76,10 @@ func TestGBAHeadlessKeepsHardwareButDropsAudioBuffer(t *testing.T) {
 }
 
 func TestGBAKeypadMapsAllFrontendButtons(t *testing.T) {
-	e, err := New(WithROMBytes(gbaLoopROM()), WithModel(ModelAGB), Headless())
+	e, err := New(Headless())
+	if err == nil {
+		err = e.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +136,10 @@ func TestLoadROMSelectsGBAByExtension(t *testing.T) {
 }
 
 func TestGBAStateOperationsReportUnsupported(t *testing.T) {
-	e, err := New(WithROMBytes(gbaLoopROM()), WithModel(ModelAGB), Headless())
+	e, err := New(Headless())
+	if err == nil {
+		err = e.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +159,13 @@ func TestGBARejectsWrongSizedBIOS(t *testing.T) {
 	if err := os.WriteFile(bios, make([]byte, 256), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := New(WithROMBytes(gbaLoopROM()), WithModel(ModelAGB), WithBootROM(bios))
+	e, err := New(WithBootROM(bios))
+	if err == nil {
+		err = e.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
+	if e != nil {
+		defer e.Close()
+	}
 	if err == nil || !strings.Contains(err.Error(), "16 KiB") {
 		t.Fatalf("New with bad GBA BIOS error = %v", err)
 	}
