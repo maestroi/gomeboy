@@ -178,3 +178,29 @@ func TestPSGAndDirectSoundShareMixer(t *testing.T) {
 		t.Fatalf("combined right = %f, want positive PSG output", right)
 	}
 }
+
+
+func TestPSGFrequencyByteWritesPreserveWriteOnlyLatch(t *testing.T) {
+	a, b, _ := newTestAudio(t)
+	enablePSG(t, a, b)
+
+	// NR13/NR14 are split across byte lanes even though frequency bits read as 0.
+	b.Write8(bus.IOStart+sound1ControlXOffset, 0xaa, bus.Access{})
+	b.Write8(bus.IOStart+sound1ControlXOffset+1, 0x87, bus.Access{})
+	if got := a.psg.square[0].frequency; got != 0x7aa {
+		t.Fatalf("channel 1 frequency = %03x, want 7aa", got)
+	}
+	if got := a.psg.raw[2] & 0x8000; got != 0 {
+		t.Fatalf("trigger bit remained latched in raw register: %04x", a.psg.raw[2])
+	}
+
+	// A later low-byte write must not retrigger the channel from the old trigger bit.
+	a.psg.square[0].position = 3
+	b.Write8(bus.IOStart+sound1ControlXOffset, 0x55, bus.Access{})
+	if got := a.psg.square[0].position; got != 3 {
+		t.Fatalf("write-only trigger was replayed by low-byte write: position=%d", got)
+	}
+	if got := a.psg.square[0].frequency; got != 0x755 {
+		t.Fatalf("channel 1 frequency after low-byte update = %03x, want 755", got)
+	}
+}
