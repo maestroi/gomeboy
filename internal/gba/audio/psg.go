@@ -330,6 +330,7 @@ type psgState struct {
 	frameCycles uint64
 
 	controlLow uint16
+	raw        [10]uint16
 	reg        [10]uint16
 	square     [2]squarePSG
 	wave       wavePSG
@@ -349,7 +350,7 @@ func (a *Audio) installPSG(io *bus.IO) {
 			func() uint16 { return a.psg.reg[index] },
 			func(value uint16) { a.writePSGRegister(index, value) },
 			func(byteOffset uint32, value byte) {
-				current := a.psg.reg[index]
+				current := a.psg.raw[index]
 				if byteOffset == 0 {
 					current = current&0xff00 | uint16(value)
 				} else {
@@ -392,6 +393,10 @@ func (a *Audio) installPSG(io *bus.IO) {
 }
 
 func (a *Audio) writePSGRegister(index int, value uint16) {
+	a.psg.raw[index] = value
+	if index == 2 || index == 4 || index == 7 || index == 9 {
+		a.psg.raw[index] &^= 0x8000
+	}
 	switch index {
 	case 0:
 		a.psg.reg[index] = value & 0x007f
@@ -430,7 +435,7 @@ func (a *Audio) writePSGRegister(index int, value uint16) {
 		a.psg.reg[index] = value & 0x4000
 		s := &a.psg.square[1]
 		s.frequency = (s.frequency & 0x700) | (value & 0xff)
-		s.frequency = (s.frequency & 0xff) | ((value >> 8) & 7 << 8)
+		s.frequency = (s.frequency & 0xff) | (((value >> 8) & 7) << 8)
 		s.lengthEnable = value&0x4000 != 0
 		if value&0x8000 != 0 {
 			s.trigger(false)
