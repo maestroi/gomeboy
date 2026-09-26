@@ -34,3 +34,19 @@ The test-number ranges in `suite.json` are taken from the pinned upstream
 sources. They let JSON results report the failing group and exact passed/total
 check count. ARM and Thumb totals remain separate; they are not combined into
 an overall accuracy percentage.
+
+## Current baseline
+
+`baseline.json` records the current known failures so CI can distinguish a
+regression from an already-known gap without hiding improvements:
+
+- ARM: XFAIL in `data_processing` test 224 — R15/PC as the shifted source in a
+  register-specified shift is currently unsupported. Tracked by #92.
+- Thumb: XFAIL in `memory` test 211 after 86/109 checks — odd-address `LDRH`
+  rotation semantics. Tracked by #93.
+
+An expected pass becoming a failure, a known failure moving to a different
+first failure, or a timeout fails CI. A known failure becoming a pass is
+reported as XPASS and also fails CI until `baseline.json` is intentionally
+updated. This keeps improvements visible instead of silently moving the
+compatibility line.
