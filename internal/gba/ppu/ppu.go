@@ -131,6 +131,19 @@ func (p *PPU) Reset() {
 
 // Advance advances LCD timing by master-clock cycles. It may cross any number
 // of scanline/frame boundaries.
+// CyclesUntilEvent returns the number of master-clock cycles until the next
+// PPU timing edge that can change externally visible state or emit a hook.
+func (p *PPU) CyclesUntilEvent() uint32 {
+	switch {
+	case p.lineCycle < VisibleCycles:
+		return VisibleCycles - p.lineCycle
+	case p.lineCycle < HBlankFlagCycle:
+		return HBlankFlagCycle - p.lineCycle
+	default:
+		return CyclesPerLine - p.lineCycle
+	}
+}
+
 func (p *PPU) Advance(cycles uint32) {
 	for cycles > 0 {
 		next := CyclesPerLine
