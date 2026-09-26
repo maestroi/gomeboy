@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "suite": "jsmolka/gba-tests",
+  "suite_revision": "a7113b67e63f83a9b321696ddd7042ccfad6c881",
+  "tests": [
+    {
+      "test": "arm",
+      "status": "fail",
+      "detail_contains": "register-specified shift using r15 is unsupported",
+      "context": "data_processing test 224; tracked by #92"
+    },
+    {
+      "test": "thumb",
+      "status": "fail",
+      "failure": {
+        "test_id": 211,
+        "group": "memory"
+      },
+      "checks": {
+        "passed": 86,
+        "total": 109
+      },
+      "context": "memory test 211; tracked by #93"
+    }
+  ]
+}
