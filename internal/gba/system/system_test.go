@@ -132,7 +132,7 @@ func TestPPUHBlankDMAUsesCentralStartLatency(t *testing.T) {
 	}
 }
 
-func TestCentralClockDeliversTimerIRQAtOverflowEdge(t *testing.T) {
+func TestCentralClockDelaysTimerIRQPropagation(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
@@ -143,23 +143,28 @@ func TestCentralClockDeliversTimerIRQAtOverflowEdge(t *testing.T) {
 	m.Bus.Write16(bus.IOStart+0x100, 0xfffe, bus.Access{})
 	m.Bus.Write16(bus.IOStart+0x102, (1<<6)|(1<<7), bus.Access{})
 
-	m.Advance(1)
-	if got := m.Timers.Counter(0); got != 0xffff {
-		t.Fatalf("timer after one cycle = %04x, want ffff", got)
-	}
-	if m.IRQ.IF() != 0 || m.CPU.IRQLine() {
-		t.Fatalf("timer IRQ arrived early: IF=%04x line=%v", m.IRQ.IF(), m.CPU.IRQLine())
-	}
-
-	m.Advance(1)
+	m.Advance(2)
 	if got := m.Timers.Counter(0); got != 0xfffe {
 		t.Fatalf("timer after overflow = %04x, want reload fffe", got)
 	}
-	if m.IRQ.IF() != uint16(gbairq.Timer0) || !m.CPU.IRQLine() {
-		t.Fatalf("timer overflow IRQ IF=%04x line=%v", m.IRQ.IF(), m.CPU.IRQLine())
+	if m.IRQ.IF() != uint16(gbairq.Timer0) {
+		t.Fatalf("timer IF at overflow = %04x, want Timer0", m.IRQ.IF())
 	}
-	if m.Cycle() != 2 {
-		t.Fatalf("timer overflow cycle = %d, want 2", m.Cycle())
+	if m.CPU.IRQLine() {
+		t.Fatal("timer IRQ reached CPU without propagation delay")
+	}
+
+	m.Advance(uint32(IRQPropagationLatency - 1))
+	if m.CPU.IRQLine() {
+		t.Fatal("timer IRQ reached CPU one cycle before propagation deadline")
+	}
+
+	m.Advance(1)
+	if !m.CPU.IRQLine() {
+		t.Fatal("timer IRQ did not reach CPU at propagation deadline")
+	}
+	if want := uint64(2) + IRQPropagationLatency; m.Cycle() != want {
+		t.Fatalf("IRQ delivery cycle = %d, want %d", m.Cycle(), want)
 	}
 }
 
@@ -173,6 +178,11 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
 	m.IRQ.Request(gbairq.VBlank)
 
+	m.Advance(uint32(IRQPropagationLatency))
+	if !m.CPU.IRQLine() {
+		t.Fatal("IRQ line was not delivered after propagation latency")
+	}
+
 	result, err := m.Step()
 	if err != nil {
 		t.Fatal(err)
@@ -180,12 +190,12 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	if !result.CPU.ExceptionTaken || result.CPU.Exception != cpu.ExceptionIRQ {
 		t.Fatalf("IRQ step did not take exception: %+v", result.CPU)
 	}
-	if result.ElapsedCycles != 1 || m.Cycle() != 1 {
-		t.Fatalf("IRQ entry elapsed/cycle = %d/%d, want 1/1",
-			result.ElapsedCycles, m.Cycle())
+	if result.ElapsedCycles != 1 || m.Cycle() != IRQPropagationLatency+1 {
+		t.Fatalf("IRQ entry elapsed/cycle = %d/%d, want 1/%d",
+			result.ElapsedCycles, m.Cycle(), IRQPropagationLatency+1)
 	}
-	if m.PPU.LineCycle() != 1 {
-		t.Fatalf("PPU did not advance during IRQ entry: %d", m.PPU.LineCycle())
+	if m.PPU.LineCycle() != uint32(IRQPropagationLatency+1) {
+		t.Fatalf("PPU did not advance during IRQ delay+entry: %d", m.PPU.LineCycle())
 	}
 }
 
