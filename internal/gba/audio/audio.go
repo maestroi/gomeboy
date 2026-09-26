@@ -2,16 +2,27 @@
 package audio
 
 import (
+	"sync"
+
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 )
 
 const (
 	soundControlHighOffset uint32 = 0x082
+	soundBiasOffset        uint32 = 0x088
 	fifoAOffset            uint32 = 0x0a0
 	fifoBOffset            uint32 = 0x0a4
 
 	fifoCapacity     = 32
 	fifoDMAThreshold = 16
+
+	masterClockHz uint64 = 1 << 24
+	// SampleRate matches the existing desktop audio pipeline and GB/GBC APU.
+	SampleRate uint64 = 96000
+	outputBufferSize = 1634 * 4
+
+	soundBiasMask uint16 = 0xc3fe
+	defaultSoundBias uint16 = 0x0200
 
 	controlPSGVolumeMask uint16 = 0x0003
 	controlVolumeA       uint16 = 1 << 2
@@ -78,14 +89,22 @@ type directSoundChannel struct {
 	current int8
 }
 
-// Audio owns the GBA Direct Sound control register and FIFO state. Mixing and
-// legacy PSG channels are intentionally layered on later.
+// Audio owns the GBA Direct Sound control/FIFO state and produces host-rate
+// stereo samples. Legacy PSG channels are intentionally layered on later.
 type Audio struct {
 	bus   *bus.Bus
 	hooks Hooks
 
 	controlHigh uint16
+	soundBias   uint16
 	channel     [2]directSoundChannel
+
+	outputMu  sync.Mutex
+	buffer    []float32
+	bufferPos uint32
+	samplePhase uint64
+	headless bool
+	mute bool
 }
 
 // New maps SOUNDCNT_H and FIFO_A/FIFO_B onto b.
@@ -93,7 +112,7 @@ func New(b *bus.Bus, hooks Hooks) *Audio {
 	if b == nil {
 		panic("gba audio: nil bus")
 	}
-	a := &Audio{bus: b, hooks: hooks}
+	a := &Audio{bus: b, hooks: hooks, soundBias: defaultSoundBias, buffer: make([]float32, outputBufferSize)}
 	a.install(b.IO())
 	return a
 }
@@ -102,6 +121,10 @@ func (a *Audio) install(io *bus.IO) {
 	io.Register16(soundControlHighOffset,
 		func() uint16 { return a.controlHigh },
 		a.writeControlHigh,
+	)
+	io.Register16(soundBiasOffset,
+		func() uint16 { return a.soundBias },
+		func(value uint16) { a.soundBias = value & soundBiasMask },
 	)
 
 	for index, base := range [...]uint32{fifoAOffset, fifoBOffset} {
@@ -174,6 +197,105 @@ func (a *Audio) TimerOverflow(timer int, count uint32) {
 	}
 }
 
+// Advance advances host audio sampling by GBA master-clock cycles. Direct
+// Sound latches themselves are updated by TimerOverflow; this method only
+// samples those latches into the host-rate stereo buffer.
+func (a *Audio) Advance(cycles uint32) {
+	if cycles == 0 {
+		return
+	}
+	a.samplePhase += uint64(cycles) * SampleRate
+	for a.samplePhase >= masterClockHz {
+		a.samplePhase -= masterClockHz
+		if !a.headless {
+			left, right := a.mixDirectSound()
+			a.appendSample(left, right)
+		}
+	}
+}
+
+func (a *Audio) mixDirectSound() (float32, float32) {
+	var left, right int32
+	for index := range a.channel {
+		sample := int32(a.channel[index].current) << 2
+		if (index == 0 && a.controlHigh&controlVolumeA == 0) ||
+			(index == 1 && a.controlHigh&controlVolumeB == 0) {
+			sample >>= 1
+		}
+		if (index == 0 && a.controlHigh&controlALeft != 0) ||
+			(index == 1 && a.controlHigh&controlBLeft != 0) {
+			left += sample
+		}
+		if (index == 0 && a.controlHigh&controlARight != 0) ||
+			(index == 1 && a.controlHigh&controlBRight != 0) {
+			right += sample
+		}
+	}
+	return a.applyBias(left), a.applyBias(right)
+}
+
+func (a *Audio) applyBias(sample int32) float32 {
+	bias := int32(a.soundBias & 0x03fe)
+	value := sample + bias
+	if value < 0 {
+		value = 0
+	} else if value > 0x03ff {
+		value = 0x03ff
+	}
+	return float32(value-bias) / 512.0
+}
+
+func (a *Audio) appendSample(left, right float32) {
+	if a.mute {
+		left, right = 0, 0
+	}
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	needed := int(a.bufferPos) + 2
+	if needed > len(a.buffer) {
+		a.buffer = append(a.buffer, make([]float32, needed-len(a.buffer))...)
+	}
+	a.buffer[a.bufferPos] = left
+	a.buffer[a.bufferPos+1] = right
+	a.bufferPos += 2
+}
+
+// Samples returns interleaved stereo float32 output and clears the readable
+// portion of the host buffer. The count is the number of float32 values.
+func (a *Audio) Samples() ([]float32, uint32) {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	samples := a.buffer[:a.bufferPos]
+	count := a.bufferPos
+	a.bufferPos = 0
+	if len(a.buffer) > outputBufferSize {
+		a.buffer = a.buffer[:outputBufferSize]
+	}
+	return samples, count
+}
+
+// SetHeadless suppresses host sample buffering while preserving all
+// hardware-visible Direct Sound FIFO/timer state.
+func (a *Audio) SetHeadless(headless bool) {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	a.headless = headless
+	if headless {
+		a.bufferPos = 0
+	}
+}
+
+// SetMute controls host output only; hardware-visible state keeps advancing.
+func (a *Audio) SetMute(mute bool) { a.mute = mute }
+
+// CurrentOutput returns the current routed, volume-scaled Direct Sound mix.
+func (a *Audio) CurrentOutput() (left, right float32) {
+	return a.mixDirectSound()
+}
+
+// SoundBias returns the masked SOUNDBIAS register state.
+func (a *Audio) SoundBias() uint16 { return a.soundBias }
+
 func (a *Audio) timer(index int) int {
 	if index == 0 {
 		if a.controlHigh&controlATimer != 0 {
@@ -218,10 +340,17 @@ func (a *Audio) Timer(fifo FIFO) int {
 	return a.timer(index)
 }
 
-// Reset clears Direct Sound control, FIFO contents, and sample latches.
+// Reset clears Direct Sound control, FIFO contents, sample latches, and host
+// output timing. SOUNDBIAS returns to the post-BIOS neutral midpoint used by
+// the standalone core.
 func (a *Audio) Reset() {
 	a.controlHigh = 0
+	a.soundBias = defaultSoundBias
 	a.channel = [2]directSoundChannel{}
+	a.samplePhase = 0
+	a.outputMu.Lock()
+	a.bufferPos = 0
+	a.outputMu.Unlock()
 }
 
 func fifoIndex(fifo FIFO) (int, bool) {
