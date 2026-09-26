@@ -41,9 +41,9 @@ type LineSink interface {
 }
 
 // Hooks exposes interrupt qualification changes to scheduler-owned systems.
-// Evaluate is called whenever IE, IF, or IME changes. When DeferLine is true,
-// the controller leaves IRQ-line delivery to that scheduler; standalone users
-// retain the immediate line behavior.
+// Evaluate is called whenever IE, IF, or IME changes. ExternalRequest can
+// consume an asynchronous STOP-capable signal before IF is latched. When
+// DeferLine is true, the controller leaves IRQ-line delivery to the scheduler.
 type Hooks struct {
 	Evaluate        func(enabledPending bool, irqAsserted bool)
 	ExternalRequest func(source Source) bool
@@ -176,12 +176,6 @@ func (c *Controller) EnabledPending() bool {
 // EnabledPendingMask returns the currently qualified IE & IF source bits.
 func (c *Controller) EnabledPendingMask() uint16 {
 	return c.ie & c.flags
-}
-
-// StopWakePending reports the stricter STOP wake condition. Only Serial,
-// Keypad, and Game Pak requests can restart the stopped system clock.
-func (c *Controller) StopWakePending() bool {
-	return c.EnabledPendingMask()&uint16(StopWakeSources) != 0
 }
 
 // IRQAsserted reports the controller's resolved output level.
