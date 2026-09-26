@@ -13,6 +13,101 @@ type objSample struct {
 	opaque          bool
 }
 
+
+func (p *PPU) prepareOBJLine(screenY int, mode uint16) {
+	clear(p.objLine[:])
+	clear(p.objWindowLine[:])
+	p.objLineY = screenY
+	p.objLineMode = mode
+	p.objLineValid = true
+
+	if p.dispcnt&dispOBJEnable == 0 {
+		return
+	}
+
+	oam := p.bus.OAM()
+	for index := 0; index < 128; index++ {
+		base := index * 8
+		attr0 := readOAM16(oam, base)
+		attr1 := readOAM16(oam, base+2)
+
+		affine := attr0&(1<<8) != 0
+		if !affine && attr0&(1<<9) != 0 {
+			continue
+		}
+
+		objMode := (attr0 >> 10) & 0x3
+		if objMode == 3 {
+			continue
+		}
+		if objMode == 2 && p.dispcnt&dispOBJWINEnable == 0 {
+			continue
+		}
+
+		width, height, ok := objDimensions((attr0>>14)&0x3, (attr1>>14)&0x3)
+		if !ok {
+			continue
+		}
+		displayWidth, displayHeight := width, height
+		if affine && attr0&(1<<9) != 0 {
+			displayWidth *= 2
+			displayHeight *= 2
+		}
+
+		objX := int(attr1 & 0x01ff)
+		objY := int(attr0 & 0x00ff)
+		localY := (screenY - objY) & 0x00ff
+		if localY >= displayHeight {
+			continue
+		}
+
+		for dx := 0; dx < displayWidth; dx++ {
+			screenX := (objX + dx) & 0x01ff
+			if screenX >= ScreenWidth {
+				continue
+			}
+
+			// Lower OAM index wins normal OBJ-vs-OBJ priority. Once a pixel
+			// is occupied there is no reason to sample later normal OBJs.
+			if objMode < 2 && p.objLine[screenX].opaque {
+				continue
+			}
+
+			sample, sampledMode, ok := p.objSampleAt(index, screenX, screenY, mode)
+			if !ok {
+				continue
+			}
+			if sampledMode == 2 {
+				p.objWindowLine[screenX] = true
+				continue
+			}
+			if sampledMode < 2 && !p.objLine[screenX].opaque {
+				p.objLine[screenX] = sample
+			}
+		}
+	}
+}
+
+func (p *PPU) objPixelForLine(screenX, screenY int, mode uint16) objSample {
+	if p.objLineValid &&
+		p.objLineY == screenY &&
+		p.objLineMode == mode &&
+		screenX >= 0 && screenX < ScreenWidth {
+		return p.objLine[screenX]
+	}
+	return p.objPixel(screenX, screenY, mode)
+}
+
+func (p *PPU) objWindowPixelForLine(screenX, screenY int, mode uint16) bool {
+	if p.objLineValid &&
+		p.objLineY == screenY &&
+		p.objLineMode == mode &&
+		screenX >= 0 && screenX < ScreenWidth {
+		return p.objWindowLine[screenX]
+	}
+	return p.objWindowPixel(screenX, screenY, mode)
+}
+
 func (p *PPU) objPixel(screenX, screenY int, mode uint16) objSample {
 	// GBA OBJ-to-OBJ ordering is OAM-index order: the first non-transparent
 	// visible pixel from OBJ0..OBJ127 wins. Attr2 priority only decides OBJ

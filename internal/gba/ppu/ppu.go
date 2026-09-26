@@ -87,6 +87,16 @@ type PPU struct {
 	frames    uint64
 
 	frame [FrameBytes]byte
+
+	// OBJ pixels are evaluated once per visible scanline. The old renderer
+	// rescanned all 128 OAM entries for every screen pixel; keeping a transient
+	// scanline cache preserves OAM priority while avoiding millions of repeated
+	// sprite containment/attribute checks per frame.
+	objLine       [ScreenWidth]objSample
+	objWindowLine [ScreenWidth]bool
+	objLineY      int
+	objLineMode   uint16
+	objLineValid  bool
 }
 
 // New creates a GBA PPU and maps its LCD status/control registers onto b.
@@ -126,6 +136,11 @@ func (p *PPU) Reset() {
 	p.vcounter = true // default compare value is 0
 	p.frames = 0
 	clear(p.frame[:])
+	clear(p.objLine[:])
+	clear(p.objWindowLine[:])
+	p.objLineY = 0
+	p.objLineMode = 0
+	p.objLineValid = false
 	p.bus.SetOBJVRAMStart(0x10000)
 }
 
