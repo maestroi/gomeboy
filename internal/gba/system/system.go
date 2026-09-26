@@ -1,5 +1,5 @@
-// Package system wires the GBA CPU, bus, DMA, timers, PPU, and interrupt
-// controller onto one master-clock timeline.
+// Package system wires the GBA CPU, bus, DMA, timers, keypad, PPU, and
+// interrupt controller onto one master-clock timeline.
 package system
 
 import (
@@ -7,6 +7,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	"github.com/maestroi/gomeboy/internal/gba/dma"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
+	"github.com/maestroi/gomeboy/internal/gba/keypad"
 	gbamemory "github.com/maestroi/gomeboy/internal/gba/memory"
 	"github.com/maestroi/gomeboy/internal/gba/ppu"
 	"github.com/maestroi/gomeboy/internal/gba/power"
@@ -41,6 +42,7 @@ type Machine struct {
 	Bus    *bus.Bus
 	CPU    *cpu.CPU
 	IRQ    *gbairq.Controller
+	Keypad *keypad.Keypad
 	DMA    *dma.DMA
 	Timers *timer.Timers
 	PPU    *ppu.PPU
@@ -75,6 +77,7 @@ func New(bios, rom []byte) *Machine {
 		ExternalRequest: m.handleExternalIRQ,
 		DeferLine:       true,
 	})
+	m.Keypad = keypad.New(m.Bus, m.IRQ)
 	m.Power = power.New(m.Bus, power.Hooks{
 		BIOSAccess: func() bool {
 			pc := m.CPU.PC()
