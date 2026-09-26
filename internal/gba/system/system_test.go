@@ -270,6 +270,26 @@ func enterHALT(t *testing.T, m *Machine) {
 	}
 }
 
+func stepUntilWake(t *testing.T, m *Machine, maxSteps int) (StepResult, uint64) {
+	t.Helper()
+	var elapsed uint64
+	for i := 0; i < maxSteps; i++ {
+		result, err := m.Step()
+		if err != nil {
+			t.Fatal(err)
+		}
+		elapsed += result.ElapsedCycles
+		if result.Woke {
+			return result, elapsed
+		}
+		if !result.Halted {
+			t.Fatalf("HALT ended without wake event after %d steps", i+1)
+		}
+	}
+	t.Fatalf("HALT did not wake within %d scheduler boundaries", maxSteps)
+	return StepResult{}, elapsed
+}
+
 func TestHALTCNTRequiresBIOSExecution(t *testing.T) {
 	m := New(nil, nil)
 
@@ -316,17 +336,14 @@ func TestHALTWakesOnEnabledTimerRequestWithIMEClear(t *testing.T) {
 		t.Fatalf("timer request state IF=%04x line=%v", m.IRQ.IF(), m.CPU.IRQLine())
 	}
 
-	wake, err := m.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
+	wake, propagation := stepUntilWake(t, m, 8)
 	if !wake.Woke || wake.Halted || m.Halted() {
 		t.Fatalf("timer wake result woke/halted = %v/%v machine=%v",
 			wake.Woke, wake.Halted, m.Halted())
 	}
-	if wake.ElapsedCycles != IRQPropagationLatency {
-		t.Fatalf("HALT IRQ propagation = %d cycles, want %d",
-			wake.ElapsedCycles, IRQPropagationLatency)
+	if propagation != IRQPropagationLatency {
+		t.Fatalf("HALT IRQ propagation = %d cycles across scheduler boundaries, want %d",
+			propagation, IRQPropagationLatency)
 	}
 	if m.CPU.PC() != pc {
 		t.Fatalf("CPU executed while fast-forwarding HALT: PC=%08x want %08x", m.CPU.PC(), pc)
@@ -375,13 +392,10 @@ func TestHALTWakeThenTakesIRQWhenIMEEnabled(t *testing.T) {
 		t.Fatal("IRQ line asserted before propagation deadline")
 	}
 
-	wake, err := m.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !wake.Woke || wake.ElapsedCycles != IRQPropagationLatency {
-		t.Fatalf("HALT IRQ wake = woke:%v elapsed:%d, want true/%d",
-			wake.Woke, wake.ElapsedCycles, IRQPropagationLatency)
+	wake, propagation := stepUntilWake(t, m, 10)
+	if !wake.Woke || propagation != IRQPropagationLatency {
+		t.Fatalf("HALT IRQ wake = woke:%v propagation:%d, want true/%d",
+			wake.Woke, propagation, IRQPropagationLatency)
 	}
 	if !m.CPU.IRQLine() {
 		t.Fatal("IRQ line was not asserted at HALT wake event")
