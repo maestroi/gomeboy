@@ -5,6 +5,7 @@ package system
 import (
 	"github.com/maestroi/gomeboy/internal/gba/audio"
 	"github.com/maestroi/gomeboy/internal/gba/bus"
+	"github.com/maestroi/gomeboy/internal/gba/cartridge"
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	"github.com/maestroi/gomeboy/internal/gba/dma"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
@@ -50,6 +51,8 @@ type Machine struct {
 	PPU    *ppu.PPU
 	Power  *power.Controller
 
+	Cartridge cartridge.Setup
+
 	cycles uint64
 	memory timedMemory
 
@@ -69,10 +72,18 @@ type Machine struct {
 	stopRequested  bool
 }
 
-// New creates a wired GBA timing domain around owned BIOS/ROM bus storage.
+// New creates a wired GBA timing domain around owned BIOS/ROM bus storage and
+// automatically configures cartridge save hardware from ROM markers.
 func New(bios, rom []byte) *Machine {
+	return NewWithCartridgeConfig(bios, rom, cartridge.Config{})
+}
+
+// NewWithCartridgeConfig creates a wired GBA timing domain with an explicit
+// cartridge save configuration. Non-auto save types override ROM detection.
+func NewWithCartridgeConfig(bios, rom []byte, config cartridge.Config) *Machine {
 	m := &Machine{}
 	m.Bus = bus.New(bios, rom)
+	m.Cartridge = cartridge.Configure(m.Bus, rom, config)
 	m.CPU = cpu.New()
 	m.IRQ = gbairq.NewWithHooks(m.Bus, m.CPU, gbairq.Hooks{
 		Evaluate:        m.evaluateIRQ,
