@@ -118,6 +118,8 @@ type Emulator struct {
 	flight         *FlightRecorder
 	inputRecording bool
 	inputLog       []InputEvent
+	linkRecording  bool
+	linkLog        []LinkEvent
 }
 
 type config struct {

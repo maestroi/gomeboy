@@ -54,7 +54,10 @@ type Recording struct {
 	EndCycle       uint64
 	FinalStateHash string
 	Inputs         []InputEvent
-	Metadata       map[string]string
+	// Links holds every network link result fed into emulation, in order.
+	// Empty for sessions that never attached a link.
+	Links    []LinkEvent
+	Metadata map[string]string
 
 	startState []byte
 }
@@ -70,6 +73,7 @@ type recordingManifest struct {
 	EndCycle       uint64            `json:"end_cycle"`
 	FinalStateHash string            `json:"final_state_hash"`
 	Inputs         []recordingInput  `json:"inputs"`
+	Links          []LinkEvent       `json:"links,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
@@ -113,6 +117,12 @@ func (e *Emulator) StartSessionRecording(opts RecordingOptions) (*SessionRecorde
 	}
 
 	e.StartInputRecording()
+	e.linkLog = e.linkLog[:0]
+	e.linkRecording = true
+	if _, linked := e.gb.Serial.AttachedDevice.(*linkTap); linked {
+		// The checked start state does not carry the attached device.
+		e.recordLinkEvent(LinkEvent{Kind: LinkAttach, Frame: meta.Frame, Cycle: meta.Cycle})
+	}
 	return &SessionRecorder{
 		emulator:   e,
 		startState: append([]byte(nil), state...),
@@ -135,6 +145,9 @@ func (r *SessionRecorder) Stop() (*Recording, error) {
 	r.stopped = true
 
 	inputs := r.emulator.StopInputRecording()
+	links := append([]LinkEvent(nil), r.emulator.linkLog...)
+	r.emulator.linkRecording = false
+	r.emulator.linkLog = r.emulator.linkLog[:0]
 	romHash := r.emulator.ROMSHA256()
 	if got := fmt.Sprintf("%x", romHash); got != r.startMeta.ROMSHA256 {
 		return nil, fmt.Errorf("gomeboy: SessionRecorder.Stop: ROM changed during recording: started %s, now %s", r.startMeta.ROMSHA256, got)
@@ -158,6 +171,7 @@ func (r *SessionRecorder) Stop() (*Recording, error) {
 		EndCycle:       r.emulator.Cycle(),
 		FinalStateHash: finalHash,
 		Inputs:         append([]InputEvent(nil), inputs...),
+		Links:          links,
 		Metadata:       cloneStringMap(r.metadata),
 		startState:     append([]byte(nil), r.startState...),
 	}, nil
@@ -323,9 +337,15 @@ func (e *Emulator) replayRecording(recording *Recording, onFrame RecordingFrameF
 		}
 	}
 
+	// Replay starts unplugged, as the live session did before any recorded attach.
+	e.gb.Serial.Attach(nil)
+	peer := &linkReplay{e: e, events: recording.Links}
 	inputIndex := 0
 	for {
 		frame := e.FrameCount()
+		if err := peer.attachDue(frame); err != nil {
+			return err
+		}
 		for inputIndex < len(recording.Inputs) && recording.Inputs[inputIndex].Frame == frame {
 			event := recording.Inputs[inputIndex]
 			if event.Pressed {
@@ -346,6 +366,12 @@ func (e *Emulator) replayRecording(recording *Recording, onFrame RecordingFrameF
 		}
 	}
 
+	if peer.err != nil {
+		return peer.err
+	}
+	if peer.next != len(recording.Links) {
+		return fmt.Errorf("gomeboy: ReplayRecording: %d link events were not consumed (next: %s at cycle %d)", len(recording.Links)-peer.next, recording.Links[peer.next].Kind, recording.Links[peer.next].Cycle)
+	}
 	if inputIndex != len(recording.Inputs) {
 		return fmt.Errorf("gomeboy: ReplayRecording: %d input events were not consumed", len(recording.Inputs)-inputIndex)
 	}
@@ -396,6 +422,22 @@ func validateRecording(recording *Recording) error {
 			return fmt.Errorf("gomeboy: recording: inputs are not sorted at index %d", i)
 		}
 	}
+	for i, event := range recording.Links {
+		switch event.Kind {
+		case LinkAttach, LinkExchange, LinkClock:
+		default:
+			return fmt.Errorf("gomeboy: recording: link event %d has invalid kind %q", i, event.Kind)
+		}
+		if event.Cycle < recording.StartCycle || event.Cycle > recording.EndCycle {
+			return fmt.Errorf("gomeboy: recording: link event %d at cycle %d is outside [%d,%d]", i, event.Cycle, recording.StartCycle, recording.EndCycle)
+		}
+		if i > 0 && event.Cycle < recording.Links[i-1].Cycle {
+			return fmt.Errorf("gomeboy: recording: link events are not sorted at index %d", i)
+		}
+	}
+	if len(recording.Links) > 0 && recording.Links[0].Kind != LinkAttach {
+		return fmt.Errorf("gomeboy: recording: first link event is %s, want %s", recording.Links[0].Kind, LinkAttach)
+	}
 	return nil
 }
 
@@ -419,6 +461,7 @@ func manifestFromRecording(recording *Recording) (recordingManifest, error) {
 		EndCycle:       recording.EndCycle,
 		FinalStateHash: recording.FinalStateHash,
 		Inputs:         inputs,
+		Links:          recording.Links,
 		Metadata:       cloneStringMap(recording.Metadata),
 	}, nil
 }
@@ -443,6 +486,7 @@ func recordingFromManifest(manifest recordingManifest, state []byte) (*Recording
 		EndCycle:       manifest.EndCycle,
 		FinalStateHash: manifest.FinalStateHash,
 		Inputs:         inputs,
+		Links:          manifest.Links,
 		Metadata:       cloneStringMap(manifest.Metadata),
 		startState:     append([]byte(nil), state...),
 	}, nil
