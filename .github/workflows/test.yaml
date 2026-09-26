@@ -48,12 +48,24 @@ jobs:
         run: go test ./internal/gba/...
       - name: run GBA conformance smoke
         run: go run ./cmd/gba-conformance -manifest tests/gba/conformance/smoke.json -output gba-conformance.json -commit "$GITHUB_SHA"
+      - name: fetch pinned jsmolka ARM/Thumb ROMs
+        run: bash tests/gba/conformance/jsmolka/fetch.sh
+      - name: run jsmolka ARM/Thumb conformance
+        continue-on-error: true
+        run: |
+          go run ./cmd/gba-conformance \
+            -manifest tests/gba/conformance/jsmolka/suite.json \
+            -output gba-conformance-jsmolka.json \
+            -commit "$GITHUB_SHA"
+          cat gba-conformance-jsmolka.json
       - name: upload GBA conformance result
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: gba-conformance
-          path: gba-conformance.json
+          path: |
+            gba-conformance.json
+            gba-conformance-jsmolka.json
           if-no-files-found: ignore
 
   memory_safety:
