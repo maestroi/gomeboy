@@ -173,3 +173,27 @@ func TestResetClearsControllerAndIRQLine(t *testing.T) {
 			c.IE(), c.IF(), c.IME(), c.IRQAsserted(), sink.line)
 	}
 }
+
+func TestEnabledPendingIgnoresIMEForHaltWake(t *testing.T) {
+	b := bus.New(nil, nil)
+	sink := &testLineSink{}
+	c := New(b, sink)
+
+	c.Request(Timer0)
+	if c.EnabledPending() {
+		t.Fatal("disabled IF bit unexpectedly qualified for HALT wake")
+	}
+
+	b.Write16(bus.IOStart+ieOffset, uint16(Timer0), bus.Access{})
+	if !c.EnabledPending() {
+		t.Fatal("IE & IF did not qualify for HALT wake with IME clear")
+	}
+	if c.IRQAsserted() || sink.line {
+		t.Fatal("IME-clear HALT wake condition incorrectly asserted CPU IRQ")
+	}
+
+	b.Write16(bus.IOStart+imeOffset, 1, bus.Access{})
+	if !c.EnabledPending() || !c.IRQAsserted() || !sink.line {
+		t.Fatal("IME did not promote enabled pending request to CPU IRQ")
+	}
+}
