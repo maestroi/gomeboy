@@ -114,6 +114,8 @@ func TestTimerSelectionConsumesOnlyMatchingFIFO(t *testing.T) {
 
 func TestFIFORequestsDMAAtHalfFullThreshold(t *testing.T) {
 	a, b, requests := newTestAudio(t)
+	// Keep the empty FIFO B on timer 1 so timer-0 requests isolate FIFO A.
+	b.Write16(bus.IOStart+soundControlHighOffset, controlBTimer, bus.Access{})
 
 	for i := 0; i < 4; i++ {
 		b.Write32(bus.IOStart+fifoAOffset, uint32(i+1)*0x01010101, bus.Access{})
