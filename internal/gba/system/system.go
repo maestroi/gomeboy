@@ -30,6 +30,7 @@ type StepResult struct {
 	ElapsedCycles  uint64
 	DMAStallCycles uint64
 	Halted         bool
+	Stopped        bool
 	Woke           bool
 }
 
@@ -58,6 +59,8 @@ type Machine struct {
 	haltWakeSeq  uint64
 
 	halted        bool
+	stopped       bool
+	stopPending   bool
 	stopRequested bool
 }
 
@@ -107,11 +110,14 @@ func (m *Machine) Cycle() uint64 { return m.cycles }
 // owned the bus and the CPU has therefore been suspended.
 func (m *Machine) DMAStallCycles() uint64 { return m.dmaStalls }
 
-// Halted reports whether HALTCNT has stopped CPU execution.
+// Halted reports whether HALTCNT has stopped CPU execution while the rest of
+// the GBA clock domain continues running.
 func (m *Machine) Halted() bool { return m.halted }
 
-// StopRequested reports whether BIOS code requested STOP mode. STOP has
-// different clock/wake behavior from HALT and remains a later system slice.
+// Stopped reports whether HALTCNT STOP has halted the GBA system clock.
+func (m *Machine) Stopped() bool { return m.stopped }
+
+// StopRequested reports whether BIOS code has requested STOP at least once.
 func (m *Machine) StopRequested() bool { return m.stopRequested }
 
 // Step executes one CPU instruction/exception boundary on the shared master
@@ -122,7 +128,29 @@ func (m *Machine) Step() (StepResult, error) {
 	startCycle := m.cycles
 	startStalls := m.dmaStalls
 	startWakeSeq := m.haltWakeSeq
+	wasStopped := m.stopped
 	wasHalted := m.halted
+
+	if wasStopped {
+		// STOP freezes the system clock completely. Only enabled Serial, Keypad,
+		// or Game Pak requests can restart it. Once a valid source appears, resume
+		// the clock but keep the CPU asleep until the normal IRQ propagation event.
+		if m.IRQ.StopWakePending() {
+			m.stopped = false
+			m.halted = true
+			m.scheduleIRQEvent()
+			if m.halted {
+				m.advanceHaltedEvent()
+			}
+		}
+		return StepResult{
+			ElapsedCycles:  m.cycles - startCycle,
+			DMAStallCycles: m.dmaStalls - startStalls,
+			Halted:         m.halted,
+			Stopped:        m.stopped,
+			Woke:           m.haltWakeSeq != startWakeSeq,
+		}, nil
+	}
 
 	m.serviceDueEvents()
 	if wasHalted {
@@ -138,6 +166,7 @@ func (m *Machine) Step() (StepResult, error) {
 			ElapsedCycles:  m.cycles - startCycle,
 			DMAStallCycles: m.dmaStalls - startStalls,
 			Halted:         m.halted,
+			Stopped:        m.stopped,
 			Woke:           m.haltWakeSeq != startWakeSeq,
 		}, nil
 	}
@@ -156,6 +185,7 @@ func (m *Machine) Step() (StepResult, error) {
 		ElapsedCycles:  m.cycles - startCycle,
 		DMAStallCycles: m.dmaStalls - startStalls,
 		Halted:         m.halted,
+		Stopped:        m.stopped,
 		Woke:           m.haltWakeSeq != startWakeSeq,
 	}, err
 }
@@ -163,17 +193,41 @@ func (m *Machine) Step() (StepResult, error) {
 // Advance advances the system while the CPU itself performs no bus work. DMA
 // requests that become due still seize the bus and extend elapsed master time.
 func (m *Machine) Advance(cycles uint32) {
+	if m.stopped {
+		return
+	}
 	m.advanceCPU(cycles)
 }
 
 func (m *Machine) enterHalt() {
+	m.stopped = false
 	m.halted = true
 }
 
 func (m *Machine) requestStop() {
-	// STOP freezes additional hardware domains and has a restricted wake-source
-	// set. Record it explicitly rather than incorrectly treating it as HALT.
 	m.stopRequested = true
+	// HALTCNT can be written during a CPU bus access. Let that access consume its
+	// clock cycle before stopping the oscillator.
+	if m.memory.inBusCall {
+		m.stopPending = true
+		return
+	}
+	m.enterStop()
+}
+
+func (m *Machine) enterStop() {
+	m.stopPending = false
+	m.halted = false
+	m.stopped = true
+
+	// STOP discards ordinary in-flight IRQ propagation. A STOP-capable request
+	// starts a fresh propagation event once it exists, while the CPU IRQ input
+	// itself remains low until that event is delivered.
+	m.irqScheduled = false
+	m.CPU.SetIRQLine(false)
+	if m.IRQ.StopWakePending() {
+		m.scheduleIRQEvent()
+	}
 }
 
 func (m *Machine) evaluateIRQ(enabledPending bool, irqAsserted bool) {
@@ -183,6 +237,16 @@ func (m *Machine) evaluateIRQ(enabledPending bool, irqAsserted bool) {
 		m.CPU.SetIRQLine(false)
 	}
 	if !enabledPending {
+		return
+	}
+
+	if m.stopped {
+		// STOP ignores ordinary interrupt sources. The stopped oscillator means
+		// their propagation cannot make progress until a permitted wake source
+		// (Serial, Keypad, or Game Pak) is enabled and pending.
+		if m.IRQ != nil && m.IRQ.StopWakePending() {
+			m.scheduleIRQEvent()
+		}
 		return
 	}
 
@@ -198,7 +262,7 @@ func (m *Machine) scheduleIRQEvent() {
 }
 
 func (m *Machine) serviceDueIRQ() {
-	if !m.irqScheduled || m.irqEventAt > m.cycles {
+	if m.stopped || !m.irqScheduled || m.irqEventAt > m.cycles {
 		return
 	}
 	m.irqScheduled = false
@@ -213,6 +277,9 @@ func (m *Machine) serviceDueIRQ() {
 }
 
 func (m *Machine) serviceDueEvents() {
+	if m.stopped {
+		return
+	}
 	m.serviceDueIRQ()
 	m.serviceDueDMA()
 	m.serviceDueIRQ()
@@ -319,6 +386,9 @@ func (m *Machine) activateDueDMA() {
 // does not consume remaining CPU work: a transfer pauses that work, advances
 // the rest of the machine, then the CPU phase resumes.
 func (m *Machine) advanceCPU(cycles uint32) {
+	if m.stopped {
+		return
+	}
 	remaining := uint64(cycles)
 	for remaining > 0 {
 		m.serviceDueEvents()
@@ -379,6 +449,9 @@ func (m *Machine) serviceDueDMA() {
 // advanceHardware moves peripherals without servicing DMA. Callers use this
 // while DMA owns the bus and while advancing a CPU phase between DMA deadlines.
 func (m *Machine) advanceHardware(cycles uint32) {
+	if m.stopped {
+		return
+	}
 	remaining := cycles
 	for remaining > 0 {
 		m.serviceDueIRQ()
@@ -469,12 +542,14 @@ func (t *timedMemory) consume(cycles uint32) {
 }
 
 func (t *timedMemory) flushDeferredDMARequest() {
-	if t.requestAfterAccess == 0 {
-		return
+	if t.requestAfterAccess != 0 {
+		channels := t.requestAfterAccess
+		t.requestAfterAccess = 0
+		if t.m.DMA.Pending() {
+			t.m.scheduleDMAStart(channels)
+		}
 	}
-	channels := t.requestAfterAccess
-	t.requestAfterAccess = 0
-	if t.m.DMA.Pending() {
-		t.m.scheduleDMAStart(channels)
+	if t.m.stopPending {
+		t.m.enterStop()
 	}
 }
