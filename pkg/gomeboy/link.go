@@ -54,7 +54,8 @@ func (e *Emulator) AttachLink(networkLink *NetworkLink) error {
 	if e == nil || e.gb == nil || e.gb.Serial == nil {
 		return errors.New("gomeboy: emulator serial controller is not initialized")
 	}
-	e.gb.Serial.Attach(networkLink.device)
+	e.gb.Serial.Attach(&linkTap{inner: networkLink.device, e: e})
+	e.recordLinkEvent(LinkEvent{Kind: LinkAttach, Frame: e.FrameCount(), Cycle: e.Cycle()})
 	return nil
 }
 
