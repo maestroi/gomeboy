@@ -238,7 +238,12 @@ func (o *Options) DesktopOptions() []gomeboy.Option {
 	if o.Printer {
 		opts = append(opts, gomeboy.WithPrinter())
 	}
-	if cheats := o.CheatsPath(); cheats != "" {
+	isGBA := strings.EqualFold(filepath.Ext(o.ROM), ".gba")
+	if isGBA {
+		if o.Cheats != "" {
+			opts = append(opts, gomeboy.WithCheats(o.Cheats))
+		}
+	} else if cheats := o.CheatsPath(); cheats != "" {
 		opts = append(opts, gomeboy.WithCheats(cheats))
 	}
 	if !o.NoSaves {
