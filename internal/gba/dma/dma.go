@@ -62,13 +62,14 @@ const (
 //
 // RequestStart switches DMA into scheduler-owned mode. When non-nil, a newly
 // pending request calls RequestStart instead of transferring synchronously;
-// the owner must later call ServicePending. This preserves the standalone DMA
-// behavior used by focused tests while allowing the GBA system scheduler to
-// model start latency and CPU suspension.
+// the owner must later call ServicePending. CancelStart fires when software
+// disables the last queued channel before service so a scheduler can discard
+// that request's start deadline.
 type Hooks struct {
 	Complete     func(channel int, units uint32, cycles uint32)
 	Stall        func(cycles uint32)
 	RequestStart func()
+	CancelStart  func()
 }
 
 type channel struct {
@@ -220,6 +221,10 @@ func (d *DMA) writeControl(index int, value uint16) {
 	if oldEnabled || !newEnabled {
 		if !newEnabled {
 			c.disableAfterRun = false
+			d.pending &^= 1 << index
+			if d.pending == 0 && d.hooks.CancelStart != nil {
+				d.hooks.CancelStart()
+			}
 		}
 		return
 	}
