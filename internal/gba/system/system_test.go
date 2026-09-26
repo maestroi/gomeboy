@@ -249,3 +249,223 @@ func TestDisableAndReenableDMAResetsStartLatency(t *testing.T) {
 		t.Fatalf("re-enabled DMA missed fresh deadline: %04x", got)
 	}
 }
+
+func enterHALT(t *testing.T, m *Machine) {
+	t.Helper()
+	m.CPU.SetPC(bus.BIOSStart)
+	m.Bus.Write8(bus.IOStart+0x300, 1, bus.Access{})
+	m.Bus.Write8(bus.IOStart+0x301, 0, bus.Access{})
+	if !m.Halted() {
+		t.Fatal("HALTCNT did not enter HALT")
+	}
+}
+
+func TestHALTCNTRequiresBIOSExecution(t *testing.T) {
+	m := New(nil, nil)
+
+	// POSTFLG is established by BIOS boot.
+	m.CPU.SetPC(bus.BIOSStart)
+	m.Bus.Write8(bus.IOStart+0x300, 1, bus.Access{})
+
+	m.CPU.SetPC(bus.IWRAMStart)
+	m.Bus.Write8(bus.IOStart+0x301, 0, bus.Access{})
+	if m.Halted() {
+		t.Fatal("non-BIOS HALTCNT write entered HALT")
+	}
+
+	m.CPU.SetPC(bus.BIOSStart)
+	m.Bus.Write8(bus.IOStart+0x301, 0, bus.Access{})
+	if !m.Halted() {
+		t.Fatal("BIOS HALTCNT write did not enter HALT")
+	}
+}
+
+func TestHALTWakesOnEnabledTimerRequestWithIMEClear(t *testing.T) {
+	m := New(nil, nil)
+	code := uint32(bus.IWRAMStart + 0x2000)
+	writeNOPs(m, code, 2)
+
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
+	// Leave IME clear deliberately.
+	m.Bus.Write16(bus.IOStart+0x100, 0xfffe, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x102, (1<<6)|(1<<7), bus.Access{})
+
+	enterHALT(t, m)
+	m.CPU.SetPC(code)
+	pc := m.CPU.PC()
+
+	result, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Woke || result.Halted || m.Halted() {
+		t.Fatalf("timer wake result woke/halted = %v/%v machine=%v",
+			result.Woke, result.Halted, m.Halted())
+	}
+	if result.ElapsedCycles != 2 {
+		t.Fatalf("HALT timer fast-forward = %d cycles, want 2", result.ElapsedCycles)
+	}
+	if m.CPU.PC() != pc {
+		t.Fatalf("CPU executed while fast-forwarding HALT: PC=%08x want %08x", m.CPU.PC(), pc)
+	}
+	if m.IRQ.IF() != uint16(gbairq.Timer0) {
+		t.Fatalf("timer IF after HALT wake = %04x, want Timer0", m.IRQ.IF())
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("IME-clear HALT wake asserted CPU IRQ line")
+	}
+
+	next, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.CPU.ExceptionTaken {
+		t.Fatal("IME-clear wake incorrectly took IRQ exception")
+	}
+	if m.CPU.PC() != code+4 {
+		t.Fatalf("CPU did not resume normal execution after wake: PC=%08x", m.CPU.PC())
+	}
+}
+
+func TestHALTWakeThenTakesIRQWhenIMEEnabled(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+	code := uint32(bus.IWRAMStart + 0x2100)
+	writeNOPs(m, code, 1)
+
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x100, 0xffff, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x102, (1<<6)|(1<<7), bus.Access{})
+
+	enterHALT(t, m)
+	m.CPU.SetPC(code)
+
+	wake, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Woke || wake.ElapsedCycles != 1 {
+		t.Fatalf("HALT IRQ wake = woke:%v elapsed:%d, want true/1", wake.Woke, wake.ElapsedCycles)
+	}
+	if m.CPU.PC() != code {
+		t.Fatalf("wake boundary executed CPU: PC=%08x want %08x", m.CPU.PC(), code)
+	}
+
+	irqStep, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !irqStep.CPU.ExceptionTaken || irqStep.CPU.Exception != cpu.ExceptionIRQ {
+		t.Fatalf("post-wake step did not take IRQ: %+v", irqStep.CPU)
+	}
+	if m.CPU.PC() != 0x18 {
+		t.Fatalf("IRQ vector PC = %08x, want 00000018", m.CPU.PC())
+	}
+}
+
+func TestHALTRequiresIEAndIFIntersection(t *testing.T) {
+	m := New(nil, nil)
+	code := uint32(bus.IWRAMStart + 0x2200)
+	writeNOPs(m, code, 1)
+
+	m.IRQ.Request(gbairq.Timer1)
+	enterHALT(t, m)
+	m.CPU.SetPC(code)
+
+	result, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Halted || result.Woke {
+		t.Fatalf("IF-only HALT result halted/woke = %v/%v, want true/false",
+			result.Halted, result.Woke)
+	}
+	if result.ElapsedCycles != uint64(ppu.VisibleCycles) {
+		t.Fatalf("IF-only HALT did not jump to next PPU edge: %d, want %d",
+			result.ElapsedCycles, ppu.VisibleCycles)
+	}
+	if m.CPU.PC() != code {
+		t.Fatalf("CPU executed while IF lacked IE: PC=%08x want %08x", m.CPU.PC(), code)
+	}
+
+	// Enabling the already-pending source is itself sufficient to release HALT;
+	// IME remains clear, so no CPU IRQ line is asserted.
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer1), bus.Access{})
+	wake, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Woke || wake.ElapsedCycles != 0 || m.Halted() {
+		t.Fatalf("enabled pending wake = woke:%v elapsed:%d halted:%v",
+			wake.Woke, wake.ElapsedCycles, m.Halted())
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("IME-clear enabled-pending wake asserted IRQ line")
+	}
+}
+
+func TestHALTServicesDeferredDMAAndWakesOnDMAIRQ(t *testing.T) {
+	m := New(nil, nil)
+
+	source := uint32(bus.IWRAMStart + 0x2300)
+	dest := uint32(bus.IWRAMStart + 0x2400)
+	m.Bus.Write16(source, 0x5aa5, bus.Access{})
+	// DMA1, one-shot HBlank with completion IRQ.
+	programDMA(m, 1, source, dest, 1, (2<<12)|(1<<14)|(1<<15))
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.DMA1), bus.Access{})
+
+	m.Advance(ppu.VisibleCycles - 1)
+	enterHALT(t, m)
+	m.CPU.SetPC(bus.IWRAMStart + 0x2500)
+	pc := m.CPU.PC()
+
+	first, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Halted || first.Woke || first.ElapsedCycles != 1 {
+		t.Fatalf("HBlank request step = halted:%v woke:%v elapsed:%d, want true/false/1",
+			first.Halted, first.Woke, first.ElapsedCycles)
+	}
+	if !m.DMA.Pending() {
+		t.Fatal("HBlank while halted did not queue DMA")
+	}
+
+	second, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Woke || second.Halted {
+		t.Fatalf("DMA IRQ wake = woke:%v halted:%v", second.Woke, second.Halted)
+	}
+	if second.DMAStallCycles != 4 || second.ElapsedCycles != 6 {
+		t.Fatalf("halted DMA elapsed/stall = %d/%d, want 6/4",
+			second.ElapsedCycles, second.DMAStallCycles)
+	}
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0x5aa5 {
+		t.Fatalf("halted DMA result = %04x, want 5aa5", got)
+	}
+	if m.CPU.PC() != pc {
+		t.Fatalf("CPU executed during halted DMA service: PC=%08x want %08x", m.CPU.PC(), pc)
+	}
+	if m.IRQ.IF()&uint16(gbairq.DMA1) == 0 {
+		t.Fatalf("DMA1 IF missing after halted transfer: %04x", m.IRQ.IF())
+	}
+}
+
+func TestSTOPIsRecognizedButNotMisimplementedAsHALT(t *testing.T) {
+	m := New(nil, nil)
+	m.CPU.SetPC(bus.BIOSStart)
+	m.Bus.Write8(bus.IOStart+0x300, 1, bus.Access{})
+	m.Bus.Write8(bus.IOStart+0x301, 0x80, bus.Access{})
+
+	if !m.StopRequested() {
+		t.Fatal("HALTCNT STOP request was not recorded")
+	}
+	if m.Halted() {
+		t.Fatal("STOP request was incorrectly treated as ordinary HALT")
+	}
+}
