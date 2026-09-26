@@ -112,6 +112,16 @@ func (m *Machine) requestDMAStart() {
 	if !m.DMA.Pending() {
 		return
 	}
+	// DMA Enable can be written by the CPU in the middle of a timed I/O bus
+	// access. In that case the start latency begins when that access completes.
+	if m.memory.inBusCall {
+		m.memory.requestAfterAccess = true
+		return
+	}
+	m.scheduleDMAStart()
+}
+
+func (m *Machine) scheduleDMAStart() {
 	at := m.cycles + DMAStartLatency
 	if !m.dmaScheduled || at < m.dmaStartAt {
 		m.dmaStartAt = at
@@ -188,8 +198,10 @@ func (m *Machine) advanceHardware(cycles uint32) {
 // timedMemory is the CPU-facing bus adapter. It advances master time at each
 // actual ARM7 bus/idle phase instead of waiting until the instruction returns.
 type timedMemory struct {
-	m         *Machine
-	cpuCycles uint32
+	m                  *Machine
+	cpuCycles          uint32
+	inBusCall          bool
+	requestAfterAccess bool
 }
 
 func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32) {
@@ -211,20 +223,29 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 }
 
 func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) uint32 {
+	t.inBusCall = true
 	cycles := t.m.Bus.Write8(addr, value, access)
+	t.inBusCall = false
 	t.consume(cycles)
+	t.flushDeferredDMARequest()
 	return cycles
 }
 
 func (t *timedMemory) Write16(addr uint32, value uint16, access gbamemory.Access) uint32 {
+	t.inBusCall = true
 	cycles := t.m.Bus.Write16(addr, value, access)
+	t.inBusCall = false
 	t.consume(cycles)
+	t.flushDeferredDMARequest()
 	return cycles
 }
 
 func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access) uint32 {
+	t.inBusCall = true
 	cycles := t.m.Bus.Write32(addr, value, access)
+	t.inBusCall = false
 	t.consume(cycles)
+	t.flushDeferredDMARequest()
 	return cycles
 }
 
@@ -236,4 +257,14 @@ func (t *timedMemory) Idle(cycles uint32) {
 func (t *timedMemory) consume(cycles uint32) {
 	t.cpuCycles += cycles
 	t.m.advanceCPU(cycles)
+}
+
+func (t *timedMemory) flushDeferredDMARequest() {
+	if !t.requestAfterAccess {
+		return
+	}
+	t.requestAfterAccess = false
+	if t.m.DMA.Pending() {
+		t.m.scheduleDMAStart()
+	}
 }
