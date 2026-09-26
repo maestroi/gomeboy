@@ -124,12 +124,15 @@ func (m *Machine) Step() (StepResult, error) {
 	startCycle := m.cycles
 	startStalls := m.dmaStalls
 	startWakeSeq := m.haltWakeSeq
+	wasHalted := m.halted
 
 	m.serviceDueEvents()
-	if m.halted {
+	if wasHalted {
 		// HALT stops only the CPU. Advance directly to one meaningful hardware
 		// boundary instead of burning instruction-sized cycles. IRQ wake itself
-		// is one of those scheduled boundaries after its propagation delay.
+		// is one of those scheduled boundaries after its propagation delay. Even
+		// when that IRQ event was already due at entry, return at the wake boundary
+		// rather than executing an ARM instruction in this same Step call.
 		if m.halted {
 			m.advanceHaltedEvent()
 		}
