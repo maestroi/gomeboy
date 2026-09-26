@@ -127,7 +127,13 @@ func (c *Controller) IF() uint16 { return c.flags }
 // IME reports the master interrupt-enable bit.
 func (c *Controller) IME() bool { return c.ime }
 
+// EnabledPending reports the HALT wake condition. GBA HALT is released when
+// any requested interrupt is enabled in IE, independently of IME and CPSR.I.
+func (c *Controller) EnabledPending() bool {
+	return c.ie&c.flags != 0
+}
+
 // IRQAsserted reports the controller's resolved output level.
 func (c *Controller) IRQAsserted() bool {
-	return c.ime && c.ie&c.flags != 0
+	return c.ime && c.EnabledPending()
 }

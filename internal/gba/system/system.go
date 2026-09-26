@@ -9,6 +9,7 @@ import (
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 	gbamemory "github.com/maestroi/gomeboy/internal/gba/memory"
 	"github.com/maestroi/gomeboy/internal/gba/ppu"
+	"github.com/maestroi/gomeboy/internal/gba/power"
 	"github.com/maestroi/gomeboy/internal/gba/timer"
 )
 
@@ -22,6 +23,8 @@ type StepResult struct {
 	CPU            cpu.StepResult
 	ElapsedCycles  uint64
 	DMAStallCycles uint64
+	Halted         bool
+	Woke           bool
 }
 
 // Machine is the central GBA timing domain. All components advance in GBA
@@ -34,14 +37,17 @@ type Machine struct {
 	DMA    *dma.DMA
 	Timers *timer.Timers
 	PPU    *ppu.PPU
+	Power  *power.Controller
 
 	cycles uint64
 	memory timedMemory
 
 	dmaStartAt  uint64
 	dmaScheduled bool
-	dmaRunning   bool
-	dmaStalls    uint64
+	dmaRunning    bool
+	dmaStalls     uint64
+	halted        bool
+	stopRequested bool
 }
 
 // New creates a wired GBA timing domain around owned BIOS/ROM bus storage.
@@ -50,6 +56,14 @@ func New(bios, rom []byte) *Machine {
 	m.Bus = bus.New(bios, rom)
 	m.CPU = cpu.New()
 	m.IRQ = gbairq.New(m.Bus, m.CPU)
+	m.Power = power.New(m.Bus, power.Hooks{
+		BIOSAccess: func() bool {
+			pc := m.CPU.PC()
+			return pc >= bus.BIOSStart && pc < bus.BIOSStart+bus.BIOSSize
+		},
+		Halt: m.enterHalt,
+		Stop: m.requestStop,
+	})
 
 	m.DMA = dma.New(m.Bus, m.IRQ, dma.Hooks{
 		RequestStart: m.requestDMAStart,
@@ -79,6 +93,13 @@ func (m *Machine) Cycle() uint64 { return m.cycles }
 // owned the bus and the CPU has therefore been suspended.
 func (m *Machine) DMAStallCycles() uint64 { return m.dmaStalls }
 
+// Halted reports whether HALTCNT has stopped CPU execution.
+func (m *Machine) Halted() bool { return m.halted }
+
+// StopRequested reports whether BIOS code requested STOP mode. STOP has
+// different clock/wake behavior from HALT and remains a later system slice.
+func (m *Machine) StopRequested() bool { return m.stopRequested }
+
 // Step executes one CPU instruction/exception boundary on the shared master
 // clock. CPU fetches, data accesses, and internal idle cycles advance PPU and
 // timers immediately through timedMemory. DMA may take the bus between those
@@ -86,6 +107,24 @@ func (m *Machine) DMAStallCycles() uint64 { return m.dmaStalls }
 func (m *Machine) Step() (StepResult, error) {
 	startCycle := m.cycles
 	startStalls := m.dmaStalls
+
+	if m.halted {
+		// HALT stops only the CPU. Advance directly to one meaningful hardware
+		// boundary instead of burning instruction-sized cycles. Returning at the
+		// event boundary keeps Step finite even when no enabled source can wake.
+		m.serviceDueDMA()
+		woke := m.wakeFromHalt()
+		if !woke {
+			m.advanceHaltedEvent()
+			woke = m.wakeFromHalt()
+		}
+		return StepResult{
+			ElapsedCycles:  m.cycles - startCycle,
+			DMAStallCycles: m.dmaStalls - startStalls,
+			Halted:         m.halted,
+			Woke:           woke,
+		}, nil
+	}
 
 	m.serviceDueDMA()
 	m.memory.cpuCycles = 0
@@ -96,10 +135,17 @@ func (m *Machine) Step() (StepResult, error) {
 		// Memory.Idle. Keep it on the same central timeline.
 		m.advanceCPU(missing)
 	}
+
+	// If the just-completed instruction entered HALT while an enabled request
+	// was already pending, hardware wakes at the boundary without executing a
+	// further instruction.
+	woke := m.wakeFromHalt()
 	return StepResult{
 		CPU:            result,
 		ElapsedCycles:  m.cycles - startCycle,
 		DMAStallCycles: m.dmaStalls - startStalls,
+		Halted:         m.halted,
+		Woke:           woke,
 	}, err
 }
 
@@ -107,6 +153,48 @@ func (m *Machine) Step() (StepResult, error) {
 // requests that become due still seize the bus and extend elapsed master time.
 func (m *Machine) Advance(cycles uint32) {
 	m.advanceCPU(cycles)
+}
+
+func (m *Machine) enterHalt() {
+	m.halted = true
+}
+
+func (m *Machine) requestStop() {
+	// STOP freezes additional hardware domains and has a restricted wake-source
+	// set. Record it explicitly rather than incorrectly treating it as HALT.
+	m.stopRequested = true
+}
+
+func (m *Machine) wakeFromHalt() bool {
+	if !m.halted || !m.IRQ.EnabledPending() {
+		return false
+	}
+	m.halted = false
+	return true
+}
+
+func (m *Machine) advanceHaltedEvent() {
+	// PPU always supplies a finite deadline. Timers and a deferred DMA start
+	// may provide an earlier one.
+	step := uint64(m.PPU.CyclesUntilEvent())
+	if untilTimer := uint64(m.Timers.CyclesUntilEvent()); untilTimer < step {
+		step = untilTimer
+	}
+	if m.dmaScheduled {
+		untilDMA := uint64(0)
+		if m.dmaStartAt > m.cycles {
+			untilDMA = m.dmaStartAt - m.cycles
+		}
+		if untilDMA < step {
+			step = untilDMA
+		}
+	}
+
+	if step == 0 {
+		m.serviceDueDMA()
+		return
+	}
+	m.advanceCPU(uint32(step))
 }
 
 func (m *Machine) requestDMAStart() {
