@@ -624,45 +624,52 @@ func TestSTOPIgnoresOrdinaryEnabledInterrupts(t *testing.T) {
 	}
 }
 
-func TestSTOPWakesOnlyOnEnabledSerialKeypadOrGamePak(t *testing.T) {
+func TestSTOPWakesOnEnabledExternalSourcesWithoutLatchingIF(t *testing.T) {
 	for _, source := range []gbairq.Source{gbairq.Serial, gbairq.Keypad, gbairq.GamePak} {
 		t.Run(sourceName(source), func(t *testing.T) {
 			m := New(nil, nil)
 			code := uint32(bus.IWRAMStart + 0x2c00)
 			writeNOPs(m, code, 1)
 			m.Bus.Write16(bus.IOStart+0x200, uint16(source), bus.Access{})
-			// Leave IME clear: STOP wake, like HALT wake, is IE/IF-qualified.
 			m.Bus.Write16(bus.IOStart+0x100, 0, bus.Access{})
 			m.Bus.Write16(bus.IOStart+0x102, 1<<7, bus.Access{})
 
 			enterSTOP(t, m)
 			m.CPU.SetPC(code)
 			pc := m.CPU.PC()
-			m.IRQ.Request(source)
+			m.IRQ.RequestExternal(source)
 
+			if m.IRQ.IF() != 0 {
+				t.Fatalf("STOP wake source latched IF = %04x, want 0000", m.IRQ.IF())
+			}
 			wake, err := m.Step()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !wake.Woke || wake.Stopped || wake.Halted {
-				t.Fatalf("STOP wake result = stopped:%v halted:%v woke:%v",
-					wake.Stopped, wake.Halted, wake.Woke)
+			if !wake.Woke || wake.Stopped || wake.Halted || wake.ElapsedCycles != 0 {
+				t.Fatalf("STOP wake = stopped:%v halted:%v woke:%v elapsed:%d",
+					wake.Stopped, wake.Halted, wake.Woke, wake.ElapsedCycles)
 			}
-			if wake.ElapsedCycles != IRQPropagationLatency {
-				t.Fatalf("STOP wake propagation = %d, want %d",
-					wake.ElapsedCycles, IRQPropagationLatency)
-			}
-			if m.Cycle() != IRQPropagationLatency ||
-				m.PPU.LineCycle() != uint32(IRQPropagationLatency) ||
-				m.Timers.Counter(0) != uint16(IRQPropagationLatency) {
-				t.Fatalf("clocks after STOP wake cycle/ppu/timer = %d/%d/%04x",
+			if m.Cycle() != 0 || m.PPU.LineCycle() != 0 || m.Timers.Counter(0) != 0 {
+				t.Fatalf("STOP wake boundary advanced clocks cycle/ppu/timer = %d/%d/%04x",
 					m.Cycle(), m.PPU.LineCycle(), m.Timers.Counter(0))
 			}
 			if m.CPU.PC() != pc {
 				t.Fatalf("CPU executed at STOP wake boundary: PC=%08x want %08x", m.CPU.PC(), pc)
 			}
 			if m.CPU.IRQLine() {
-				t.Fatal("IME-clear STOP wake asserted CPU IRQ line")
+				t.Fatal("STOP wake signal asserted CPU IRQ line")
+			}
+
+			m.Advance(uint32(IRQPropagationLatency))
+			if m.Cycle() != IRQPropagationLatency ||
+				m.PPU.LineCycle() != uint32(IRQPropagationLatency) ||
+				m.Timers.Counter(0) != uint16(IRQPropagationLatency) {
+				t.Fatalf("clocks did not restart after STOP wake: %d/%d/%04x",
+					m.Cycle(), m.PPU.LineCycle(), m.Timers.Counter(0))
+			}
+			if m.CPU.IRQLine() {
+				t.Fatal("IF-free STOP wake unexpectedly produced IRQ after restart")
 			}
 
 			next, err := m.Step()
@@ -670,13 +677,12 @@ func TestSTOPWakesOnlyOnEnabledSerialKeypadOrGamePak(t *testing.T) {
 				t.Fatal(err)
 			}
 			if next.CPU.ExceptionTaken || m.CPU.PC() != code+4 {
-				t.Fatalf("CPU did not resume normally after IME-clear STOP wake: %+v PC=%08x",
+				t.Fatalf("CPU did not resume normally after STOP wake: %+v PC=%08x",
 					next.CPU, m.CPU.PC())
 			}
 		})
 	}
 }
-
 func TestSTOPWakeThenTakesIRQWhenIMEEnabled(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
