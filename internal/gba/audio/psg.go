@@ -285,7 +285,7 @@ func (n *noisePSG) periodCycles() uint64 {
 	if n.divisorCode != 0 {
 		divisor = uint64(n.divisorCode) * 16
 	}
-	return divisor << n.clockShift * 4
+	return (divisor << n.clockShift) * 4
 }
 
 func (n *noisePSG) advance(cycles uint64) {
@@ -412,7 +412,7 @@ func (a *Audio) writePSGRegister(index int, value uint16) {
 		a.psg.reg[index] = value & 0x4000
 		s := &a.psg.square[0]
 		s.frequency = (s.frequency & 0x700) | (value & 0xff)
-		s.frequency = (s.frequency & 0xff) | ((value >> 8) & 7 << 8)
+		s.frequency = (s.frequency & 0xff) | (((value >> 8) & 7) << 8)
 		s.lengthEnable = value&0x4000 != 0
 		if value&0x8000 != 0 {
 			s.trigger(true)
