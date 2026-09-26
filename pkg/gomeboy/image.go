@@ -5,8 +5,6 @@ import (
 	"image"
 	"image/png"
 	"io"
-
-	"github.com/maestroi/gomeboy/internal/ppu"
 )
 
 // Image returns the current frame as a standard image.Image. The returned
@@ -14,7 +12,7 @@ import (
 // call, unlike Frame().RGB.
 func (e *Emulator) Image() image.Image {
 	f := e.Frame()
-	img := image.NewRGBA(image.Rect(0, 0, ppu.ScreenWidth, ppu.ScreenHeight))
+	img := image.NewRGBA(image.Rect(0, 0, f.Width, f.Height))
 	pix := img.Pix
 	for i := 0; i < len(f.RGB)/3; i++ {
 		s, d := i*3, i*4

@@ -17,11 +17,7 @@ import (
 	"time"
 )
 
-const (
-	aspectRatio = float32(160) / float32(144)
-)
-
-// init registers the glfw display driver and locks the main goroutine to an
+const aspectRatio = float32(160) / float32(144) // legacy GB/GBC aspect ratio\n\n// init registers the glfw display driver and locks the main goroutine to an
 // OS thread so GLFW callbacks run on the main thread. It performs no GLFW,
 // SDL, joystick, or OpenGL initialization: Start brings the subsystems up
 // and Stop tears them down again.
@@ -118,6 +114,18 @@ var (
 		glfw.KeyRight:     io.ButtonRight,
 		glfw.KeyEnter:     io.ButtonStart,
 		glfw.KeyBackspace: io.ButtonSelect,
+	}
+	frontendKeys = map[glfw.Key]emulator.Button{
+		glfw.KeyA:         emulator.ButtonA,
+		glfw.KeyB:         emulator.ButtonB,
+		glfw.KeyDown:      emulator.ButtonDown,
+		glfw.KeyUp:        emulator.ButtonUp,
+		glfw.KeyLeft:      emulator.ButtonLeft,
+		glfw.KeyRight:     emulator.ButtonRight,
+		glfw.KeyEnter:     emulator.ButtonStart,
+		glfw.KeyBackspace: emulator.ButtonSelect,
+		glfw.KeyQ:         emulator.ButtonL,
+		glfw.KeyE:         emulator.ButtonR,
 	}
 )
 
@@ -271,14 +279,15 @@ func (g *glfwDriver) initSubsystems() error {
 // loop. It returns the first failure with subsystem context.
 func (g *glfwDriver) run(c emulator.Controller, frames <-chan []byte, pressed, released chan<- io.Button) error {
 	// create window
-	w, err := createWindow(int(160*g.scale), int(144*g.scale), "GomeBoy")
+	frameWidth, frameHeight := controllerFrameSize(c)
+	w, err := createWindow(int(float64(frameWidth)*g.scale), int(float64(frameHeight)*g.scale), "GomeBoy")
 	if err != nil {
 		return fmt.Errorf("glfw: create window: %w", err)
 	}
 	g.window = w
 
 	if g.maintainAspectRatio {
-		w.setAspectRatio(10, 9)
+		w.setAspectRatio(frameWidth, frameHeight)
 	}
 	// fullscreen
 	if g.fullscreen {
@@ -332,34 +341,49 @@ func (g *glfwDriver) renderLoop(w window, c emulator.Controller, frames <-chan [
 		gl.BindFramebuffer(gl.DRAW_FRAMEBUFFER, 0)
 	}
 
-	// handle resizing
-	targetWidth := int32(160 * g.scale)
-	targetHeight := int32(144 * g.scale)
+	// handle resizing. The active core may change after a ROM drop, so the
+	// render dimensions and aspect ratio are refreshed from the controller.
+	frameWidth, frameHeight := controllerFrameSize(c)
+	frameAspect := float32(frameWidth) / float32(frameHeight)
+	targetWidth := int32(float64(frameWidth) * g.scale)
+	targetHeight := int32(float64(frameHeight) * g.scale)
 	var offsetX, offsetY int32
-	w.setSizeCallback(func(_ *glfw.Window, width, height int) {
-
-		if float32(width)/float32(height) > aspectRatio {
-			targetWidth = int32(float32(height) * aspectRatio)
+	updateTarget := func(width, height int) {
+		if float32(width)/float32(height) > frameAspect {
+			targetWidth = int32(float32(height) * frameAspect)
 			targetHeight = int32(height)
 		} else {
 			targetWidth = int32(width)
-			targetHeight = int32(float32(width) / aspectRatio)
+			targetHeight = int32(float32(width) / frameAspect)
 		}
-
 		offsetX = (int32(width) - targetWidth) / 2
 		offsetY = (int32(height) - targetHeight) / 2
+	}
+	w.setSizeCallback(func(_ *glfw.Window, width, height int) {
+		updateTarget(width, height)
 	})
+	ww, wh := w.size()
+	updateTarget(ww, wh)
 
 	// draw refreshes the current Game Boy texture and overlays. A nil frame
 	// reuses the last uploaded texture, which lets menus remain responsive
 	// while emulation is paused.
 	draw := func(frame []byte) {
 		gl.Clear(gl.COLOR_BUFFER_BIT)
+		if width, height := controllerFrameSize(c); width != frameWidth || height != frameHeight {
+			frameWidth, frameHeight = width, height
+			frameAspect = float32(frameWidth) / float32(frameHeight)
+			if g.maintainAspectRatio {
+				w.setAspectRatio(frameWidth, frameHeight)
+			}
+			ww, wh := w.size()
+			updateTarget(ww, wh)
+		}
 		if frame != nil {
 			gl.BindTexture(gl.TEXTURE_2D, texture)
-			gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 160, 144, 0, gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(frame))
+			gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB8, int32(frameWidth), int32(frameHeight), 0, gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(frame))
 		}
-		gl.BlitFramebuffer(0, 0, 160, 144, offsetX, offsetY+targetHeight, offsetX+targetWidth, offsetY, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+		gl.BlitFramebuffer(0, 0, int32(frameWidth), int32(frameHeight), offsetX, offsetY+targetHeight, offsetX+targetWidth, offsetY, gl.COLOR_BUFFER_BIT, gl.NEAREST)
 
 		width, height := w.size()
 		hud.Draw(int32(width), int32(height))
@@ -445,8 +469,18 @@ func keyCallback(g *glfwDriver, w window, c emulator.Controller, pressed, releas
 			return
 		}
 
-		// check to see if the key is mapped to a joypad button
-		if button, ok := joypadKeys[key]; ok {
+		// Prefer the core-neutral input capability so GBA L/R can be delivered
+		// directly. Legacy controllers keep using the original GB channels.
+		if input, ok := c.(emulator.InputController); ok {
+			if button, mapped := frontendKeys[key]; mapped {
+				switch action {
+				case glfw.Press:
+					input.PressButton(button)
+				case glfw.Release:
+					input.ReleaseButton(button)
+				}
+			}
+		} else if button, ok := joypadKeys[key]; ok {
 			switch action {
 			case glfw.Press:
 				pressed <- button
@@ -642,6 +676,16 @@ func (g *glfwDriver) Rumble(lowFreq, highFreq uint16, duration uint32) {
 		return
 	}
 	joystick.rumble(lowFreq, highFreq, duration)
+}
+
+func controllerFrameSize(c emulator.Controller) (width, height int) {
+	if sized, ok := c.(emulator.FrameSizer); ok {
+		width, height = sized.FrameSize()
+		if width > 0 && height > 0 {
+			return width, height
+		}
+	}
+	return 160, 144
 }
 
 // bestMode returns the best video mode for the driver's monitor by choosing

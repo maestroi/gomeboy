@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultWindowTitle = "GomeBoy"
-	romDropHintTitle   = "GomeBoy — drop a .gb/.gbc ROM here"
+	romDropHintTitle   = "GomeBoy — drop a .gb/.gbc/.gba ROM here"
 )
 
 // init layers standalone ROM loading onto the existing render-loop seam. This
@@ -70,9 +70,9 @@ func installROMDrop(w window, c emulator.Controller) {
 func selectROMPath(paths []string) (string, error) {
 	for _, path := range paths {
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".gb" || ext == ".gbc" {
+		if ext == ".gb" || ext == ".gbc" || ext == ".gba" {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("drop a .gb or .gbc ROM")
+	return "", fmt.Errorf("drop a .gb, .gbc, or .gba ROM")
 }

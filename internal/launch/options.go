@@ -41,8 +41,8 @@ type Options struct {
 // Register registers the core shared options on fs: -rom, -boot, -model,
 // -printer, -cheats, -log-level, and -pprof.
 func Register(fs *flag.FlagSet) {
-	fs.String("rom", "", "path to a .gb / .gbc ROM to load")
-	fs.String("boot", "", "path to a boot ROM (.gbr) to use instead of the emulated boot process")
+	fs.String("rom", "", "path to a .gb / .gbc / .gba ROM to load")
+	fs.String("boot", "", "path to a GB boot ROM (.gbr) or 16 KiB GBA BIOS to use")
 	fs.String("model", string(gomeboy.ModelAuto), "hardware model to emulate: auto, DMG0, DMG, CGB0, CGB, MGB, SGB, SGB2, or AGB (case-insensitive); auto infers the model from the cartridge")
 	fs.Bool("printer", false, "attach the Game Boy Printer serial device")
 	fs.String("cheats", "", "path to a cheats file (GameShark / GameGenie) to load; the working directory is never probed")
@@ -222,6 +222,34 @@ func (o *Options) CoreOptions() ([]gameboy.Opt, error) {
 	}
 
 	return opts, nil
+}
+
+// DesktopOptions translates desktop launch settings into the public
+// core-neutral emulator. Historical desktop persistence is preserved: saves
+// default to the working directory unless -no-saves is set.
+func (o *Options) DesktopOptions() []gomeboy.Option {
+	var opts []gomeboy.Option
+	if o.BootROM != "" {
+		opts = append(opts, gomeboy.WithBootROM(o.BootROM))
+	}
+	if o.Model != gomeboy.ModelAuto {
+		opts = append(opts, gomeboy.WithModel(o.Model))
+	}
+	if o.Printer {
+		opts = append(opts, gomeboy.WithPrinter())
+	}
+	isGBA := strings.EqualFold(filepath.Ext(o.ROM), ".gba")
+	if isGBA {
+		if o.Cheats != "" {
+			opts = append(opts, gomeboy.WithCheats(o.Cheats))
+		}
+	} else if cheats := o.CheatsPath(); cheats != "" {
+		opts = append(opts, gomeboy.WithCheats(cheats))
+	}
+	if !o.NoSaves {
+		opts = append(opts, gomeboy.WithSaveDir(o.SaveDir))
+	}
+	return opts
 }
 
 // PublicOptions translates these options into pkg/gomeboy options for the

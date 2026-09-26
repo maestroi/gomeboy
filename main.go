@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/io"
 	"github.com/maestroi/gomeboy/internal/launch"
 	"github.com/maestroi/gomeboy/pkg/audio"
+	"github.com/maestroi/gomeboy/pkg/gomeboy"
 	"github.com/maestroi/gomeboy/pkg/display"
 	_ "github.com/maestroi/gomeboy/pkg/display/glfw"
 	"github.com/maestroi/gomeboy/pkg/log"
@@ -55,24 +55,24 @@ func run(args []string) error {
 		defer stopPProf()
 	}
 
-	gbOpts, err := opts.CoreOptions()
-	if err != nil {
-		return err
-	}
-
-	gb := gameboy.NewGameBoy(gbOpts...)
-
+	emuOpts := opts.DesktopOptions()
 	if opts.ROM != "" {
-		if err := gb.LoadROM(opts.ROM); err != nil {
+		emuOpts = append(emuOpts, gomeboy.WithROM(opts.ROM))
+	}
+	emu, err := gomeboy.New(emuOpts...)
+	if err != nil {
+		if opts.ROM != "" {
 			return fmt.Errorf("gomeboy: load ROM %s: %w", opts.ROM, err)
 		}
+		return fmt.Errorf("gomeboy: initialize emulator: %w", err)
 	}
+	defer emu.Close()
 
 	fb := make(chan []byte, 120)
 	pressed := make(chan io.Button, 1)
 	released := make(chan io.Button, 1)
 
-	if err := audio.OpenAudio(gb, fb); err != nil {
+	if err := audio.OpenEmulator(emu, fb); err != nil {
 		return fmt.Errorf("gomeboy: open audio device: %w", err)
 	}
 
@@ -85,19 +85,19 @@ func run(args []string) error {
 		for {
 			select {
 			case b := <-pressed:
-				gb.Bus.Press(b)
+				if button, ok := publicButton(b); ok {
+					emu.Press(button)
+				}
 			case b := <-released:
-				gb.Bus.Release(b)
+				if button, ok := publicButton(b); ok {
+					emu.Release(button)
+				}
 			}
 		}
 	}()
 
-	if err := driver.Start(gb, fb, pressed, released); err != nil {
+	if err := driver.Start(emu, fb, pressed, released); err != nil {
 		return fmt.Errorf("gomeboy: start display driver %q: %w", opts.Driver, err)
-	}
-
-	if err := gb.Save(); err != nil {
-		return fmt.Errorf("gomeboy: save battery RAM for ROM %s: %w", opts.ROM, err)
 	}
 
 	return nil
@@ -109,4 +109,28 @@ func installedDriverNames() string {
 		names = append(names, d.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+
+func publicButton(button io.Button) (gomeboy.Button, bool) {
+	switch button {
+	case io.ButtonA:
+		return gomeboy.ButtonA, true
+	case io.ButtonB:
+		return gomeboy.ButtonB, true
+	case io.ButtonStart:
+		return gomeboy.ButtonStart, true
+	case io.ButtonSelect:
+		return gomeboy.ButtonSelect, true
+	case io.ButtonUp:
+		return gomeboy.ButtonUp, true
+	case io.ButtonDown:
+		return gomeboy.ButtonDown, true
+	case io.ButtonLeft:
+		return gomeboy.ButtonLeft, true
+	case io.ButtonRight:
+		return gomeboy.ButtonRight, true
+	default:
+		return 0, false
+	}
 }

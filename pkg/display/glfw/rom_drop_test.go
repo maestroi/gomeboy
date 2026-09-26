@@ -52,6 +52,14 @@ func TestSelectROMPath(t *testing.T) {
 		t.Fatalf("selected %q, want /tmp/Pokemon.GBC", path)
 	}
 
+	path, err = selectROMPath([]string{"/tmp/Advance.GBA"})
+	if err != nil {
+		t.Fatalf("selectROMPath GBA: %v", err)
+	}
+	if path != "/tmp/Advance.GBA" {
+		t.Fatalf("selected %q, want /tmp/Advance.GBA", path)
+	}
+
 	if _, err := selectROMPath([]string{"notes.txt"}); err == nil {
 		t.Fatal("expected non-ROM drop to be rejected")
 	}

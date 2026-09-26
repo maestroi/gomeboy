@@ -40,7 +40,7 @@ func (w *controlWindow) setKeyCallback(callback func(*glfw.Window, glfw.Key, int
 		if action == glfw.Press {
 			switch key {
 			case glfw.KeyF8:
-				name, err := captureScreenshot()
+				name, err := captureScreenshot(w.controller)
 				if err != nil {
 					log.Errorf("screenshot: %v", err)
 					w.setStatusTitle("Screenshot failed")
@@ -97,10 +97,10 @@ func toggleMute(c emulator.Controller) (muted bool, supported bool) {
 	return m.ToggleMute(), true
 }
 
-func captureScreenshot() (string, error) {
-	const width, height = 160, 144
+func captureScreenshot(c emulator.Controller) (string, error) {
+	width, height := controllerFrameSize(c)
 	pixels := make([]byte, width*height*3)
-	gl.ReadPixels(0, 0, width, height, gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(pixels))
+	gl.ReadPixels(0, 0, int32(width), int32(height), gl.RGB, gl.UNSIGNED_BYTE, gl.Ptr(pixels))
 
 	img, err := screenshotImage(pixels, width, height)
 	if err != nil {
