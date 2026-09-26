@@ -240,7 +240,7 @@ func New(opts ...Option) (*Emulator, error) {
 	if len(bootROM) != 0 {
 		gbOpts = append(gbOpts, gameboy.WithBootROM(bootROM))
 	}
-	if cfg.model != ModelAuto && cfg.model != ModelAGB {
+	if cfg.model != ModelAuto {
 		internal, ok := modelMap[cfg.model]
 		if !ok {
 			return nil, fmt.Errorf("gomeboy: unknown model %q: use auto, DMG0, DMG, CGB0, CGB, MGB, SGB, SGB2, or AGB", cfg.model)
@@ -270,7 +270,7 @@ func New(opts ...Option) (*Emulator, error) {
 		return newGBACore(bootROM)
 	}
 
-	wantsGBA := cfg.model == ModelAGB || isGBAROMPath(cfg.romPath)
+	wantsGBA := isGBAROMPath(cfg.romPath)
 	if isGBAROMPath(cfg.romPath) && cfg.model != ModelAuto && cfg.model != ModelAGB {
 		return nil, fmt.Errorf("gomeboy: .gba ROM requires model auto or AGB, got %s", cfg.model)
 	}
