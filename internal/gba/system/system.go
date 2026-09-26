@@ -53,6 +53,7 @@ func New(bios, rom []byte) *Machine {
 
 	m.DMA = dma.New(m.Bus, m.IRQ, dma.Hooks{
 		RequestStart: m.requestDMAStart,
+		CancelStart:  m.cancelDMAStart,
 	})
 	m.Timers = timer.New(m.Bus, m.IRQ, timer.Hooks{})
 	m.PPU = ppu.New(m.Bus, ppu.Hooks{
@@ -119,6 +120,12 @@ func (m *Machine) requestDMAStart() {
 		return
 	}
 	m.scheduleDMAStart()
+}
+
+func (m *Machine) cancelDMAStart() {
+	if !m.DMA.Pending() {
+		m.dmaScheduled = false
+	}
 }
 
 func (m *Machine) scheduleDMAStart() {
