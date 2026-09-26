@@ -6,6 +6,7 @@
     {
       "name": "arm",
       "rom": "roms/arm.gba",
+      "rom_sha256": "77ee88662552bdc885c1080c0172ff119d54db791bd73b21808cf1ff1fe5b40e",
       "boot": {
         "mode": "direct",
         "entry_point": "0x08000000",
@@ -45,6 +46,7 @@
     {
       "name": "thumb",
       "rom": "roms/thumb.gba",
+      "rom_sha256": "b5cb2291df4ab314b31c598acd9bff2ccfa0b38efff29daadfe97422ce369b67",
       "boot": {
         "mode": "direct",
         "entry_point": "0x08000000",
