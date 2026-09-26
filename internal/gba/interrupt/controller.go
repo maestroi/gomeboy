@@ -45,8 +45,9 @@ type LineSink interface {
 // the controller leaves IRQ-line delivery to that scheduler; standalone users
 // retain the immediate line behavior.
 type Hooks struct {
-	Evaluate  func(enabledPending bool, irqAsserted bool)
-	DeferLine bool
+	Evaluate        func(enabledPending bool, irqAsserted bool)
+	ExternalRequest func(source Source) bool
+	DeferLine       bool
 }
 
 // Controller owns IE, IF, and IME and resolves them to the CPU IRQ line.
@@ -132,6 +133,21 @@ func (c *Controller) updateLine() {
 func (c *Controller) Request(source Source) {
 	c.flags |= uint16(source) & validMask
 	c.updateLine()
+}
+
+// RequestExternal reports an asynchronous STOP-capable hardware signal.
+// Scheduler-owned integrations may consume it while the system clock is
+// stopped; consumed signals do not latch IF. When the clock is running, the
+// signal falls back to an ordinary interrupt request.
+func (c *Controller) RequestExternal(source Source) {
+	source &= StopWakeSources
+	if source == 0 {
+		return
+	}
+	if c.hooks.ExternalRequest != nil && c.hooks.ExternalRequest(source) {
+		return
+	}
+	c.Request(source)
 }
 
 // Reset clears IE, IF, and IME and deasserts the CPU IRQ line.
