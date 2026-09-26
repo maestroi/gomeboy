@@ -210,12 +210,13 @@ func (r Runner) Run(tc Case) Result {
 			return result
 		}
 
+		pc := m.CPU.PC()
 		_, err := m.Step()
 		result.Steps++
 		result.Cycles = m.Cycle() - startCycle
 		result.Frames = m.PPU.FrameCount() - startFrame
 		if err != nil {
-			result.Detail = fmt.Sprintf("emulation error: %v", err)
+			result.Detail = fmt.Sprintf("emulation error at pc %#08x: %v", pc, err)
 			return result
 		}
 	}
