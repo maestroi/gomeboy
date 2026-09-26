@@ -304,22 +304,32 @@ func TestHALTWakesOnEnabledTimerRequestWithIMEClear(t *testing.T) {
 	m.CPU.SetPC(code)
 	pc := m.CPU.PC()
 
-	result, err := m.Step()
+	request, err := m.Step()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Woke || result.Halted || m.Halted() {
-		t.Fatalf("timer wake result woke/halted = %v/%v machine=%v",
-			result.Woke, result.Halted, m.Halted())
+	if !request.Halted || request.Woke || request.ElapsedCycles != 2 {
+		t.Fatalf("timer request boundary = halted:%v woke:%v elapsed:%d, want true/false/2",
+			request.Halted, request.Woke, request.ElapsedCycles)
 	}
-	if result.ElapsedCycles != 2 {
-		t.Fatalf("HALT timer fast-forward = %d cycles, want 2", result.ElapsedCycles)
+	if m.IRQ.IF() != uint16(gbairq.Timer0) || m.CPU.IRQLine() {
+		t.Fatalf("timer request state IF=%04x line=%v", m.IRQ.IF(), m.CPU.IRQLine())
+	}
+
+	wake, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Woke || wake.Halted || m.Halted() {
+		t.Fatalf("timer wake result woke/halted = %v/%v machine=%v",
+			wake.Woke, wake.Halted, m.Halted())
+	}
+	if wake.ElapsedCycles != IRQPropagationLatency {
+		t.Fatalf("HALT IRQ propagation = %d cycles, want %d",
+			wake.ElapsedCycles, IRQPropagationLatency)
 	}
 	if m.CPU.PC() != pc {
 		t.Fatalf("CPU executed while fast-forwarding HALT: PC=%08x want %08x", m.CPU.PC(), pc)
-	}
-	if m.IRQ.IF() != uint16(gbairq.Timer0) {
-		t.Fatalf("timer IF after HALT wake = %04x, want Timer0", m.IRQ.IF())
 	}
 	if m.CPU.IRQLine() {
 		t.Fatal("IME-clear HALT wake asserted CPU IRQ line")
@@ -353,12 +363,28 @@ func TestHALTWakeThenTakesIRQWhenIMEEnabled(t *testing.T) {
 	enterHALT(t, m)
 	m.CPU.SetPC(code)
 
+	request, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Woke || !request.Halted || request.ElapsedCycles != 1 {
+		t.Fatalf("timer request step = woke:%v halted:%v elapsed:%d, want false/true/1",
+			request.Woke, request.Halted, request.ElapsedCycles)
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("IRQ line asserted before propagation deadline")
+	}
+
 	wake, err := m.Step()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !wake.Woke || wake.ElapsedCycles != 1 {
-		t.Fatalf("HALT IRQ wake = woke:%v elapsed:%d, want true/1", wake.Woke, wake.ElapsedCycles)
+	if !wake.Woke || wake.ElapsedCycles != IRQPropagationLatency {
+		t.Fatalf("HALT IRQ wake = woke:%v elapsed:%d, want true/%d",
+			wake.Woke, wake.ElapsedCycles, IRQPropagationLatency)
+	}
+	if !m.CPU.IRQLine() {
+		t.Fatal("IRQ line was not asserted at HALT wake event")
 	}
 	if m.CPU.PC() != code {
 		t.Fatalf("wake boundary executed CPU: PC=%08x want %08x", m.CPU.PC(), code)
@@ -401,14 +427,14 @@ func TestHALTRequiresIEAndIFIntersection(t *testing.T) {
 		t.Fatalf("CPU executed while IF lacked IE: PC=%08x want %08x", m.CPU.PC(), code)
 	}
 
-	// Enabling the already-pending source is itself sufficient to release HALT;
-	// IME remains clear, so no CPU IRQ line is asserted.
+	// Enabling the already-pending source starts the seven-cycle wake event.
+	// IME remains clear, so wake will not assert the CPU IRQ line.
 	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer1), bus.Access{})
 	wake, err := m.Step()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !wake.Woke || wake.ElapsedCycles != 0 || m.Halted() {
+	if !wake.Woke || wake.ElapsedCycles != IRQPropagationLatency || m.Halted() {
 		t.Fatalf("enabled pending wake = woke:%v elapsed:%d halted:%v",
 			wake.Woke, wake.ElapsedCycles, m.Halted())
 	}
@@ -448,8 +474,9 @@ func TestHALTServicesDeferredDMAAndWakesOnDMAIRQ(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !second.Woke || second.Halted {
-		t.Fatalf("DMA IRQ wake = woke:%v halted:%v", second.Woke, second.Halted)
+	if second.Woke || !second.Halted {
+		t.Fatalf("DMA completion boundary = woke:%v halted:%v, want false/true",
+			second.Woke, second.Halted)
 	}
 	if second.DMAStallCycles != 4 || second.ElapsedCycles != 6 {
 		t.Fatalf("halted DMA elapsed/stall = %d/%d, want 6/4",
@@ -458,11 +485,20 @@ func TestHALTServicesDeferredDMAAndWakesOnDMAIRQ(t *testing.T) {
 	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0x5aa5 {
 		t.Fatalf("halted DMA result = %04x, want 5aa5", got)
 	}
-	if m.CPU.PC() != pc {
-		t.Fatalf("CPU executed during halted DMA service: PC=%08x want %08x", m.CPU.PC(), pc)
-	}
 	if m.IRQ.IF()&uint16(gbairq.DMA1) == 0 {
 		t.Fatalf("DMA1 IF missing after halted transfer: %04x", m.IRQ.IF())
+	}
+
+	third, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !third.Woke || third.Halted || third.ElapsedCycles != IRQPropagationLatency {
+		t.Fatalf("DMA IRQ wake = woke:%v halted:%v elapsed:%d, want true/false/%d",
+			third.Woke, third.Halted, third.ElapsedCycles, IRQPropagationLatency)
+	}
+	if m.CPU.PC() != pc {
+		t.Fatalf("CPU executed during halted DMA/IRQ service: PC=%08x want %08x", m.CPU.PC(), pc)
 	}
 }
 
