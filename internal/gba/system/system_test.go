@@ -635,3 +635,97 @@ func TestDMAIRQPropagationStartsAtTransferCompletion(t *testing.T) {
 		t.Fatalf("DMA IRQ delivery cycle = %d, want %d", m.Cycle(), want)
 	}
 }
+
+func TestHigherPriorityHBlankDMAPreemptsLongImmediateDMA(t *testing.T) {
+	m := New(nil, nil)
+
+	lowSource := uint32(bus.IWRAMStart + 0x3000)
+	lowDest := uint32(bus.IWRAMStart + 0x4000)
+	const lowCount = 600
+	for i := 0; i < lowCount; i++ {
+		m.Bus.Write16(lowSource+uint32(i*2), 0x3333, bus.Access{})
+	}
+
+	highSource := uint32(bus.IWRAMStart + 0x5000)
+	highDest := lowDest + uint32((lowCount-1)*2)
+	m.Bus.Write16(highSource, 0xbeef, bus.Access{})
+
+	// DMA0 waits for HBlank. DMA3 starts immediately and is long enough to
+	// cross the first HBlank edge at cycle 960.
+	programDMA(m, 0, highSource, highDest, 1, (2<<12)|(1<<15))
+	programDMA(m, 3, lowSource, lowDest, lowCount, 1<<15)
+
+	// Reaching DMA3's start deadline blocks CPU-owned time while DMA runs. At
+	// HBlank, DMA0 gets its own start latency and then preempts between DMA3
+	// units. DMA3 later resumes and overwrites the location DMA0 touched.
+	m.Advance(uint32(DMAStartLatency))
+
+	if got, _ := m.Bus.Read16(highDest, bus.Access{}); got != 0x3333 {
+		t.Fatalf("future DMA3 destination after preemption = %04x, want 3333", got)
+	}
+	if m.DMA.Control(0)&(1<<15) != 0 || m.DMA.Control(3)&(1<<15) != 0 {
+		t.Fatalf("completed DMA enable bits DMA0=%04x DMA3=%04x",
+			m.DMA.Control(0), m.DMA.Control(3))
+	}
+	if units, _ := m.DMA.LastTransfer(0); units != 1 {
+		t.Fatalf("DMA0 units = %d, want 1", units)
+	}
+	if units, _ := m.DMA.LastTransfer(3); units != lowCount {
+		t.Fatalf("DMA3 units = %d, want %d", units, lowCount)
+	}
+}
+
+func TestLowerPriorityHBlankDMADoesNotPreemptDMA0(t *testing.T) {
+	m := New(nil, nil)
+
+	highSource := uint32(bus.IWRAMStart + 0x3000)
+	highDest := uint32(bus.IWRAMStart + 0x4000)
+	const highCount = 600
+	for i := 0; i < highCount; i++ {
+		m.Bus.Write16(highSource+uint32(i*2), 0x1111, bus.Access{})
+	}
+
+	lowSource := uint32(bus.IWRAMStart + 0x5000)
+	lowDest := highDest + uint32((highCount-1)*2)
+	m.Bus.Write16(lowSource, 0xbeef, bus.Access{})
+
+	// DMA0 owns the bus first. DMA3 becomes ready at HBlank but cannot take a
+	// unit while the higher-priority DMA0 remains active.
+	programDMA(m, 3, lowSource, lowDest, 1, (2<<12)|(1<<15))
+	programDMA(m, 0, highSource, highDest, highCount, 1<<15)
+	m.Advance(uint32(DMAStartLatency))
+
+	if got, _ := m.Bus.Read16(lowDest, bus.Access{}); got != 0xbeef {
+		t.Fatalf("lower-priority DMA3 did not wait for DMA0 completion: %04x", got)
+	}
+}
+
+func TestDMAChannelsKeepIndependentStartDeadlines(t *testing.T) {
+	m := New(nil, nil)
+
+	src0 := uint32(bus.IWRAMStart + 0x6000)
+	dst0 := uint32(bus.IWRAMStart + 0x6100)
+	src1 := uint32(bus.IWRAMStart + 0x6200)
+	dst1 := uint32(bus.IWRAMStart + 0x6300)
+	m.Bus.Write16(src0, 1, bus.Access{})
+	m.Bus.Write16(src1, 2, bus.Access{})
+
+	programDMA(m, 0, src0, dst0, 1, 1<<15)
+	if got := m.dmaStartAt[0]; got != DMAStartLatency {
+		t.Fatalf("DMA0 start deadline = %d, want %d", got, DMAStartLatency)
+	}
+
+	// Move one master cycle without reaching DMA0's deadline, then enable DMA1.
+	m.advanceHardware(1)
+	programDMA(m, 1, src1, dst1, 1, 1<<15)
+
+	if m.dmaScheduled != 0x03 {
+		t.Fatalf("scheduled DMA mask = %02x, want 03", m.dmaScheduled)
+	}
+	if got := m.dmaStartAt[0]; got != 2 {
+		t.Fatalf("DMA0 deadline changed after DMA1 request: %d, want 2", got)
+	}
+	if got := m.dmaStartAt[1]; got != 3 {
+		t.Fatalf("DMA1 deadline = %d, want 3", got)
+	}
+}
