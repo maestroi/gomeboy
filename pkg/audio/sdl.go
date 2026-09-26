@@ -60,7 +60,7 @@ var (
 //export AudioData
 func AudioData(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 	n := int(length)
-	data := unsafe.Slice(stream, n)
+	data := unsafe.Slice((*byte)(unsafe.Pointer(stream)), n)
 	clear(data)
 
 	if len(sampleBuffer) >= n {
