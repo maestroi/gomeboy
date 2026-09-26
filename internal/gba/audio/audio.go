@@ -210,6 +210,12 @@ func (a *Audio) Advance(cycles uint32) {
 		if untilSample < step {
 			step = untilSample
 		}
+		if a.psg.enabled {
+			untilFrame := psgFramePeriod - a.psg.frameCycles
+			if untilFrame < step {
+				step = untilFrame
+			}
+		}
 
 		a.advancePSG(step)
 		a.samplePhase += step * SampleRate
