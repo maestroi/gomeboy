@@ -24,6 +24,7 @@ func (p *PPU) renderLine(y int) {
 	}
 
 	mode := p.dispcnt & 0x7
+	p.prepareOBJLine(y, mode)
 	for x := 0; x < ScreenWidth; x++ {
 		windowMask := p.windowMaskAt(mode, x, y)
 		stack, count := p.visibleLayerStack(mode, x, y, windowMask)
@@ -37,6 +38,7 @@ func (p *PPU) renderLine(y int) {
 
 		p.setPixel(x, y, p.applyColorEffect(top, second, hasSecond, windowMask))
 	}
+	p.objLineValid = false
 }
 
 func (p *PPU) visibleLayerStack(mode uint16, x, y int, windowMask uint8) ([6]layerPixel, int) {
@@ -97,7 +99,7 @@ func (p *PPU) visibleLayerStack(mode uint16, x, y int, windowMask uint8) ([6]lay
 	}
 
 	if p.dispcnt&dispOBJEnable != 0 && windowMask&windowOBJ != 0 {
-		if obj := p.objPixel(x, y, mode); obj.opaque {
+		if obj := p.objPixelForLine(x, y, mode); obj.opaque {
 			add(layerPixel{
 				color:           obj.color,
 				layer:           layerOBJ,
