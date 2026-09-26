@@ -280,7 +280,7 @@ func TestRepeatedDMARequestsIRQOnEveryCompletion(t *testing.T) {
 	}
 }
 
-func TestSpecialTimingRemainsArmedAndUntriggeredInThisSlice(t *testing.T) {
+func TestBlankingEventsDoNotTriggerSpecialDMA(t *testing.T) {
 	b := bus.New(nil, nil)
 	d := New(b, nil, Hooks{})
 
@@ -295,6 +295,138 @@ func TestSpecialTimingRemainsArmedAndUntriggeredInThisSlice(t *testing.T) {
 		t.Fatalf("special DMA was triggered by blanking event: %04x", got)
 	}
 	if d.Control(1)&controlEnable == 0 {
-		t.Fatal("deferred special DMA did not remain armed")
+		t.Fatal("special DMA did not remain armed")
+	}
+}
+
+func TestDirectSoundFIFOForcesFourWordBurst(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0xc00)
+	words := []uint32{0x11111111, 0x22222222, 0x33333333, 0x44444444}
+	for i, value := range words {
+		b.Write32(source+uint32(i*4), value, bus.Access{})
+	}
+
+	// Deliberately program a one-unit, 16-bit, incrementing-destination DMA.
+	// Direct Sound refill semantics override those fields internally.
+	control := uint16(controlEnable | controlRepeat | timingSpecial)
+	programDMA(b, 1, source, fifoAAddress, 1, control)
+
+	stall := d.TriggerFIFO(FIFOA)
+	if stall != 14 {
+		t.Fatalf("FIFO DMA stall = %d, want 14", stall)
+	}
+	if units, cycles := d.LastTransfer(1); units != 4 || cycles != 14 {
+		t.Fatalf("FIFO LastTransfer = %d/%d, want 4/14", units, cycles)
+	}
+	if got, _ := b.Read32(fifoAAddress, bus.Access{}); got != words[3] {
+		t.Fatalf("FIFO A final word = %08x, want %08x", got, words[3])
+	}
+	if got, _ := b.Read32(fifoBAddress, bus.Access{}); got != 0 {
+		t.Fatalf("FIFO B was touched by fixed FIFO A DMA: %08x", got)
+	}
+	if got := d.ch[1].sourceCurrent; got != source+16 {
+		t.Fatalf("FIFO source progression = %08x, want %08x", got, source+16)
+	}
+	if got := d.ch[1].destCurrent; got != fifoAAddress {
+		t.Fatalf("FIFO destination progression = %08x, want fixed %08x", got, fifoAAddress)
+	}
+	if got := d.Control(1); got != control {
+		t.Fatalf("FIFO DMA rewrote programmer-visible control = %04x, want %04x", got, control)
+	}
+}
+
+func TestDirectSoundFIFOSelectsMatchingFIFOAndChannel(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	sourceA := uint32(bus.IWRAMStart + 0xd00)
+	sourceB := uint32(bus.IWRAMStart + 0xe00)
+	for i := 0; i < 4; i++ {
+		b.Write32(sourceA+uint32(i*4), 0xa0000000+uint32(i), bus.Access{})
+		b.Write32(sourceB+uint32(i*4), 0xb0000000+uint32(i), bus.Access{})
+	}
+	control := uint16(controlEnable | controlRepeat | timingSpecial)
+	programDMA(b, 1, sourceA, fifoAAddress, 7, control)
+	programDMA(b, 2, sourceB, fifoBAddress, 9, control)
+
+	if stall := d.TriggerFIFO(FIFOA); stall == 0 {
+		t.Fatal("FIFO A request did not run DMA1")
+	}
+	if got, _ := b.Read32(fifoAAddress, bus.Access{}); got != 0xa0000003 {
+		t.Fatalf("FIFO A result = %08x, want a0000003", got)
+	}
+	if got, _ := b.Read32(fifoBAddress, bus.Access{}); got != 0 {
+		t.Fatalf("FIFO A request unexpectedly ran DMA2: %08x", got)
+	}
+	if units, _ := d.LastTransfer(2); units != 0 {
+		t.Fatalf("DMA2 ran on FIFO A request: units=%d", units)
+	}
+
+	if stall := d.TriggerFIFO(FIFOB); stall == 0 {
+		t.Fatal("FIFO B request did not run DMA2")
+	}
+	if got, _ := b.Read32(fifoBAddress, bus.Access{}); got != 0xb0000003 {
+		t.Fatalf("FIFO B result = %08x, want b0000003", got)
+	}
+	if units, _ := d.LastTransfer(2); units != 4 {
+		t.Fatalf("DMA2 FIFO units = %d, want 4", units)
+	}
+}
+
+func TestDirectSoundFIFOWithoutRepeatDisablesAfterBurst(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0xf00)
+	for i := 0; i < 8; i++ {
+		b.Write32(source+uint32(i*4), 0x100+uint32(i), bus.Access{})
+	}
+	programDMA(b, 1, source, fifoAAddress, 0x20, controlEnable|timingSpecial)
+
+	if stall := d.TriggerFIFO(FIFOA); stall == 0 {
+		t.Fatal("one-shot FIFO request did not run")
+	}
+	if d.Control(1)&controlEnable != 0 {
+		t.Fatal("FIFO DMA without Repeat did not clear Enable")
+	}
+	first, _ := b.Read32(fifoAAddress, bus.Access{})
+	if first != 0x103 {
+		t.Fatalf("first FIFO burst result = %08x, want 00000103", first)
+	}
+
+	if stall := d.TriggerFIFO(FIFOA); stall != 0 {
+		t.Fatalf("disabled FIFO DMA ran again with stall %d", stall)
+	}
+	if got, _ := b.Read32(fifoAAddress, bus.Access{}); got != first {
+		t.Fatalf("disabled FIFO DMA changed FIFO = %08x, want %08x", got, first)
+	}
+}
+
+func TestDirectSoundFIFORejectsOtherSpecialDMAChannelsAndDestinations(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0x1000)
+	b.Write32(source, 0xdeadbeef, bus.Access{})
+	programDMA(b, 0, source, fifoAAddress, 1, controlEnable|controlRepeat|timingSpecial)
+	programDMA(b, 1, source, bus.IWRAMStart+0x1200, 1, controlEnable|controlRepeat|timingSpecial)
+	programDMA(b, 3, source, fifoAAddress, 1, controlEnable|controlRepeat|timingSpecial)
+
+	if stall := d.TriggerFIFO(FIFOA); stall != 0 {
+		t.Fatalf("ineligible special DMA produced stall %d", stall)
+	}
+	if stall := d.TriggerFIFO(SoundFIFO(0)); stall != 0 {
+		t.Fatalf("invalid FIFO identifier produced stall %d", stall)
+	}
+	if got, _ := b.Read32(fifoAAddress, bus.Access{}); got != 0 {
+		t.Fatalf("ineligible special DMA wrote FIFO A: %08x", got)
+	}
+	for _, index := range []int{0, 1, 3} {
+		if d.Control(index)&controlEnable == 0 {
+			t.Fatalf("DMA%d was disarmed by an ineligible FIFO request", index)
+		}
 	}
 }
