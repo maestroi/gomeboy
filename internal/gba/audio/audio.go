@@ -246,11 +246,11 @@ func (a *Audio) applyBias(sample int32) float32 {
 }
 
 func (a *Audio) appendSample(left, right float32) {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
 	if a.mute {
 		left, right = 0, 0
 	}
-	a.outputMu.Lock()
-	defer a.outputMu.Unlock()
 	needed := int(a.bufferPos) + 2
 	if needed > len(a.buffer) {
 		a.buffer = append(a.buffer, make([]float32, needed-len(a.buffer))...)
@@ -286,7 +286,11 @@ func (a *Audio) SetHeadless(headless bool) {
 }
 
 // SetMute controls host output only; hardware-visible state keeps advancing.
-func (a *Audio) SetMute(mute bool) { a.mute = mute }
+func (a *Audio) SetMute(mute bool) {
+	a.outputMu.Lock()
+	a.mute = mute
+	a.outputMu.Unlock()
+}
 
 // CurrentOutput returns the current routed, volume-scaled Direct Sound mix.
 func (a *Audio) CurrentOutput() (left, right float32) {
