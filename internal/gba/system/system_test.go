@@ -515,3 +515,109 @@ func TestSTOPIsRecognizedButNotMisimplementedAsHALT(t *testing.T) {
 		t.Fatal("STOP request was incorrectly treated as ordinary HALT")
 	}
 }
+
+func TestIRQAcknowledgedDuringPropagationDoesNotReachCPU(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	m.IRQ.Request(gbairq.VBlank)
+
+	m.Advance(3)
+	if m.CPU.IRQLine() {
+		t.Fatal("IRQ line asserted before propagation deadline")
+	}
+	m.Bus.Write16(bus.IOStart+0x202, uint16(gbairq.VBlank), bus.Access{})
+	if m.IRQ.IF() != 0 {
+		t.Fatalf("IF acknowledge failed during propagation: %04x", m.IRQ.IF())
+	}
+
+	m.Advance(4)
+	if m.CPU.IRQLine() {
+		t.Fatal("acknowledged IRQ asserted CPU line at stale delivery event")
+	}
+
+	code := uint32(bus.IWRAMStart + 0x2600)
+	writeNOPs(m, code, 1)
+	step, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if step.CPU.ExceptionTaken {
+		t.Fatalf("acknowledged IRQ still took exception: %+v", step.CPU)
+	}
+}
+
+func TestCPUWriteIEUsesSevenCyclesFromRegisterAccessEdge(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+
+	// IF is already pending but disabled, so no IRQ event exists yet.
+	m.IRQ.Request(gbairq.VBlank)
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+
+	// The timed CPU-facing I/O write consumes one cycle. IRQ qualification is
+	// observed on that register access edge, leaving six cycles after the write.
+	if cycles := m.memory.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{}); cycles != 1 {
+		t.Fatalf("IE write cycles = %d, want 1", cycles)
+	}
+	if m.Cycle() != 1 {
+		t.Fatalf("cycle after IE write = %d, want 1", m.Cycle())
+	}
+
+	m.Advance(uint32(IRQPropagationLatency - 2))
+	if m.CPU.IRQLine() {
+		t.Fatal("CPU IRQ line asserted before seventh cycle from IE write edge")
+	}
+	m.Advance(1)
+	if m.Cycle() != IRQPropagationLatency {
+		t.Fatalf("IRQ delivery cycle = %d, want %d", m.Cycle(), IRQPropagationLatency)
+	}
+	if !m.CPU.IRQLine() {
+		t.Fatal("CPU IRQ line missing at seventh cycle from IE write edge")
+	}
+}
+
+func TestDMAIRQPropagationStartsAtTransferCompletion(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+
+	source := uint32(bus.IWRAMStart + 0x2700)
+	dest := uint32(bus.IWRAMStart + 0x2800)
+	m.Bus.Write16(source, 0x7788, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.DMA0), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	programDMA(m, 0, source, dest, 1, (1<<14)|(1<<15))
+
+	// DMA starts at cycle 2 and the IWRAM halfword transfer consumes four
+	// stall cycles, so completion (and IF assertion) occurs at cycle 6.
+	m.Advance(2)
+	if m.Cycle() != 6 {
+		t.Fatalf("DMA completion cycle = %d, want 6", m.Cycle())
+	}
+	if m.IRQ.IF()&uint16(gbairq.DMA0) == 0 {
+		t.Fatalf("DMA0 IF not set at completion: %04x", m.IRQ.IF())
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("DMA IRQ propagation started from transfer start instead of completion")
+	}
+
+	m.Advance(uint32(IRQPropagationLatency - 1))
+	if m.CPU.IRQLine() {
+		t.Fatal("DMA IRQ reached CPU one cycle before post-completion deadline")
+	}
+	m.Advance(1)
+	if !m.CPU.IRQLine() {
+		t.Fatal("DMA IRQ did not reach CPU after post-completion propagation delay")
+	}
+	if want := uint64(6) + IRQPropagationLatency; m.Cycle() != want {
+		t.Fatalf("DMA IRQ delivery cycle = %d, want %d", m.Cycle(), want)
+	}
+}
