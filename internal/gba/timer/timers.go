@@ -2,6 +2,8 @@
 package timer
 
 import (
+	"math"
+
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 )
@@ -121,6 +123,30 @@ func (t *Timers) writeControl(index int, value uint16) {
 			s.phase %= divisor
 		}
 	}
+}
+
+// CyclesUntilEvent returns the master-clock distance to the next overflow of
+// any independently clocked timer. Count-up timers are driven by their parent
+// overflow at that same edge and therefore do not need a separate deadline.
+func (t *Timers) CyclesUntilEvent() uint32 {
+	best := uint64(math.MaxUint32)
+	for index := 0; index < 4; index++ {
+		s := &t.timer[index]
+		if s.control&controlEnable == 0 {
+			continue
+		}
+		if index > 0 && s.control&controlCountUp != 0 {
+			continue
+		}
+
+		divisor := uint64(prescalers[s.control&controlPrescalerMask])
+		ticks := uint64(0x10000 - uint32(s.counter))
+		cycles := ticks*divisor - uint64(s.phase)
+		if cycles < best {
+			best = cycles
+		}
+	}
+	return uint32(best)
 }
 
 // Advance advances all enabled timers by GBA master-clock cycles.
