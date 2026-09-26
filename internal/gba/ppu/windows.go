@@ -30,7 +30,7 @@ func (p *PPU) windowMaskAt(mode uint16, x, y int) uint8 {
 	}
 	if p.dispcnt&dispOBJWINEnable != 0 &&
 		p.dispcnt&dispOBJEnable != 0 &&
-		p.objWindowPixel(x, y, mode) {
+		p.objWindowPixelForLine(x, y, mode) {
 		return uint8(p.winOut >> 8)
 	}
 
