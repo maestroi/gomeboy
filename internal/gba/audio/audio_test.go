@@ -170,10 +170,106 @@ func TestResetClearsDirectSoundState(t *testing.T) {
 	a.TimerOverflow(0, 1)
 
 	a.Reset()
-	if a.ControlHigh() != 0 || a.FIFOLevel(FIFOA) != 0 || a.FIFOLevel(FIFOB) != 0 ||
+	if a.ControlHigh() != 0 || a.SoundBias() != defaultSoundBias ||
+		a.FIFOLevel(FIFOA) != 0 || a.FIFOLevel(FIFOB) != 0 ||
 		a.CurrentSample(FIFOA) != 0 || a.CurrentSample(FIFOB) != 0 {
-		t.Fatalf("reset state control=%04x levels=%d/%d samples=%d/%d",
-			a.ControlHigh(), a.FIFOLevel(FIFOA), a.FIFOLevel(FIFOB),
+		t.Fatalf("reset state control=%04x bias=%04x levels=%d/%d samples=%d/%d",
+			a.ControlHigh(), a.SoundBias(), a.FIFOLevel(FIFOA), a.FIFOLevel(FIFOB),
 			a.CurrentSample(FIFOA), a.CurrentSample(FIFOB))
+	}
+}
+
+
+func TestDirectSoundMixerAppliesRoutingAndVolume(t *testing.T) {
+	a, b, _ := newTestAudio(t)
+	b.Write16(bus.IOStart+soundBiasOffset, defaultSoundBias, bus.Access{})
+	b.Write8(bus.IOStart+fifoAOffset, 0x40, bus.Access{})
+	b.Write8(bus.IOStart+fifoBOffset, 0xe0, bus.Access{})
+	// A: full volume to left only. B: half volume to right only and timer 1.
+	b.Write16(bus.IOStart+soundControlHighOffset,
+		controlVolumeA|controlALeft|controlBRight|controlBTimer, bus.Access{})
+
+	a.TimerOverflow(0, 1)
+	a.TimerOverflow(1, 1)
+	left, right := a.CurrentOutput()
+	if left != 0.5 {
+		t.Fatalf("left mix = %f, want 0.5", left)
+	}
+	if right != -0.125 {
+		t.Fatalf("right mix = %f, want -0.125", right)
+	}
+}
+
+func TestDirectSoundMixerClipsThroughSoundBias(t *testing.T) {
+	a, b, _ := newTestAudio(t)
+	b.Write16(bus.IOStart+soundBiasOffset, defaultSoundBias, bus.Access{})
+	b.Write8(bus.IOStart+fifoAOffset, 0x7f, bus.Access{})
+	b.Write8(bus.IOStart+fifoBOffset, 0x7f, bus.Access{})
+	b.Write16(bus.IOStart+soundControlHighOffset,
+		controlVolumeA|controlVolumeB|controlALeft|controlBLeft|controlBTimer, bus.Access{})
+	a.TimerOverflow(0, 1)
+	a.TimerOverflow(1, 1)
+
+	left, right := a.CurrentOutput()
+	want := float32(511.0 / 512.0)
+	if left != want || right != 0 {
+		t.Fatalf("clipped mix = %f/%f, want %f/0", left, right, want)
+	}
+
+	// SOUNDBIAS exposes only bits 1-9 and 14-15.
+	b.Write16(bus.IOStart+soundBiasOffset, 0xffff, bus.Access{})
+	if got := a.SoundBias(); got != soundBiasMask {
+		t.Fatalf("SOUNDBIAS = %04x, want %04x", got, soundBiasMask)
+	}
+}
+
+func TestAdvanceProducesInterleavedHostRateSamples(t *testing.T) {
+	a, b, _ := newTestAudio(t)
+	b.Write8(bus.IOStart+fifoAOffset, 0x40, bus.Access{})
+	b.Write16(bus.IOStart+soundControlHighOffset,
+		controlVolumeA|controlALeft|controlARight|controlBTimer, bus.Access{})
+	a.TimerOverflow(0, 1)
+
+	a.Advance(174)
+	if samples, count := a.Samples(); count != 0 || len(samples) != 0 {
+		t.Fatalf("174 cycles produced %d values, want 0", count)
+	}
+	a.Advance(1)
+	samples, count := a.Samples()
+	if count != 2 || len(samples) != 2 {
+		t.Fatalf("175 cycles produced %d values, want one stereo frame", count)
+	}
+	if samples[0] != 0.5 || samples[1] != 0.5 {
+		t.Fatalf("stereo sample = %v, want [0.5 0.5]", samples)
+	}
+}
+
+func TestHeadlessAndMuteAffectOnlyHostOutput(t *testing.T) {
+	a, b, _ := newTestAudio(t)
+	b.Write8(bus.IOStart+fifoAOffset, 0x40, bus.Access{})
+	b.Write16(bus.IOStart+soundControlHighOffset,
+		controlVolumeA|controlALeft|controlARight|controlBTimer, bus.Access{})
+	a.TimerOverflow(0, 1)
+
+	a.SetHeadless(true)
+	a.Advance(350)
+	if _, count := a.Samples(); count != 0 {
+		t.Fatalf("headless audio buffered %d values", count)
+	}
+	if got := a.CurrentSample(FIFOA); got != 0x40 {
+		t.Fatalf("headless mode changed Direct Sound latch: %d", got)
+	}
+
+	a.SetHeadless(false)
+	a.SetMute(true)
+	a.Advance(175)
+	samples, count := a.Samples()
+	if count == 0 {
+		t.Fatal("muted output did not keep host sample cadence")
+	}
+	for i, sample := range samples {
+		if sample != 0 {
+			t.Fatalf("muted sample %d = %f, want 0", i, sample)
+		}
 	}
 }
