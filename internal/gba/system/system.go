@@ -1,8 +1,9 @@
-// Package system wires the GBA CPU, bus, DMA, timers, keypad, PPU, and
-// interrupt controller onto one master-clock timeline.
+// Package system wires the GBA CPU, bus, DMA, timers, audio, keypad, PPU,
+// and interrupt controller onto one master-clock timeline.
 package system
 
 import (
+	"github.com/maestroi/gomeboy/internal/gba/audio"
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	"github.com/maestroi/gomeboy/internal/gba/dma"
@@ -42,6 +43,7 @@ type Machine struct {
 	Bus    *bus.Bus
 	CPU    *cpu.CPU
 	IRQ    *gbairq.Controller
+	Audio  *audio.Audio
 	Keypad *keypad.Keypad
 	DMA    *dma.DMA
 	Timers *timer.Timers
@@ -91,7 +93,19 @@ func New(bios, rom []byte) *Machine {
 		RequestStart: m.requestDMAStart,
 		CancelStart:  m.cancelDMAStart,
 	})
-	m.Timers = timer.New(m.Bus, m.IRQ, timer.Hooks{})
+	m.Audio = audio.New(m.Bus, audio.Hooks{
+		RequestFIFO: func(fifo audio.FIFO) {
+			switch fifo {
+			case audio.FIFOA:
+				m.DMA.TriggerFIFO(dma.FIFOA)
+			case audio.FIFOB:
+				m.DMA.TriggerFIFO(dma.FIFOB)
+			}
+		},
+	})
+	m.Timers = timer.New(m.Bus, m.IRQ, timer.Hooks{
+		Overflow: m.Audio.TimerOverflow,
+	})
 	m.PPU = ppu.New(m.Bus, ppu.Hooks{
 		HBlank: func() {
 			m.DMA.Trigger(dma.StartHBlank)
