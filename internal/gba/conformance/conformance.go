@@ -125,6 +125,7 @@ func (r Runner) Run(tc Case) Result {
 	}
 
 	m := system.New(tc.BIOS, tc.ROM)
+	m.Audio.SetHeadless(true)
 	if tc.Boot == BootDirect {
 		entry := tc.EntryPoint
 		if entry == 0 {
