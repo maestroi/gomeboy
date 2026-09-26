@@ -7,7 +7,42 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	"github.com/maestroi/gomeboy/internal/gba/conformance"
+	"github.com/maestroi/gomeboy/internal/gba/cpu"
+	"github.com/maestroi/gomeboy/internal/gba/system"
 )
+
+
+func TestConfigureBootMatchesDesktopPostBIOSState(t *testing.T) {
+	m := system.New(nil, armROM(0xeafffffe))
+	tc := Case{Name: "desktop-state", Boot: conformance.BootDirect}
+	if err := configureBoot(m, tc); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.CPU.CPSR().Mode(); got != cpu.ModeSystem {
+		t.Fatalf("mode = %#x, want system", got)
+	}
+	if got := m.CPU.PC(); got != bus.ROM0Start {
+		t.Fatalf("pc = %#x, want %#x", got, bus.ROM0Start)
+	}
+	if got := m.CPU.ReadRegister(13); got != 0x03007f00 {
+		t.Fatalf("system sp = %#x, want 0x03007f00", got)
+	}
+
+	for _, want := range []struct {
+		mode cpu.Mode
+		sp   uint32
+	}{
+		{cpu.ModeIRQ, 0x03007fa0},
+		{cpu.ModeSupervisor, 0x03007fe0},
+	} {
+		if err := m.CPU.SetMode(want.mode); err != nil {
+			t.Fatal(err)
+		}
+		if got := m.CPU.ReadRegister(13); got != want.sp {
+			t.Fatalf("%v sp = %#x, want %#x", want.mode, got, want.sp)
+		}
+	}
+}
 
 func TestRunnerReachesRenderedCheckpoint(t *testing.T) {
 	const signature uint32 = 0x47424d47
