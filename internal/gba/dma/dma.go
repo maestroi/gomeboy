@@ -59,9 +59,17 @@ const (
 // Hooks exposes DMA timing to scheduler/debug integration.
 // Complete fires once per completed channel. Stall fires once for a serviced
 // request batch with the total number of CPU-stall cycles consumed by DMA.
+//
+// RequestStart switches DMA into scheduler-owned mode. When non-nil, a newly
+// pending request calls RequestStart instead of transferring synchronously;
+// the owner must later call ServicePending. CancelStart fires when software
+// disables the last queued channel before service so a scheduler can discard
+// that request's start deadline.
 type Hooks struct {
-	Complete func(channel int, units uint32, cycles uint32)
-	Stall    func(cycles uint32)
+	Complete     func(channel int, units uint32, cycles uint32)
+	Stall        func(cycles uint32)
+	RequestStart func()
+	CancelStart  func()
 }
 
 type channel struct {
@@ -213,6 +221,10 @@ func (d *DMA) writeControl(index int, value uint16) {
 	if oldEnabled || !newEnabled {
 		if !newEnabled {
 			c.disableAfterRun = false
+			d.pending &^= 1 << index
+			if d.pending == 0 && d.hooks.CancelStart != nil {
+				d.hooks.CancelStart()
+			}
 		}
 		return
 	}
@@ -223,7 +235,7 @@ func (d *DMA) writeControl(index int, value uint16) {
 	gamePakDRQ := index == 3 && c.control&controlGamePakDRQ != 0
 	if c.control&controlTimingMask == timingImmediate && !gamePakDRQ {
 		d.pending |= 1 << index
-		d.servicePending()
+		d.requestPending()
 	}
 }
 
@@ -277,7 +289,7 @@ func (d *DMA) Trigger(event StartEvent) uint32 {
 		}
 		d.pending |= 1 << index
 	}
-	return d.servicePending()
+	return d.requestPending()
 }
 
 // TriggerVideoCapture requests DMA3's display-synchronized special transfer
@@ -299,7 +311,7 @@ func (d *DMA) TriggerVideoCapture(vcount uint16) uint32 {
 		c.disableAfterRun = true
 	}
 	d.pending |= 1 << 3
-	return d.servicePending()
+	return d.requestPending()
 }
 
 // TriggerGamePakDRQ services one external Game Pak data request. The request
@@ -312,7 +324,7 @@ func (d *DMA) TriggerGamePakDRQ() uint32 {
 		return 0
 	}
 	d.pending |= 1 << 3
-	return d.servicePending()
+	return d.requestPending()
 }
 
 // TriggerFIFO requests a Direct Sound FIFO refill. Only DMA1/DMA2 channels
@@ -335,7 +347,7 @@ func (d *DMA) TriggerFIFO(fifo SoundFIFO) uint32 {
 		}
 		d.pending |= 1 << index
 	}
-	return d.servicePending()
+	return d.requestPending()
 }
 
 func soundFIFOAddress(fifo SoundFIFO) (uint32, bool) {
@@ -375,6 +387,24 @@ func timingForEvent(event StartEvent) (uint16, bool) {
 		return 0, false
 	}
 }
+
+func (d *DMA) requestPending() uint32 {
+	if d.pending == 0 {
+		return 0
+	}
+	if d.hooks.RequestStart != nil {
+		d.hooks.RequestStart()
+		return 0
+	}
+	return d.servicePending()
+}
+
+// Pending reports whether one or more channels are waiting for service.
+func (d *DMA) Pending() bool { return d.pending != 0 }
+
+// ServicePending services all currently pending channels in hardware priority
+// order. Scheduler-owned integrations call this after the DMA start latency.
+func (d *DMA) ServicePending() uint32 { return d.servicePending() }
 
 func (d *DMA) servicePending() uint32 {
 	if d.servicing {
