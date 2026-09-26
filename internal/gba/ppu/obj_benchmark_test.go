@@ -7,7 +7,8 @@ import (
 )
 
 func BenchmarkOBJScanlineEvaluation(b *testing.B) {
-	p, mem := newTestPPU(b, Hooks{})
+	mem := bus.New(nil, nil)
+	p := New(mem, Hooks{})
 	disableAllOBJ(mem)
 	setOBJPaletteColor(mem, 1, 0x001f)
 
