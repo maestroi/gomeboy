@@ -50,6 +50,9 @@ func stringsTrimExt(name string) string {
 }
 
 func (c *gbaCore) LoadROMBytes(rom []byte, name string) error {
+	if len(c.bios) != 0 && len(c.bios) != bus.BIOSSize {
+		return fmt.Errorf("gomeboy: GBA BIOS must be exactly 16 KiB, got %d bytes", len(c.bios))
+	}
 	if len(rom) == 0 {
 		return errors.New("gomeboy: empty GBA ROM")
 	}
