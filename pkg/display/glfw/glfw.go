@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// init registers the glfw display driver and locks the main goroutine to an
+const aspectRatio = float32(160) / float32(144) // legacy GB/GBC aspect ratio\n\n// init registers the glfw display driver and locks the main goroutine to an
 // OS thread so GLFW callbacks run on the main thread. It performs no GLFW,
 // SDL, joystick, or OpenGL initialization: Start brings the subsystems up
 // and Stop tears them down again.
