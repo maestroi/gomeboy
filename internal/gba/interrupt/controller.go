@@ -36,21 +36,36 @@ type LineSink interface {
 	SetIRQLine(bool)
 }
 
+// Hooks exposes interrupt qualification changes to scheduler-owned systems.
+// Evaluate is called whenever IE, IF, or IME changes. When DeferLine is true,
+// the controller leaves IRQ-line delivery to that scheduler; standalone users
+// retain the immediate line behavior.
+type Hooks struct {
+	Evaluate  func(enabledPending bool, irqAsserted bool)
+	DeferLine bool
+}
+
 // Controller owns IE, IF, and IME and resolves them to the CPU IRQ line.
 type Controller struct {
-	sink LineSink
+	sink  LineSink
+	hooks Hooks
 
 	ie    uint16
 	flags uint16
 	ime   bool
 }
 
-// New maps IE/IF/IME onto b and optionally drives sink.
+// New maps IE/IF/IME onto b and optionally drives sink immediately.
 func New(b *bus.Bus, sink LineSink) *Controller {
+	return NewWithHooks(b, sink, Hooks{})
+}
+
+// NewWithHooks maps IE/IF/IME onto b with optional scheduler integration.
+func NewWithHooks(b *bus.Bus, sink LineSink, hooks Hooks) *Controller {
 	if b == nil {
 		panic("gba interrupt: nil bus")
 	}
-	c := &Controller{sink: sink}
+	c := &Controller{sink: sink, hooks: hooks}
 	c.install(b.IO())
 	c.updateLine()
 	return c
@@ -97,8 +112,13 @@ func (c *Controller) acknowledge(mask uint16) {
 }
 
 func (c *Controller) updateLine() {
-	asserted := c.ime && c.ie&c.flags != 0
-	if c.sink != nil {
+	enabledPending := c.ie&c.flags != 0
+	asserted := c.ime && enabledPending
+
+	if c.hooks.Evaluate != nil {
+		c.hooks.Evaluate(enabledPending, asserted)
+	}
+	if !c.hooks.DeferLine && c.sink != nil {
 		c.sink.SetIRQLine(asserted)
 	}
 }
