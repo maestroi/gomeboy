@@ -516,17 +516,243 @@ func TestHALTServicesDeferredDMAAndWakesOnDMAIRQ(t *testing.T) {
 	}
 }
 
-func TestSTOPIsRecognizedButNotMisimplementedAsHALT(t *testing.T) {
-	m := New(nil, nil)
+func enterSTOP(t *testing.T, m *Machine) {
+	t.Helper()
 	m.CPU.SetPC(bus.BIOSStart)
 	m.Bus.Write8(bus.IOStart+0x300, 1, bus.Access{})
 	m.Bus.Write8(bus.IOStart+0x301, 0x80, bus.Access{})
-
-	if !m.StopRequested() {
-		t.Fatal("HALTCNT STOP request was not recorded")
+	if !m.Stopped() {
+		t.Fatal("HALTCNT did not enter STOP")
 	}
 	if m.Halted() {
-		t.Fatal("STOP request was incorrectly treated as ordinary HALT")
+		t.Fatal("STOP was incorrectly represented as HALT")
+	}
+}
+
+func TestSTOPFreezesCPUClockPPUTimersAndDMA(t *testing.T) {
+	m := New(nil, nil)
+	code := uint32(bus.IWRAMStart + 0x2900)
+	writeNOPs(m, code, 1)
+
+	m.Bus.Write16(bus.IOStart+0x100, 0xff00, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x102, 1<<7, bus.Access{})
+
+	source := uint32(bus.IWRAMStart + 0x2a00)
+	dest := uint32(bus.IWRAMStart + 0x2b00)
+	m.Bus.Write16(source, 0x4455, bus.Access{})
+	programDMA(m, 0, source, dest, 1, 1<<15)
+	if m.dmaScheduled == 0 {
+		t.Fatal("test setup did not schedule immediate DMA")
+	}
+
+	enterSTOP(t, m)
+	m.CPU.SetPC(code)
+	pc := m.CPU.PC()
+
+	m.Advance(1000)
+	if m.Cycle() != 0 || m.PPU.LineCycle() != 0 || m.Timers.Counter(0) != 0xff00 {
+		t.Fatalf("STOP advanced frozen clocks: cycle=%d ppu=%d timer=%04x",
+			m.Cycle(), m.PPU.LineCycle(), m.Timers.Counter(0))
+	}
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("pending DMA ran during STOP: %04x", got)
+	}
+
+	result, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Stopped || result.Halted || result.Woke || result.ElapsedCycles != 0 {
+		t.Fatalf("STOP step = stopped:%v halted:%v woke:%v elapsed:%d",
+			result.Stopped, result.Halted, result.Woke, result.ElapsedCycles)
+	}
+	if m.CPU.PC() != pc {
+		t.Fatalf("CPU executed during STOP: PC=%08x want %08x", m.CPU.PC(), pc)
+	}
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("DMA ran during stopped Step: %04x", got)
+	}
+}
+
+func TestCPUHALTCNTSTOPWriteConsumesAccessBeforeClockStops(t *testing.T) {
+	m := New(nil, nil)
+	m.CPU.SetPC(bus.BIOSStart)
+	m.Bus.Write8(bus.IOStart+0x300, 1, bus.Access{})
+
+	if cycles := m.memory.Write8(bus.IOStart+0x301, 0x80, bus.Access{}); cycles != 1 {
+		t.Fatalf("HALTCNT STOP write cycles = %d, want 1", cycles)
+	}
+	if m.Cycle() != 1 || m.PPU.LineCycle() != 1 {
+		t.Fatalf("STOP write access did not finish before freeze: cycle=%d ppu=%d",
+			m.Cycle(), m.PPU.LineCycle())
+	}
+	if !m.Stopped() || !m.StopRequested() {
+		t.Fatalf("STOP state requested/stopped = %v/%v", m.StopRequested(), m.Stopped())
+	}
+
+	m.Advance(20)
+	if m.Cycle() != 1 || m.PPU.LineCycle() != 1 {
+		t.Fatalf("clock advanced after timed STOP write: cycle=%d ppu=%d",
+			m.Cycle(), m.PPU.LineCycle())
+	}
+}
+
+func TestSTOPIgnoresOrdinaryEnabledInterrupts(t *testing.T) {
+	m := New(nil, nil)
+	ordinary := gbairq.VBlank | gbairq.Timer0 | gbairq.DMA0
+	m.Bus.Write16(bus.IOStart+0x200, uint16(ordinary), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+
+	enterSTOP(t, m)
+	m.IRQ.Request(ordinary)
+	if !m.IRQ.EnabledPending() {
+		t.Fatal("ordinary requests were not latched")
+	}
+	if m.IRQ.StopWakePending() {
+		t.Fatal("ordinary interrupt unexpectedly qualified for STOP wake")
+	}
+	if m.irqScheduled {
+		t.Fatal("ordinary STOP interrupt scheduled IRQ propagation")
+	}
+
+	result, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Stopped || result.Woke || result.ElapsedCycles != 0 {
+		t.Fatalf("ordinary STOP IRQ woke system: %+v", result)
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("ordinary enabled interrupt asserted CPU line while stopped")
+	}
+}
+
+func TestSTOPWakesOnlyOnEnabledSerialKeypadOrGamePak(t *testing.T) {
+	for _, source := range []gbairq.Source{gbairq.Serial, gbairq.Keypad, gbairq.GamePak} {
+		t.Run(sourceName(source), func(t *testing.T) {
+			m := New(nil, nil)
+			code := uint32(bus.IWRAMStart + 0x2c00)
+			writeNOPs(m, code, 1)
+			m.Bus.Write16(bus.IOStart+0x200, uint16(source), bus.Access{})
+			// Leave IME clear: STOP wake, like HALT wake, is IE/IF-qualified.
+			m.Bus.Write16(bus.IOStart+0x100, 0, bus.Access{})
+			m.Bus.Write16(bus.IOStart+0x102, 1<<7, bus.Access{})
+
+			enterSTOP(t, m)
+			m.CPU.SetPC(code)
+			pc := m.CPU.PC()
+			m.IRQ.Request(source)
+
+			wake, err := m.Step()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !wake.Woke || wake.Stopped || wake.Halted {
+				t.Fatalf("STOP wake result = stopped:%v halted:%v woke:%v",
+					wake.Stopped, wake.Halted, wake.Woke)
+			}
+			if wake.ElapsedCycles != IRQPropagationLatency {
+				t.Fatalf("STOP wake propagation = %d, want %d",
+					wake.ElapsedCycles, IRQPropagationLatency)
+			}
+			if m.Cycle() != IRQPropagationLatency ||
+				m.PPU.LineCycle() != uint32(IRQPropagationLatency) ||
+				m.Timers.Counter(0) != uint16(IRQPropagationLatency) {
+				t.Fatalf("clocks after STOP wake cycle/ppu/timer = %d/%d/%04x",
+					m.Cycle(), m.PPU.LineCycle(), m.Timers.Counter(0))
+			}
+			if m.CPU.PC() != pc {
+				t.Fatalf("CPU executed at STOP wake boundary: PC=%08x want %08x", m.CPU.PC(), pc)
+			}
+			if m.CPU.IRQLine() {
+				t.Fatal("IME-clear STOP wake asserted CPU IRQ line")
+			}
+
+			next, err := m.Step()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if next.CPU.ExceptionTaken || m.CPU.PC() != code+4 {
+				t.Fatalf("CPU did not resume normally after IME-clear STOP wake: %+v PC=%08x",
+					next.CPU, m.CPU.PC())
+			}
+		})
+	}
+}
+
+func TestSTOPWakeThenTakesIRQWhenIMEEnabled(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+	code := uint32(bus.IWRAMStart + 0x2d00)
+	writeNOPs(m, code, 1)
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Keypad), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+
+	enterSTOP(t, m)
+	m.CPU.SetPC(code)
+	m.IRQ.Request(gbairq.Keypad)
+
+	wake, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Woke || wake.ElapsedCycles != IRQPropagationLatency || !m.CPU.IRQLine() {
+		t.Fatalf("STOP IRQ wake = woke:%v elapsed:%d line:%v",
+			wake.Woke, wake.ElapsedCycles, m.CPU.IRQLine())
+	}
+	if m.CPU.PC() != code {
+		t.Fatalf("STOP wake executed CPU before IRQ boundary: PC=%08x", m.CPU.PC())
+	}
+
+	irqStep, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !irqStep.CPU.ExceptionTaken || irqStep.CPU.Exception != cpu.ExceptionIRQ {
+		t.Fatalf("post-STOP wake did not take IRQ: %+v", irqStep.CPU)
+	}
+	if m.CPU.PC() != 0x18 {
+		t.Fatalf("STOP wake IRQ vector PC = %08x, want 00000018", m.CPU.PC())
+	}
+}
+
+func TestSTOPOrdinaryRequestDoesNotShortenLaterValidWakeDelay(t *testing.T) {
+	m := New(nil, nil)
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0|gbairq.Keypad), bus.Access{})
+	enterSTOP(t, m)
+
+	m.IRQ.Request(gbairq.Timer0)
+	first, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Stopped || first.ElapsedCycles != 0 || m.irqScheduled {
+		t.Fatalf("ordinary request affected STOP timing: %+v scheduled=%v", first, m.irqScheduled)
+	}
+
+	m.IRQ.Request(gbairq.Keypad)
+	wake, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wake.Woke || wake.ElapsedCycles != IRQPropagationLatency {
+		t.Fatalf("later Keypad wake delay = woke:%v elapsed:%d, want true/%d",
+			wake.Woke, wake.ElapsedCycles, IRQPropagationLatency)
+	}
+}
+
+func sourceName(source gbairq.Source) string {
+	switch source {
+	case gbairq.Serial:
+		return "serial"
+	case gbairq.Keypad:
+		return "keypad"
+	case gbairq.GamePak:
+		return "gamepak"
+	default:
+		return "unknown"
 	}
 }
 

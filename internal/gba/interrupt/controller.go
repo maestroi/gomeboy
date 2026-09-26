@@ -31,6 +31,10 @@ const (
 	GamePak
 )
 
+// StopWakeSources are the only GBA interrupt sources capable of restarting
+// the system clock from STOP mode. IME does not gate the wake condition.
+const StopWakeSources Source = Serial | Keypad | GamePak
+
 // LineSink receives the controller's resolved level-sensitive IRQ output.
 type LineSink interface {
 	SetIRQLine(bool)
@@ -151,6 +155,17 @@ func (c *Controller) IME() bool { return c.ime }
 // any requested interrupt is enabled in IE, independently of IME and CPSR.I.
 func (c *Controller) EnabledPending() bool {
 	return c.ie&c.flags != 0
+}
+
+// EnabledPendingMask returns the currently qualified IE & IF source bits.
+func (c *Controller) EnabledPendingMask() uint16 {
+	return c.ie & c.flags
+}
+
+// StopWakePending reports the stricter STOP wake condition. Only Serial,
+// Keypad, and Game Pak requests can restart the stopped system clock.
+func (c *Controller) StopWakePending() bool {
+	return c.EnabledPendingMask()&uint16(StopWakeSources) != 0
 }
 
 // IRQAsserted reports the controller's resolved output level.
