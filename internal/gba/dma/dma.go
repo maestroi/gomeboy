@@ -23,6 +23,9 @@ const (
 	timingVBlank    uint16 = 1 << 12
 	timingHBlank    uint16 = 2 << 12
 	timingSpecial   uint16 = 3 << 12
+
+	fifoAAddress uint32 = bus.IOStart + 0x0a0
+	fifoBAddress uint32 = bus.IOStart + 0x0a4
 )
 
 var irqSources = [4]gbairq.Source{
@@ -43,6 +46,14 @@ type StartEvent uint8
 const (
 	StartVBlank StartEvent = iota + 1
 	StartHBlank
+)
+
+// SoundFIFO identifies one of the two GBA Direct Sound FIFOs.
+type SoundFIFO uint8
+
+const (
+	FIFOA SoundFIFO = iota + 1
+	FIFOB
 )
 
 // Hooks exposes DMA timing to scheduler/debug integration.
@@ -253,6 +264,56 @@ func (d *DMA) Trigger(event StartEvent) uint32 {
 	return d.servicePending()
 }
 
+// TriggerFIFO requests a Direct Sound FIFO refill. Only DMA1/DMA2 channels
+// armed for Special timing and latched to the requested FIFO participate.
+// The APU owns the FIFO fill-level threshold and should call this when the
+// hardware requests another burst.
+func (d *DMA) TriggerFIFO(fifo SoundFIFO) uint32 {
+	dest, ok := soundFIFOAddress(fifo)
+	if !ok {
+		return 0
+	}
+
+	for index := 1; index <= 2; index++ {
+		c := &d.ch[index]
+		if c.control&controlEnable == 0 || c.control&controlTimingMask != timingSpecial {
+			continue
+		}
+		if c.destReload != dest {
+			continue
+		}
+		d.pending |= 1 << index
+	}
+	return d.servicePending()
+}
+
+func soundFIFOAddress(fifo SoundFIFO) (uint32, bool) {
+	switch fifo {
+	case FIFOA:
+		return fifoAAddress, true
+	case FIFOB:
+		return fifoBAddress, true
+	default:
+		return 0, false
+	}
+}
+
+func (d *DMA) soundFIFOTransfer(index int) (uint32, bool) {
+	if index != 1 && index != 2 {
+		return 0, false
+	}
+	c := &d.ch[index]
+	if c.control&controlTimingMask != timingSpecial {
+		return 0, false
+	}
+	switch c.destReload {
+	case fifoAAddress, fifoBAddress:
+		return c.destReload, true
+	default:
+		return 0, false
+	}
+}
+
 func timingForEvent(event StartEvent) (uint16, bool) {
 	switch event {
 	case StartVBlank:
@@ -297,16 +358,26 @@ func (d *DMA) servicePending() uint32 {
 func (d *DMA) run(index int) uint32 {
 	c := &d.ch[index]
 	units := c.countCurrent
-	if units == 0 {
-		return 0
-	}
-
 	width := d.width(index)
 	sourceMode := (c.control & controlSourceMask) >> 7
 	destMode := (c.control & controlDestMask) >> 5
 
 	source := c.sourceCurrent
 	dest := c.destCurrent
+	if fifoDest, ok := d.soundFIFOTransfer(index); ok {
+		// Direct Sound FIFO requests always transfer four 32-bit words and
+		// keep the destination fixed, regardless of CNT_L/transfer-width/
+		// destination-control programming. Source direction is preserved.
+		units = 4
+		width = 4
+		destMode = 2
+		source &^= 3
+		dest = fifoDest
+	}
+	if units == 0 {
+		return 0
+	}
+
 	startSource := source
 	startDest := dest
 	var cycles uint32
