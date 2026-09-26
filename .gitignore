@@ -1,5 +1,6 @@
 tests/roms/
 tests/results/
+tests/gba/compatibility/roms/
 /roms
 /gomeboy
 /gomeboy-agent

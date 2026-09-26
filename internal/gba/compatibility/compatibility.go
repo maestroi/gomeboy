@@ -230,6 +230,28 @@ func configureBoot(m *system.Machine, tc Case) error {
 	if tc.Boot != conformance.BootDirect {
 		return nil
 	}
+
+	// Match the BIOS-less desktop frontend's useful post-BIOS stack layout.
+	// Compatibility runs should exercise the same startup state as a ROM launched
+	// through GomeBoy rather than an artificially bare reset CPU.
+	if err := m.CPU.SetMode(cpu.ModeIRQ); err != nil {
+		return fmt.Errorf("compatibility: %s enter IRQ mode: %w", tc.Name, err)
+	}
+	m.CPU.WriteRegister(13, 0x03007fa0)
+	if err := m.CPU.SetMode(cpu.ModeSupervisor); err != nil {
+		return fmt.Errorf("compatibility: %s enter supervisor mode: %w", tc.Name, err)
+	}
+	m.CPU.WriteRegister(13, 0x03007fe0)
+	if err := m.CPU.SetMode(cpu.ModeSystem); err != nil {
+		return fmt.Errorf("compatibility: %s enter system mode: %w", tc.Name, err)
+	}
+	m.CPU.WriteRegister(13, 0x03007f00)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		return fmt.Errorf("compatibility: %s initialize CPSR: %w", tc.Name, err)
+	}
+
+	// Manifests can override the default post-BIOS state when a fixture needs a
+	// more specific starting environment.
 	if tc.InitialCPSR != nil {
 		if err := m.CPU.SetCPSR(cpu.PSR(*tc.InitialCPSR)); err != nil {
 			return fmt.Errorf("compatibility: %s initial CPSR: %w", tc.Name, err)

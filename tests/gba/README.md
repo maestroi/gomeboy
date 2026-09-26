@@ -87,3 +87,30 @@ become repository dependencies.
 The JSON and generated Markdown matrix report the highest stage reached, target
 stage, ROM hash, cycles/frames/steps, and deterministic failure detail. These
 compatibility stages are not hardware-accuracy percentages.
+
+
+## @rkanoid compatibility fixture
+
+The first real-game compatibility case uses the MIT-licensed modern @rkanoid
+rebuild from `benoror/gbadev`, pinned to upstream revision
+`b61cb1e8d6646789c833522a7d3d64adda27581a`.
+
+The ROM is not committed to this repository. Fetch it deterministically with:
+
+```sh
+bash tests/gba/compatibility/fetch-rkanoid.sh
+```
+
+The fetch script verifies SHA-256
+`99ae825ffb1b7e8b48b33cd2715ceb8ca524858f99fee4b22938489460083d94`.
+The generated compatibility case requires @rkanoid to direct-boot with the same
+post-BIOS stack state as the desktop frontend, render a frame, and program the
+expected display control value `DISPCNT=0x1140`.
+
+Manual bring-up has additionally reached the title menu and playable level-one
+gameplay with working input/audio. Those deeper interactive observations are
+useful compatibility evidence, but are not yet asserted by CI because the game
+intentionally spends roughly 1,900 emulated frames in its splash/fade path
+before the menu. Realtime host performance is tracked separately from
+compatibility; a correct compatibility result does not imply the emulator is
+already sustaining the GBA's ~59.7 Hz realtime rate.
