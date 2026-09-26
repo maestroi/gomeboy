@@ -458,7 +458,7 @@ func (a *Audio) writePSGRegister(index int, value uint16) {
 		a.psg.reg[index] = value & 0x4000
 		w := &a.psg.wave
 		w.frequency = (w.frequency & 0x700) | (value & 0xff)
-		w.frequency = (w.frequency & 0xff) | ((value >> 8) & 7 << 8)
+		w.frequency = (w.frequency & 0xff) | (((value >> 8) & 7) << 8)
 		w.lengthEnable = value&0x4000 != 0
 		if value&0x8000 != 0 {
 			w.trigger()
