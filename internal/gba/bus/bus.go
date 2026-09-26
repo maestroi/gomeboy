@@ -25,9 +25,11 @@ const (
 	OAMSize             = 0x00000400
 	ROM0Start    uint32 = 0x08000000
 	ROM1Start    uint32 = 0x0a000000
-	ROM2Start    uint32 = 0x0c000000
-	ROMWindowSize       = 0x02000000
-	SaveStart    uint32 = 0x0e000000
+	ROM2Start      uint32 = 0x0c000000
+	ROMWindowSize         = 0x02000000
+	EEPROMStart    uint32 = 0x0d000000
+	EEPROMHighStart uint32 = 0x0dffff00
+	SaveStart      uint32 = 0x0e000000
 	SaveWindowSize      = 0x02000000
 )
 
@@ -35,11 +37,18 @@ const (
 // descriptor used by CPU, DMA, and the memory bus.
 type Access = memory.Access
 
-// SaveDevice is the byte-wide Game Pak save-memory boundary. SRAM/Flash/EEPROM
-// protocols are implemented by cartridge devices in a later layer.
+// SaveDevice is the byte-wide Game Pak save-memory boundary used by SRAM and
+// Flash cartridge devices.
 type SaveDevice interface {
 	Read8(addr uint32) byte
 	Write8(addr uint32, value byte)
+}
+
+// EEPROMDevice is the serial 1-bit save-memory boundary exposed through the
+// ROM2/0x0D Game Pak window. Each 16-bit access transfers bit 0 only.
+type EEPROMDevice interface {
+	ReadBit() byte
+	WriteBit(value byte)
 }
 
 // Bus is the GBA address-space implementation.
@@ -53,6 +62,7 @@ type Bus struct {
 	oam     []byte
 	io      *IO
 	save    SaveDevice
+	eeprom  EEPROMDevice
 
 	wait     WaitControl
 	prefetch prefetchState
@@ -84,8 +94,11 @@ func New(bios, rom []byte) *Bus {
 // IO returns the I/O-register map so hardware blocks can register callbacks.
 func (b *Bus) IO() *IO { return b.io }
 
-// AttachSaveDevice attaches cartridge-side save storage.
+// AttachSaveDevice attaches byte-wide SRAM/Flash cartridge storage.
 func (b *Bus) AttachSaveDevice(device SaveDevice) { b.save = device }
+
+// AttachEEPROMDevice attaches serial EEPROM storage in the ROM2 window.
+func (b *Bus) AttachEEPROMDevice(device EEPROMDevice) { b.eeprom = device }
 
 // SetOBJVRAMStart selects the first VRAM byte treated as OBJ data for STRB.
 // Use 0x10000 for tile modes and 0x14000 for bitmap modes.
@@ -134,6 +147,12 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 // halfword and rotate it by 8 bits.
 func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 	cycles := b.accessCycles(addr, 2, access)
+	if b.isEEPROMAddress(addr) {
+		value := uint16(b.eeprom.ReadBit() & 1)
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, true)
+		return value, cycles
+	}
 	if access.DMA && isSave(addr) {
 		value := uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
 		if addr&1 != 0 {
@@ -230,6 +249,12 @@ func (b *Bus) Write8(addr uint32, value byte, access Access) uint32 {
 // Write16 aligns the address down to a halfword boundary.
 func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 	cycles := b.accessCycles(addr, 2, access)
+	if b.isEEPROMAddress(addr) {
+		b.eeprom.WriteBit(byte(value))
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, true)
+		return cycles
+	}
 	if access.DMA && isSave(addr) {
 		b.openBus = uint32(value) | uint32(value)<<16
 		b.afterAccess(addr, 2, access, false)
@@ -400,4 +425,17 @@ func isROM(addr uint32) bool {
 
 func isSave(addr uint32) bool {
 	return addr >= SaveStart
+}
+
+func (b *Bus) isEEPROMAddress(addr uint32) bool {
+	if b.eeprom == nil || addr < EEPROMStart || addr >= SaveStart {
+		return false
+	}
+	// ROMs up to 16 MiB leave the whole 0x0D mirror available to EEPROM.
+	// Larger carts overlap that mirror, so hardware only decodes the top 256
+	// bytes at 0x0DFFFF00-0x0DFFFFFF for EEPROM serial traffic.
+	if len(b.rom) > 16*1024*1024 {
+		return addr >= EEPROMHighStart
+	}
+	return true
 }
