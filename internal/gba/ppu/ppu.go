@@ -41,11 +41,14 @@ const (
 //
 // HBlank is emitted on visible scanlines only, which is the useful trigger for
 // HBlank DMA. The DISPSTAT HBlank flag itself still toggles on all 228
-// scanlines. VBlank is emitted on entry to scanline 160.
+// scanlines. ScanlineStart is emitted after VCOUNT advances at the start of
+// each scanline; DMA3 video capture uses VCOUNT 2..161. VBlank is emitted on
+// entry to scanline 160.
 type Hooks struct {
-	HBlank func()
-	VBlank func()
-	IRQ    func(IRQSource)
+	HBlank        func()
+	ScanlineStart func(vcount uint16)
+	VBlank        func()
+	IRQ           func(IRQSource)
 }
 
 // PPU owns LCD timing, display registers, and the 240x160 RGB framebuffer.
@@ -183,6 +186,10 @@ func (p *PPU) endScanline() {
 	if p.vcount == ScanlinesPerFrame {
 		p.vcount = 0
 		p.frames++
+	}
+
+	if p.hooks.ScanlineStart != nil {
+		p.hooks.ScanlineStart(p.vcount)
 	}
 
 	wasVBlank := p.vblank
