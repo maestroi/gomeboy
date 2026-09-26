@@ -430,3 +430,147 @@ func TestDirectSoundFIFORejectsOtherSpecialDMAChannelsAndDestinations(t *testing
 		}
 	}
 }
+
+func TestVideoCaptureRunsDMA3OnDisplayStartWindow(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0x1400)
+	dest := uint32(bus.VRAMStart + 0x1400)
+	for i, value := range []uint16{0x1111, 0x2222, 0x3333} {
+		b.Write16(source+uint32(i*2), value, bus.Access{})
+	}
+
+	control := uint16(controlEnable | controlRepeat | timingSpecial)
+	programDMA(b, 3, source, dest, 1, control)
+
+	for _, line := range []uint16{0, 1, 162, 227} {
+		if stall := d.TriggerVideoCapture(line); stall != 0 {
+			t.Fatalf("VCOUNT %d capture stall = %d, want 0", line, stall)
+		}
+	}
+	if got, _ := b.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("capture ran outside active window: %04x", got)
+	}
+
+	if stall := d.TriggerVideoCapture(2); stall == 0 {
+		t.Fatal("VCOUNT 2 did not start video capture")
+	}
+	if got, _ := b.Read16(dest, bus.Access{}); got != 0x1111 {
+		t.Fatalf("VCOUNT 2 capture = %04x, want 1111", got)
+	}
+	if d.Control(3)&controlEnable == 0 {
+		t.Fatal("repeated video capture disabled after first scanline")
+	}
+
+	d.TriggerVideoCapture(3)
+	if got, _ := b.Read16(dest+2, bus.Access{}); got != 0x2222 {
+		t.Fatalf("VCOUNT 3 capture = %04x, want 2222", got)
+	}
+
+	// VCOUNT 161 is the final capture line. It still transfers, then clears
+	// Enable even though Repeat is programmed.
+	d.TriggerVideoCapture(161)
+	if got, _ := b.Read16(dest+4, bus.Access{}); got != 0x3333 {
+		t.Fatalf("VCOUNT 161 capture = %04x, want 3333", got)
+	}
+	if d.Control(3)&controlEnable != 0 {
+		t.Fatal("video capture remained enabled after final scanline")
+	}
+	if got := d.ch[3].sourceCurrent; got != source+6 {
+		t.Fatalf("video capture source progression = %08x, want %08x", got, source+6)
+	}
+}
+
+func TestVideoCaptureOnlyUsesDMA3SpecialWithoutDRQ(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0x1500)
+	b.Write16(source, 0xabcd, bus.Access{})
+
+	// DMA0 special timing is prohibited for video capture.
+	programDMA(b, 0, source, bus.IWRAMStart+0x1600, 1, controlEnable|controlRepeat|timingSpecial)
+	if stall := d.TriggerVideoCapture(2); stall != 0 {
+		t.Fatalf("DMA0 special produced capture stall %d", stall)
+	}
+	if units, _ := d.LastTransfer(0); units != 0 {
+		t.Fatalf("DMA0 ran as video capture: units=%d", units)
+	}
+
+	// DMA3 DRQ mode overrides the display-synchronized special timing.
+	programDMA(b, 3, source, bus.IWRAMStart+0x1700, 1,
+		controlEnable|controlGamePakDRQ|controlRepeat|timingSpecial)
+	if stall := d.TriggerVideoCapture(2); stall != 0 {
+		t.Fatalf("DRQ DMA3 ran as video capture with stall %d", stall)
+	}
+	if units, _ := d.LastTransfer(3); units != 0 {
+		t.Fatalf("DRQ DMA3 ran on video capture trigger: units=%d", units)
+	}
+}
+
+func TestGamePakDRQOverridesProgrammedStartTiming(t *testing.T) {
+	rom := []byte{0x11, 0x11, 0x22, 0x22}
+	b := bus.New(nil, rom)
+	d := New(b, nil, Hooks{})
+
+	dest := uint32(bus.IWRAMStart + 0x1800)
+	control := uint16(controlEnable | controlGamePakDRQ | controlRepeat | timingHBlank)
+	programDMA(b, 3, bus.ROM0Start, dest, 2, control)
+
+	// Bit 11 replaces the ordinary timing source, so HBlank must not start it.
+	if stall := d.Trigger(StartHBlank); stall != 0 {
+		t.Fatalf("HBlank started DRQ DMA with stall %d", stall)
+	}
+	if got, _ := b.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("DRQ DMA ran before cartridge request: %04x", got)
+	}
+
+	if stall := d.TriggerGamePakDRQ(); stall == 0 {
+		t.Fatal("Game Pak request did not start DMA3")
+	}
+	got0, _ := b.Read16(dest, bus.Access{})
+	got1, _ := b.Read16(dest+2, bus.Access{})
+	if got0 != 0x1111 || got1 != 0x2222 {
+		t.Fatalf("Game Pak DRQ result = %04x/%04x, want 1111/2222", got0, got1)
+	}
+	if units, _ := d.LastTransfer(3); units != 2 {
+		t.Fatalf("Game Pak DRQ units = %d, want 2", units)
+	}
+
+	// Hardware requires Repeat=0 in DRQ mode. If software nevertheless leaves
+	// the bit set, the request still completes as a one-shot transfer.
+	if d.Control(3)&controlEnable != 0 {
+		t.Fatal("Game Pak DRQ remained enabled because Repeat was set")
+	}
+	if d.Control(3)&controlRepeat == 0 {
+		t.Fatal("DRQ completion rewrote programmer-visible Repeat bit")
+	}
+	if stall := d.TriggerGamePakDRQ(); stall != 0 {
+		t.Fatalf("completed DRQ DMA accepted another request with stall %d", stall)
+	}
+}
+
+func TestGamePakDRQWithImmediateTimingWaitsForRequest(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := New(b, nil, Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0x1900)
+	dest := uint32(bus.IWRAMStart + 0x1a00)
+	b.Write32(source, 0x44332211, bus.Access{})
+
+	programDMA(b, 3, source, dest, 1,
+		controlEnable|controlGamePakDRQ|controlWord|timingImmediate)
+
+	if got, _ := b.Read32(dest, bus.Access{}); got != 0 {
+		t.Fatalf("immediate-timing DRQ DMA ran on Enable: %08x", got)
+	}
+	if d.Control(3)&controlEnable == 0 {
+		t.Fatal("DRQ DMA did not remain armed for cartridge request")
+	}
+
+	d.TriggerGamePakDRQ()
+	if got, _ := b.Read32(dest, bus.Access{}); got != 0x44332211 {
+		t.Fatalf("DRQ-triggered word = %08x, want 44332211", got)
+	}
+}

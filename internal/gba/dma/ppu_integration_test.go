@@ -71,3 +71,58 @@ func TestPPUHBlankAndVBlankDriveDMAStartConditions(t *testing.T) {
 		t.Fatal("PPU-driven DMA did not report CPU stall cycles")
 	}
 }
+
+func TestPPUScanlineStartDrivesDMA3VideoCapture(t *testing.T) {
+	b := bus.New(nil, nil)
+	d := dma.New(b, nil, dma.Hooks{})
+
+	source := uint32(bus.IWRAMStart + 0x400)
+	dest := uint32(bus.VRAMStart + 0x400)
+	for i := 0; i < 160; i++ {
+		b.Write16(source+uint32(i*2), uint16(i+1), bus.Access{})
+	}
+
+	// DMA3: one halfword per capture scanline, repeated from VCOUNT 2 through
+	// VCOUNT 161. The final line auto-clears Enable.
+	b.Write32(bus.IOStart+0x0d4, source, bus.Access{})
+	b.Write32(bus.IOStart+0x0d8, dest, bus.Access{})
+	b.Write16(bus.IOStart+0x0dc, 1, bus.Access{})
+	b.Write16(bus.IOStart+0x0de,
+		(1<<9)|(3<<12)|(1<<15),
+		bus.Access{})
+
+	p := ppu.New(b, ppu.Hooks{
+		ScanlineStart: func(vcount uint16) { d.TriggerVideoCapture(vcount) },
+	})
+
+	// Line starts 0 and 1 are outside the capture window. The second complete
+	// scanline advances VCOUNT to 2 and starts the first transfer.
+	p.Advance(2 * ppu.CyclesPerLine)
+	if p.VCount() != 2 {
+		t.Fatalf("VCOUNT after two lines = %d, want 2", p.VCount())
+	}
+	if got, _ := b.Read16(dest, bus.Access{}); got != 1 {
+		t.Fatalf("first PPU-driven capture = %04x, want 0001", got)
+	}
+
+	// Advance line starts 3..161. That produces 159 more bursts, for 160 total.
+	p.Advance(159 * ppu.CyclesPerLine)
+	if p.VCount() != 161 {
+		t.Fatalf("VCOUNT at final capture = %d, want 161", p.VCount())
+	}
+	if got, _ := b.Read16(dest+159*2, bus.Access{}); got != 160 {
+		t.Fatalf("last PPU-driven capture = %04x, want 00a0", got)
+	}
+	if d.Control(3)&(1<<15) != 0 {
+		t.Fatal("DMA3 video capture remained enabled after VCOUNT 161")
+	}
+
+	// Entering VCOUNT 162 cannot start another capture burst.
+	p.Advance(ppu.CyclesPerLine)
+	if p.VCount() != 162 {
+		t.Fatalf("VCOUNT after capture window = %d, want 162", p.VCount())
+	}
+	if got, _ := b.Read16(dest+160*2, bus.Access{}); got != 0 {
+		t.Fatalf("capture continued into VCOUNT 162: %04x", got)
+	}
+}

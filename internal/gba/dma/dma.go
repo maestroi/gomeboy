@@ -78,6 +78,10 @@ type channel struct {
 
 	lastCycles uint32
 	lastUnits  uint32
+
+	// disableAfterRun marks a final event-driven transfer (currently the last
+	// DMA3 video-capture scanline) that must clear Enable even with Repeat set.
+	disableAfterRun bool
 }
 
 // DMA owns DMA0-DMA3 register and internal transfer state.
@@ -207,11 +211,17 @@ func (d *DMA) writeControl(index int, value uint16) {
 	newEnabled := c.control&controlEnable != 0
 
 	if oldEnabled || !newEnabled {
+		if !newEnabled {
+			c.disableAfterRun = false
+		}
 		return
 	}
 
 	d.latch(index)
-	if c.control&controlTimingMask == timingImmediate {
+	// DMA3 Game Pak DRQ replaces the ordinary start condition: even timing=Now
+	// waits for the cartridge request instead of running on the Enable edge.
+	gamePakDRQ := index == 3 && c.control&controlGamePakDRQ != 0
+	if c.control&controlTimingMask == timingImmediate && !gamePakDRQ {
 		d.pending |= 1 << index
 		d.servicePending()
 	}
@@ -226,6 +236,7 @@ func (d *DMA) latch(index int) {
 	c.destCurrent = c.destReload
 	c.countReload = effectiveCount(index, c.countInitial)
 	c.countCurrent = c.countReload
+	c.disableAfterRun = false
 }
 
 func effectiveCount(index int, value uint16) uint32 {
@@ -259,8 +270,48 @@ func (d *DMA) Trigger(event StartEvent) uint32 {
 		if c.control&controlEnable == 0 || c.control&controlTimingMask != timing {
 			continue
 		}
+		// Game Pak DRQ is a separate DMA3 request source and overrides the
+		// programmed ordinary start timing.
+		if index == 3 && c.control&controlGamePakDRQ != 0 {
+			continue
+		}
 		d.pending |= 1 << index
 	}
+	return d.servicePending()
+}
+
+// TriggerVideoCapture requests DMA3's display-synchronized special transfer
+// at the start of one scanline. GBA capture is active for VCOUNT 2..161; the
+// line-161 transfer is the final burst and clears Enable even with Repeat set.
+func (d *DMA) TriggerVideoCapture(vcount uint16) uint32 {
+	if vcount < 2 || vcount >= 162 {
+		return 0
+	}
+
+	c := &d.ch[3]
+	if c.control&controlEnable == 0 ||
+		c.control&controlTimingMask != timingSpecial ||
+		c.control&controlGamePakDRQ != 0 {
+		return 0
+	}
+
+	if vcount == 161 {
+		c.disableAfterRun = true
+	}
+	d.pending |= 1 << 3
+	return d.servicePending()
+}
+
+// TriggerGamePakDRQ services one external Game Pak data request. The request
+// source is DMA3 bit 11 and overrides DMA3's programmed start-timing field.
+// One request runs the complete latched word count and completion is one-shot;
+// hardware requires Repeat=0 for this mode.
+func (d *DMA) TriggerGamePakDRQ() uint32 {
+	c := &d.ch[3]
+	if c.control&controlEnable == 0 || c.control&controlGamePakDRQ == 0 {
+		return 0
+	}
+	d.pending |= 1 << 3
 	return d.servicePending()
 }
 
@@ -418,7 +469,12 @@ func (d *DMA) run(index int) uint32 {
 	}
 
 	timing := c.control & controlTimingMask
-	repeat := timing != timingImmediate && c.control&controlRepeat != 0
+	gamePakDRQ := index == 3 && c.control&controlGamePakDRQ != 0
+	repeat := timing != timingImmediate &&
+		c.control&controlRepeat != 0 &&
+		!gamePakDRQ &&
+		!c.disableAfterRun
+	c.disableAfterRun = false
 	if repeat {
 		c.countCurrent = c.countReload
 		if destMode == 3 {
