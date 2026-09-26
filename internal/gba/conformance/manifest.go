@@ -53,12 +53,21 @@ type ManifestTest struct {
 	Limits    Limits              `json:"limits"`
 	PassAll   []ManifestCondition `json:"pass_all"`
 	FailAny   []ManifestCondition `json:"fail_any,omitempty"`
+	Progress  *ManifestProgress   `json:"progress,omitempty"`
 }
 
 // ManifestBoot keeps BIOS-dependent and BIOS-independent startup explicit.
 type ManifestBoot struct {
-	Mode       BootMode `json:"mode"`
-	EntryPoint Uint32   `json:"entry_point,omitempty"`
+	Mode       BootMode           `json:"mode"`
+	EntryPoint Uint32             `json:"entry_point,omitempty"`
+	CPSR       *Uint32            `json:"cpsr,omitempty"`
+	Registers  []ManifestRegister `json:"registers,omitempty"`
+}
+
+// ManifestRegister is one direct-boot register initializer.
+type ManifestRegister struct {
+	Register int    `json:"register"`
+	Value    Uint32 `json:"value"`
 }
 
 // ManifestCondition is the JSON-friendly form of Condition.
@@ -69,6 +78,20 @@ type ManifestCondition struct {
 	Register int    `json:"register,omitempty"`
 	Value    Uint32 `json:"value"`
 	Mask     Uint32 `json:"mask,omitempty"`
+}
+
+// ManifestProgress describes a suite whose first failing test number is left
+// in a register before a declared failure condition is reached.
+type ManifestProgress struct {
+	FailureRegister int                    `json:"failure_register"`
+	Groups          []ManifestFailureGroup `json:"groups"`
+}
+
+// ManifestFailureGroup maps one contiguous upstream test-number range.
+type ManifestFailureGroup struct {
+	Name  string `json:"name"`
+	First Uint32 `json:"first"`
+	Last  Uint32 `json:"last"`
 }
 
 // LoadManifest reads a manifest and its referenced ROM/BIOS files. Relative
@@ -107,16 +130,24 @@ func LoadManifest(path string) (Manifest, []Case, error) {
 			}
 		}
 
+		var initialCPSR *uint32
+		if test.Boot.CPSR != nil {
+			value := uint32(*test.Boot.CPSR)
+			initialCPSR = &value
+		}
 		cases = append(cases, Case{
-			Name:       test.Name,
-			ROM:        rom,
-			ROMSHA256:  test.ROMSHA256,
-			BIOS:       bios,
-			Boot:       test.Boot.Mode,
-			EntryPoint: uint32(test.Boot.EntryPoint),
-			Limits:     test.Limits,
-			PassAll:    convertConditions(test.PassAll),
-			FailAny:    convertConditions(test.FailAny),
+			Name:             test.Name,
+			ROM:              rom,
+			ROMSHA256:        test.ROMSHA256,
+			BIOS:             bios,
+			Boot:             test.Boot.Mode,
+			EntryPoint:       uint32(test.Boot.EntryPoint),
+			InitialCPSR:      initialCPSR,
+			InitialRegisters: convertRegisters(test.Boot.Registers),
+			Limits:           test.Limits,
+			PassAll:          convertConditions(test.PassAll),
+			FailAny:          convertConditions(test.FailAny),
+			Progress:         convertProgress(test.Progress),
 		})
 	}
 	return manifest, cases, nil
@@ -129,6 +160,14 @@ func resolveManifestPath(base, path string) string {
 	return filepath.Join(base, filepath.FromSlash(path))
 }
 
+func convertRegisters(in []ManifestRegister) []RegisterValue {
+	out := make([]RegisterValue, 0, len(in))
+	for _, register := range in {
+		out = append(out, RegisterValue{Register: register.Register, Value: uint32(register.Value)})
+	}
+	return out
+}
+
 func convertConditions(in []ManifestCondition) []Condition {
 	out := make([]Condition, 0, len(in))
 	for _, condition := range in {
@@ -139,6 +178,21 @@ func convertConditions(in []ManifestCondition) []Condition {
 			Register: condition.Register,
 			Value:    uint32(condition.Value),
 			Mask:     uint32(condition.Mask),
+		})
+	}
+	return out
+}
+
+func convertProgress(in *ManifestProgress) *Progress {
+	if in == nil {
+		return nil
+	}
+	out := &Progress{FailureRegister: in.FailureRegister, Groups: make([]FailureGroup, 0, len(in.Groups))}
+	for _, group := range in.Groups {
+		out.Groups = append(out.Groups, FailureGroup{
+			Name:  group.Name,
+			First: uint32(group.First),
+			Last:  uint32(group.Last),
 		})
 	}
 	return out
