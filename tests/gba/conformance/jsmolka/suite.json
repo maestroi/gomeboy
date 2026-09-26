@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "suite": "jsmolka/gba-tests",
+  "suite_revision": "a7113b67e63f83a9b321696ddd7042ccfad6c881",
+  "tests": [
+    {
+      "name": "arm",
+      "rom": "roms/arm.gba",
+      "boot": {
+        "mode": "direct",
+        "entry_point": "0x08000000",
+        "cpsr": "0x0000001f",
+        "registers": [
+          { "register": 13, "value": "0x03007f00" }
+        ]
+      },
+      "limits": {
+        "steps": 5000000,
+        "cycles": 50000000,
+        "frames": 120
+      },
+      "pass_all": [
+        { "type": "self_loop" }
+      ],
+      "fail_any": [
+        { "type": "swi", "value": "0x00060000" }
+      ],
+      "progress": {
+        "failure_register": 0,
+        "groups": [
+          { "name": "conditions", "first": 1, "last": 20 },
+          { "name": "branches", "first": 50, "last": 57 },
+          { "name": "flags", "first": 100, "last": 109 },
+          { "name": "shifts", "first": 150, "last": 168 },
+          { "name": "data_processing", "first": 200, "last": 235 },
+          { "name": "psr_transfer", "first": 250, "last": 254 },
+          { "name": "multiply", "first": 300, "last": 319 },
+          { "name": "single_transfer", "first": 350, "last": 363 },
+          { "name": "halfword_transfer", "first": 400, "last": 413 },
+          { "name": "data_swap", "first": 450, "last": 453 },
+          { "name": "block_transfer", "first": 500, "last": 532 }
+        ]
+      }
+    },
+    {
+      "name": "thumb",
+      "rom": "roms/thumb.gba",
+      "boot": {
+        "mode": "direct",
+        "entry_point": "0x08000000",
+        "cpsr": "0x0000001f",
+        "registers": [
+          { "register": 13, "value": "0x03007f00" }
+        ]
+      },
+      "limits": {
+        "steps": 5000000,
+        "cycles": 50000000,
+        "frames": 120
+      },
+      "pass_all": [
+        { "type": "self_loop" }
+      ],
+      "fail_any": [
+        { "type": "swi", "value": "0x00060000" }
+      ],
+      "progress": {
+        "failure_register": 0,
+        "groups": [
+          { "name": "logical", "first": 1, "last": 13 },
+          { "name": "shifts", "first": 50, "last": 69 },
+          { "name": "arithmetic", "first": 100, "last": 121 },
+          { "name": "branches", "first": 150, "last": 169 },
+          { "name": "memory", "first": 200, "last": 233 }
+        ]
+      }
+    }
+  ]
+}
