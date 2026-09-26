@@ -189,3 +189,38 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 		t.Fatalf("PPU did not advance during IRQ entry: %d", m.PPU.LineCycle())
 	}
 }
+
+func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
+	m := New(nil, nil)
+
+	source := uint32(bus.IWRAMStart + 0x1b00)
+	dest := uint32(bus.IWRAMStart + 0x1c00)
+	m.Bus.Write16(source, 0xcafe, bus.Access{})
+
+	base := uint32(bus.IOStart + 0x0b0)
+	m.Bus.Write32(base, source, bus.Access{})
+	m.Bus.Write32(base+4, dest, bus.Access{})
+	m.Bus.Write16(base+8, 1, bus.Access{})
+
+	// Use the CPU-facing timed memory adapter for CNT_H. I/O takes one cycle;
+	// the two-cycle DMA start delay begins after that write has completed.
+	if cycles := m.memory.Write16(base+10, 1<<15, bus.Access{}); cycles != 1 {
+		t.Fatalf("DMA control write cycles = %d, want 1", cycles)
+	}
+	if m.Cycle() != 1 {
+		t.Fatalf("cycle after DMA control write = %d, want 1", m.Cycle())
+	}
+
+	m.Advance(1)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("DMA started one cycle after control write: %04x", got)
+	}
+	m.Advance(1)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0xcafe {
+		t.Fatalf("DMA did not start two cycles after control write: %04x", got)
+	}
+	// 1 write + 2 latency + 4 transfer = cycle 7.
+	if m.Cycle() != 7 {
+		t.Fatalf("cycle after CPU-programmed DMA = %d, want 7", m.Cycle())
+	}
+}
