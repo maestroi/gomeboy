@@ -13,9 +13,15 @@ import (
 	"github.com/maestroi/gomeboy/internal/gba/timer"
 )
 
-// DMAStartLatency is the delay from a DMA request/enable edge to bus ownership.
-// The transfer then stalls the CPU for the bus/internal cycles reported by DMA.
-const DMAStartLatency uint64 = 2
+const (
+	// DMAStartLatency is the delay from a DMA request/enable edge to bus ownership.
+	// The transfer then stalls the CPU for the bus/internal cycles reported by DMA.
+	DMAStartLatency uint64 = 2
+
+	// IRQPropagationLatency is the GBA interrupt-controller delay from an
+	// enabled pending request (IE & IF) to the CPU-visible IRQ delivery event.
+	IRQPropagationLatency uint64 = 7
+)
 
 // StepResult describes one architectural CPU step plus any DMA stalls that
 // occurred before or during that instruction.
@@ -42,10 +48,17 @@ type Machine struct {
 	cycles uint64
 	memory timedMemory
 
-	dmaStartAt  uint64
-	dmaScheduled bool
+	dmaStartAt    uint64
+	dmaScheduled  bool
 	dmaRunning    bool
+	dmaCompleting bool
 	dmaStalls     uint64
+
+	irqEventAt   uint64
+	irqScheduled bool
+	irqAfterDMA  bool
+	haltWakeSeq  uint64
+
 	halted        bool
 	stopRequested bool
 }
@@ -55,7 +68,10 @@ func New(bios, rom []byte) *Machine {
 	m := &Machine{}
 	m.Bus = bus.New(bios, rom)
 	m.CPU = cpu.New()
-	m.IRQ = gbairq.New(m.Bus, m.CPU)
+	m.IRQ = gbairq.NewWithHooks(m.Bus, m.CPU, gbairq.Hooks{
+		Evaluate:  m.evaluateIRQ,
+		DeferLine: true,
+	})
 	m.Power = power.New(m.Bus, power.Hooks{
 		BIOSAccess: func() bool {
 			pc := m.CPU.PC()
@@ -107,26 +123,24 @@ func (m *Machine) StopRequested() bool { return m.stopRequested }
 func (m *Machine) Step() (StepResult, error) {
 	startCycle := m.cycles
 	startStalls := m.dmaStalls
+	startWakeSeq := m.haltWakeSeq
 
+	m.serviceDueEvents()
 	if m.halted {
 		// HALT stops only the CPU. Advance directly to one meaningful hardware
-		// boundary instead of burning instruction-sized cycles. Returning at the
-		// event boundary keeps Step finite even when no enabled source can wake.
-		m.serviceDueDMA()
-		woke := m.wakeFromHalt()
-		if !woke {
+		// boundary instead of burning instruction-sized cycles. IRQ wake itself
+		// is one of those scheduled boundaries after its propagation delay.
+		if m.halted {
 			m.advanceHaltedEvent()
-			woke = m.wakeFromHalt()
 		}
 		return StepResult{
 			ElapsedCycles:  m.cycles - startCycle,
 			DMAStallCycles: m.dmaStalls - startStalls,
 			Halted:         m.halted,
-			Woke:           woke,
+			Woke:           m.haltWakeSeq != startWakeSeq,
 		}, nil
 	}
 
-	m.serviceDueDMA()
 	m.memory.cpuCycles = 0
 
 	result, err := m.CPU.Step(&m.memory)
@@ -136,16 +150,12 @@ func (m *Machine) Step() (StepResult, error) {
 		m.advanceCPU(missing)
 	}
 
-	// If the just-completed instruction entered HALT while an enabled request
-	// was already pending, hardware wakes at the boundary without executing a
-	// further instruction.
-	woke := m.wakeFromHalt()
 	return StepResult{
 		CPU:            result,
 		ElapsedCycles:  m.cycles - startCycle,
 		DMAStallCycles: m.dmaStalls - startStalls,
 		Halted:         m.halted,
-		Woke:           woke,
+		Woke:           m.haltWakeSeq != startWakeSeq,
 	}, err
 }
 
@@ -165,12 +175,53 @@ func (m *Machine) requestStop() {
 	m.stopRequested = true
 }
 
-func (m *Machine) wakeFromHalt() bool {
-	if !m.halted || !m.IRQ.EnabledPending() {
-		return false
+func (m *Machine) evaluateIRQ(enabledPending bool, irqAsserted bool) {
+	// Once delivered, the CPU IRQ input remains level-sensitive and must drop
+	// immediately when software removes IME/IE/IF qualification.
+	if !irqAsserted {
+		m.CPU.SetIRQLine(false)
 	}
-	m.halted = false
-	return true
+	if !enabledPending {
+		return
+	}
+
+	// DMA raises its IF bit synchronously when ServicePending returns, while the
+	// scheduler advances the transfer's bus time immediately afterward. Timestamp
+	// its IRQ propagation from the actual end of that transfer, not its start.
+	if m.dmaCompleting {
+		m.irqAfterDMA = true
+		return
+	}
+	m.scheduleIRQEvent()
+}
+
+func (m *Machine) scheduleIRQEvent() {
+	if m.irqScheduled {
+		return
+	}
+	m.irqEventAt = m.cycles + IRQPropagationLatency
+	m.irqScheduled = true
+}
+
+func (m *Machine) serviceDueIRQ() {
+	if !m.irqScheduled || m.irqEventAt > m.cycles {
+		return
+	}
+	m.irqScheduled = false
+
+	// The propagation event releases HALT regardless of IME. At delivery time
+	// the current IE/IF/IME state decides whether the CPU-visible IRQ line rises.
+	if m.halted {
+		m.halted = false
+		m.haltWakeSeq++
+	}
+	m.CPU.SetIRQLine(m.IRQ.IRQAsserted())
+}
+
+func (m *Machine) serviceDueEvents() {
+	m.serviceDueIRQ()
+	m.serviceDueDMA()
+	m.serviceDueIRQ()
 }
 
 func (m *Machine) advanceHaltedEvent() {
@@ -189,9 +240,18 @@ func (m *Machine) advanceHaltedEvent() {
 			step = untilDMA
 		}
 	}
+	if m.irqScheduled {
+		untilIRQ := uint64(0)
+		if m.irqEventAt > m.cycles {
+			untilIRQ = m.irqEventAt - m.cycles
+		}
+		if untilIRQ < step {
+			step = untilIRQ
+		}
+	}
 
 	if step == 0 {
-		m.serviceDueDMA()
+		m.serviceDueEvents()
 		return
 	}
 	m.advanceCPU(uint32(step))
@@ -230,7 +290,7 @@ func (m *Machine) scheduleDMAStart() {
 func (m *Machine) advanceCPU(cycles uint32) {
 	remaining := uint64(cycles)
 	for remaining > 0 {
-		m.serviceDueDMA()
+		m.serviceDueEvents()
 
 		step := remaining
 		if m.dmaScheduled && m.dmaStartAt > m.cycles {
@@ -238,11 +298,16 @@ func (m *Machine) advanceCPU(cycles uint32) {
 				step = untilDMA
 			}
 		}
+		if m.irqScheduled && m.irqEventAt > m.cycles {
+			if untilIRQ := m.irqEventAt - m.cycles; untilIRQ < step {
+				step = untilIRQ
+			}
+		}
 		m.advanceHardware(uint32(step))
 		remaining -= step
-		m.serviceDueDMA()
+		m.serviceDueEvents()
 	}
-	m.serviceDueDMA()
+	m.serviceDueEvents()
 }
 
 func (m *Machine) serviceDueDMA() {
@@ -255,15 +320,25 @@ func (m *Machine) serviceDueDMA() {
 			continue
 		}
 
+		m.dmaRunning = true
+		m.dmaCompleting = true
 		stall := m.DMA.ServicePending()
+		m.dmaCompleting = false
 		if stall == 0 {
+			m.dmaRunning = false
 			continue
 		}
 
 		m.dmaStalls += uint64(stall)
-		m.dmaRunning = true
 		m.advanceHardware(stall)
 		m.dmaRunning = false
+
+		if m.irqAfterDMA {
+			m.irqAfterDMA = false
+			if m.IRQ.EnabledPending() {
+				m.scheduleIRQEvent()
+			}
+		}
 		// PPU/timer edges crossed during the transfer may have queued another
 		// request. Fine-grained mid-transfer DMA preemption is a later slice;
 		// queued work begins as soon as the current batch releases the bus.
@@ -275,6 +350,8 @@ func (m *Machine) serviceDueDMA() {
 func (m *Machine) advanceHardware(cycles uint32) {
 	remaining := cycles
 	for remaining > 0 {
+		m.serviceDueIRQ()
+
 		step := remaining
 		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
 			step = untilPPU
@@ -282,11 +359,17 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
 			step = untilTimer
 		}
+		if m.irqScheduled && m.irqEventAt > m.cycles {
+			if untilIRQ := m.irqEventAt - m.cycles; untilIRQ < uint64(step) {
+				step = uint32(untilIRQ)
+			}
+		}
 
 		m.cycles += uint64(step)
 		m.Timers.Advance(step)
 		m.PPU.Advance(step)
 		remaining -= step
+		m.serviceDueIRQ()
 	}
 }
 
