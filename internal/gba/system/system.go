@@ -499,6 +499,10 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		}
 
 		m.cycles += uint64(step)
+		// Host-rate audio samples cover the interval before timer edges at its
+		// end; timer overflow then updates the Direct Sound latch for the next
+		// interval.
+		m.Audio.Advance(step)
 		m.Timers.Advance(step)
 		m.PPU.Advance(step)
 		remaining -= step
