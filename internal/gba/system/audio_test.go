@@ -103,3 +103,25 @@ func TestDirectSoundMixerAdvancesOnSystemClock(t *testing.T) {
 		t.Fatalf("system mixer sample = %v, want [0.5 0.5]", samples)
 	}
 }
+
+
+func TestLegacyPSGAdvancesThroughSystemAudioClock(t *testing.T) {
+	m := New(nil, nil)
+
+	// Enable PSG, use its 100% mix ratio, and route channel 1 to both sides.
+	m.Bus.Write16(bus.IOStart+0x084, 0x0080, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x082, 0x0002, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x080, 0x1177, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x062, 0xf040, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x064, 0x8000, bus.Access{})
+
+	m.Advance(175)
+	samples, count := m.Audio.Samples()
+	if count != 2 || len(samples) != 2 {
+		t.Fatalf("system PSG produced %d audio values, want one stereo frame", count)
+	}
+	const want = float32(240.0 / 512.0)
+	if samples[0] != want || samples[1] != want {
+		t.Fatalf("system PSG sample = %v, want [%f %f]", samples, want, want)
+	}
+}
