@@ -76,6 +76,7 @@ func (c *gbaCore) resetMachine() {
 		c.machine.CPU.WriteRegister(13, 0x03007fe0)
 		_ = c.machine.CPU.SetMode(cpu.ModeSystem)
 		c.machine.CPU.WriteRegister(13, 0x03007f00)
+		_ = c.machine.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem))
 		c.machine.CPU.SetPC(bus.ROM0Start)
 	}
 
