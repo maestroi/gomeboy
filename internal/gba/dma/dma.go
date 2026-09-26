@@ -60,16 +60,15 @@ const (
 // Complete fires once per completed channel. Stall fires once for a serviced
 // request batch with the total number of CPU-stall cycles consumed by DMA.
 //
-// RequestStart switches DMA into scheduler-owned mode. When non-nil, a newly
-// pending request calls RequestStart instead of transferring synchronously;
-// the owner must later call ServicePending. CancelStart fires when software
-// disables the last queued channel before service so a scheduler can discard
-// that request's start deadline.
+// RequestStart switches DMA into scheduler-owned mode. When non-nil, pending
+// channel bits are passed to the owner, which applies start latency before
+// calling ActivatePending. CancelStart fires when software disables a channel
+// so its scheduled deadline can be discarded.
 type Hooks struct {
 	Complete     func(channel int, units uint32, cycles uint32)
 	Stall        func(cycles uint32)
-	RequestStart func()
-	CancelStart  func()
+	RequestStart func(channels uint8)
+	CancelStart  func(channel int)
 }
 
 type channel struct {
@@ -90,6 +89,19 @@ type channel struct {
 	// disableAfterRun marks a final event-driven transfer (currently the last
 	// DMA3 video-capture scanline) that must clear Enable even with Repeat set.
 	disableAfterRun bool
+
+	// Scheduler-owned transfers are serviced one unit at a time so channel
+	// priority can be reconsidered between units.
+	transferActive      bool
+	completionPending   bool
+	transferRemaining   uint32
+	transferUnits       uint32
+	transferWidth       uint32
+	transferSourceMode  uint16
+	transferDestMode    uint16
+	transferStartSource uint32
+	transferStartDest   uint32
+	transferCycles      uint32
 }
 
 // DMA owns DMA0-DMA3 register and internal transfer state.
@@ -222,8 +234,8 @@ func (d *DMA) writeControl(index int, value uint16) {
 		if !newEnabled {
 			c.disableAfterRun = false
 			d.pending &^= 1 << index
-			if d.pending == 0 && d.hooks.CancelStart != nil {
-				d.hooks.CancelStart()
+			if d.hooks.CancelStart != nil {
+				d.hooks.CancelStart(index)
 			}
 		}
 		return
@@ -234,7 +246,7 @@ func (d *DMA) writeControl(index int, value uint16) {
 	// waits for the cartridge request instead of running on the Enable edge.
 	gamePakDRQ := index == 3 && c.control&controlGamePakDRQ != 0
 	if c.control&controlTimingMask == timingImmediate && !gamePakDRQ {
-		d.pending |= 1 << index
+		d.queue(index)
 		d.requestPending()
 	}
 }
@@ -287,7 +299,7 @@ func (d *DMA) Trigger(event StartEvent) uint32 {
 		if index == 3 && c.control&controlGamePakDRQ != 0 {
 			continue
 		}
-		d.pending |= 1 << index
+		d.queue(index)
 	}
 	return d.requestPending()
 }
@@ -310,7 +322,7 @@ func (d *DMA) TriggerVideoCapture(vcount uint16) uint32 {
 	if vcount == 161 {
 		c.disableAfterRun = true
 	}
-	d.pending |= 1 << 3
+	d.queue(3)
 	return d.requestPending()
 }
 
@@ -323,7 +335,7 @@ func (d *DMA) TriggerGamePakDRQ() uint32 {
 	if c.control&controlEnable == 0 || c.control&controlGamePakDRQ == 0 {
 		return 0
 	}
-	d.pending |= 1 << 3
+	d.queue(3)
 	return d.requestPending()
 }
 
@@ -345,7 +357,7 @@ func (d *DMA) TriggerFIFO(fifo SoundFIFO) uint32 {
 		if c.destReload != dest {
 			continue
 		}
-		d.pending |= 1 << index
+		d.queue(index)
 	}
 	return d.requestPending()
 }
@@ -388,22 +400,202 @@ func timingForEvent(event StartEvent) (uint16, bool) {
 	}
 }
 
+func (d *DMA) queue(index int) {
+	c := &d.ch[index]
+	if c.transferActive || c.completionPending {
+		// A channel cannot queue a second hardware request while its current
+		// request is still being serviced.
+		return
+	}
+	d.pending |= 1 << index
+}
+
 func (d *DMA) requestPending() uint32 {
 	if d.pending == 0 {
 		return 0
 	}
 	if d.hooks.RequestStart != nil {
-		d.hooks.RequestStart()
+		d.hooks.RequestStart(d.pending)
 		return 0
 	}
 	return d.servicePending()
 }
 
-// Pending reports whether one or more channels are waiting for service.
+// Pending reports whether one or more channels are waiting for start latency.
 func (d *DMA) Pending() bool { return d.pending != 0 }
 
-// ServicePending services all currently pending channels in hardware priority
-// order. Scheduler-owned integrations call this after the DMA start latency.
+// PendingMask returns channels waiting for scheduler activation.
+func (d *DMA) PendingMask() uint8 { return d.pending }
+
+// Active reports whether at least one DMA request is mid-transfer.
+func (d *DMA) Active() bool { return d.ActiveMask() != 0 }
+
+// ActiveMask returns channels currently eligible for unit service.
+func (d *DMA) ActiveMask() uint8 {
+	var mask uint8
+	for index := 0; index < 4; index++ {
+		if d.ch[index].transferActive {
+			mask |= 1 << index
+		}
+	}
+	return mask
+}
+
+// UnitResult describes one scheduler-visible DMA transfer unit.
+type UnitResult struct {
+	Channel   int
+	Cycles    uint32
+	Completed bool
+}
+
+// ActivatePending moves selected pending channels past their start latency.
+// The next ServiceUnit call arbitrates all active channels by DMA priority.
+func (d *DMA) ActivatePending(mask uint8) {
+	mask &= d.pending
+	for index := 0; index < 4; index++ {
+		bit := uint8(1 << index)
+		if mask&bit == 0 {
+			continue
+		}
+		d.pending &^= bit
+		c := &d.ch[index]
+		if c.control&controlEnable == 0 || c.transferActive || c.completionPending {
+			continue
+		}
+		d.startTransfer(index)
+	}
+}
+
+func (d *DMA) startTransfer(index int) {
+	c := &d.ch[index]
+	units := c.countCurrent
+	width := d.width(index)
+	sourceMode := (c.control & controlSourceMask) >> 7
+	destMode := (c.control & controlDestMask) >> 5
+
+	if fifoDest, ok := d.soundFIFOTransfer(index); ok {
+		units = 4
+		width = 4
+		destMode = 2
+		c.sourceCurrent &^= 3
+		c.destCurrent = fifoDest
+	}
+	if units == 0 {
+		return
+	}
+
+	c.transferActive = true
+	c.transferRemaining = units
+	c.transferUnits = units
+	c.transferWidth = width
+	c.transferSourceMode = sourceMode
+	c.transferDestMode = destMode
+	c.transferStartSource = c.sourceCurrent
+	c.transferStartDest = c.destCurrent
+	c.transferCycles = 0
+}
+
+// ServiceUnit transfers one unit from the highest-priority active channel.
+// Completion side effects are deferred to FinishUnit so scheduler integrations
+// can advance the unit's elapsed bus/internal cycles before raising DMA IRQs.
+func (d *DMA) ServiceUnit() UnitResult {
+	index := -1
+	for candidate := 0; candidate < 4; candidate++ {
+		if d.ch[candidate].transferActive {
+			index = candidate
+			break
+		}
+	}
+	if index < 0 {
+		return UnitResult{Channel: -1}
+	}
+
+	c := &d.ch[index]
+	unit := c.transferUnits - c.transferRemaining
+	access := bus.Access{Sequential: unit != 0, DMA: true}
+	source := c.sourceCurrent
+	dest := c.destCurrent
+
+	var cycles uint32
+	if c.transferWidth == 4 {
+		value, readCycles := d.bus.Read32(source, access)
+		writeCycles := d.bus.Write32(dest, value, access)
+		cycles = readCycles + writeCycles
+	} else {
+		value, readCycles := d.bus.Read16(source, access)
+		writeCycles := d.bus.Write16(dest, value, access)
+		cycles = readCycles + writeCycles
+	}
+
+	c.sourceCurrent = adjustAddress(source, c.transferSourceMode, c.transferWidth, false)
+	c.destCurrent = adjustAddress(dest, c.transferDestMode, c.transferWidth, true)
+	c.transferRemaining--
+	c.transferCycles += cycles
+
+	completed := c.transferRemaining == 0
+	if completed {
+		// Preserve the existing aggregate timing model: two internal cycles once
+		// per transfer, or four when both endpoints are on the Game Pak bus.
+		internal := uint32(2)
+		if isGamePak(c.transferStartSource) && isGamePak(c.transferStartDest) {
+			internal = 4
+		}
+		cycles += internal
+		c.transferCycles += internal
+		c.transferActive = false
+		c.completionPending = true
+		c.countCurrent = 0
+	}
+
+	return UnitResult{Channel: index, Cycles: cycles, Completed: completed}
+}
+
+// FinishUnit applies completion/repeat/IRQ state for a unit that returned
+// Completed. Call it after the unit's cycles have elapsed on the scheduler.
+func (d *DMA) FinishUnit(index int) {
+	if index < 0 || index >= 4 {
+		return
+	}
+	c := &d.ch[index]
+	if !c.completionPending {
+		return
+	}
+	c.completionPending = false
+
+	cycles := c.transferCycles
+	units := c.transferUnits
+	c.lastCycles = cycles
+	c.lastUnits = units
+
+	if c.control&controlIRQ != 0 && d.irq != nil {
+		d.irq.Request(irqSources[index])
+	}
+
+	timing := c.control & controlTimingMask
+	gamePakDRQ := index == 3 && c.control&controlGamePakDRQ != 0
+	repeat := timing != timingImmediate &&
+		c.control&controlRepeat != 0 &&
+		!gamePakDRQ &&
+		!c.disableAfterRun
+	c.disableAfterRun = false
+	if repeat {
+		c.countCurrent = c.countReload
+		if c.transferDestMode == 3 {
+			c.destCurrent = c.destReload
+		}
+	} else {
+		c.control &^= controlEnable
+		c.countCurrent = 0
+	}
+
+	if d.hooks.Complete != nil {
+		d.hooks.Complete(index, units, cycles)
+	}
+}
+
+// ServicePending synchronously drains pending/active requests in hardware
+// priority order. Scheduler integrations normally use ActivatePending and
+// ServiceUnit instead so external events can preempt between units.
 func (d *DMA) ServicePending() uint32 { return d.servicePending() }
 
 func (d *DMA) servicePending() uint32 {
@@ -414,19 +606,17 @@ func (d *DMA) servicePending() uint32 {
 	defer func() { d.servicing = false }()
 
 	var total uint32
-	for d.pending != 0 {
-		for index := 0; index < 4; index++ {
-			mask := uint8(1 << index)
-			if d.pending&mask == 0 {
-				continue
-			}
-			d.pending &^= mask
-
-			// Software may have disabled the channel after it was queued.
-			if d.ch[index].control&controlEnable != 0 {
-				total += d.run(index)
-			}
+	for d.pending != 0 || d.Active() {
+		if d.pending != 0 {
+			d.ActivatePending(d.pending)
+		}
+		unit := d.ServiceUnit()
+		if unit.Cycles == 0 {
 			break
+		}
+		total += unit.Cycles
+		if unit.Completed {
+			d.FinishUnit(unit.Channel)
 		}
 	}
 
