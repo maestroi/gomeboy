@@ -84,8 +84,10 @@ func (e *Emulator) ToggleMute() bool {
 
 // FrameSize reports the active core's framebuffer dimensions.
 func (e *Emulator) FrameSize() (width, height int) {
-	frame := e.Frame()
-	return frame.Width, frame.Height
+	if e != nil && e.core != nil && e.core.CoreID() == "gba" {
+		return 240, 160
+	}
+	return 160, 144
 }
 
 // PressButton implements emulator.InputController for desktop frontends.
