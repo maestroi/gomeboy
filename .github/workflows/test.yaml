@@ -51,13 +51,14 @@ jobs:
       - name: fetch pinned jsmolka ARM/Thumb ROMs
         run: bash tests/gba/conformance/jsmolka/fetch.sh
       - name: run jsmolka ARM/Thumb conformance
-        continue-on-error: true
         run: |
           go run ./cmd/gba-conformance \
             -manifest tests/gba/conformance/jsmolka/suite.json \
             -output gba-conformance-jsmolka.json \
-            -commit "$GITHUB_SHA"
+            -commit "$GITHUB_SHA" || true
           cat gba-conformance-jsmolka.json
+      - name: compare jsmolka conformance baseline
+        run: go run ./cmd/gba-conformance-baseline -report gba-conformance-jsmolka.json -baseline tests/gba/conformance/jsmolka/baseline.json
       - name: upload GBA conformance result
         if: always()
         uses: actions/upload-artifact@v6
