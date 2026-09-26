@@ -2,6 +2,7 @@ package cpu
 
 import (
 	"errors"
+	"math/bits"
 
 	gbamemory "github.com/maestroi/gomeboy/internal/gba/memory"
 )
@@ -18,6 +19,19 @@ type Memory interface {
 	Write16(addr uint32, value uint16, access gbamemory.Access) uint32
 	Write32(addr uint32, value uint32, access gbamemory.Access) uint32
 	Idle(cycles uint32)
+}
+
+func loadUnsignedHalfword(mem Memory, addr uint32, access gbamemory.Access) (uint32, uint32) {
+	// ARM7TDMI performs the bus access on the aligned halfword, then rotates
+	// the zero-extended 16-bit value right by 8 when the effective address is
+	// odd. The 16-bit Memory boundary cannot represent that 32-bit rotated
+	// result directly, so model the CPU-side rotation here.
+	raw, cycles := mem.Read16(addr&^1, access)
+	value := uint32(raw)
+	if addr&1 != 0 {
+		value = bits.RotateLeft32(value, -8)
+	}
+	return value, cycles
 }
 
 // StepResult separates opcode-fetch, data-memory, and CPU-internal timing so a
