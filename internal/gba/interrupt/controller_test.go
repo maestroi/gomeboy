@@ -230,34 +230,51 @@ func TestDeferredLineHookReportsQualificationWithoutDrivingSink(t *testing.T) {
 	}
 }
 
-func TestStopWakePendingAcceptsOnlyStopCapableEnabledSources(t *testing.T) {
-	c, b, _ := newTestController(t)
+func TestExternalRequestCanBeConsumedWithoutLatchingIF(t *testing.T) {
+	b := bus.New(nil, nil)
+	sink := &testLineSink{}
+	var got Source
+	c := NewWithHooks(b, sink, Hooks{
+		ExternalRequest: func(source Source) bool {
+			got = source
+			return true
+		},
+	})
 
-	ordinary := VBlank | Timer0 | DMA3
-	b.Write16(bus.IOStart+ieOffset, uint16(ordinary|Serial|Keypad|GamePak), bus.Access{})
-	c.Request(ordinary)
-	if c.StopWakePending() {
-		t.Fatal("ordinary enabled requests unexpectedly qualified for STOP wake")
+	b.Write16(bus.IOStart+ieOffset, uint16(Keypad), bus.Access{})
+	c.RequestExternal(Keypad)
+	if got != Keypad {
+		t.Fatalf("consumed external source = %04x, want Keypad", got)
+	}
+	if c.IF() != 0 {
+		t.Fatalf("consumed STOP wake latched IF = %04x, want 0000", c.IF())
+	}
+	if c.IRQAsserted() || sink.line {
+		t.Fatal("consumed STOP wake asserted normal IRQ state")
+	}
+}
+
+func TestExternalRequestFallsBackToNormalIRQWhenNotConsumed(t *testing.T) {
+	b := bus.New(nil, nil)
+	sink := &testLineSink{}
+	c := NewWithHooks(b, sink, Hooks{
+		ExternalRequest: func(Source) bool { return false },
+	})
+
+	b.Write16(bus.IOStart+ieOffset, uint16(GamePak), bus.Access{})
+	c.RequestExternal(GamePak)
+	if c.IF() != uint16(GamePak) {
+		t.Fatalf("running external request IF = %04x, want GamePak", c.IF())
 	}
 	if !c.EnabledPending() {
-		t.Fatal("ordinary requests should still qualify for HALT wake")
+		t.Fatal("running external request did not enter ordinary IRQ path")
 	}
+}
 
-	for _, source := range []Source{Serial, Keypad, GamePak} {
-		c.Reset()
-		b.Write16(bus.IOStart+ieOffset, uint16(source), bus.Access{})
-		c.Request(source)
-		if !c.StopWakePending() {
-			t.Fatalf("%v did not qualify for STOP wake", source)
-		}
-		if c.IRQAsserted() {
-			t.Fatalf("%v STOP wake incorrectly required/asserted IME", source)
-		}
-	}
-
-	c.Reset()
-	c.Request(Keypad)
-	if c.StopWakePending() {
-		t.Fatal("disabled Keypad IF unexpectedly qualified for STOP wake")
+func TestExternalRequestMasksNonStopSources(t *testing.T) {
+	c, _, _ := newTestController(t)
+	c.RequestExternal(Timer0 | DMA3)
+	if c.IF() != 0 {
+		t.Fatalf("non-STOP external sources latched IF = %04x, want 0000", c.IF())
 	}
 }

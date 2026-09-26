@@ -41,12 +41,13 @@ type LineSink interface {
 }
 
 // Hooks exposes interrupt qualification changes to scheduler-owned systems.
-// Evaluate is called whenever IE, IF, or IME changes. When DeferLine is true,
-// the controller leaves IRQ-line delivery to that scheduler; standalone users
-// retain the immediate line behavior.
+// Evaluate is called whenever IE, IF, or IME changes. ExternalRequest can
+// consume an asynchronous STOP-capable signal before IF is latched. When
+// DeferLine is true, the controller leaves IRQ-line delivery to the scheduler.
 type Hooks struct {
-	Evaluate  func(enabledPending bool, irqAsserted bool)
-	DeferLine bool
+	Evaluate        func(enabledPending bool, irqAsserted bool)
+	ExternalRequest func(source Source) bool
+	DeferLine       bool
 }
 
 // Controller owns IE, IF, and IME and resolves them to the CPU IRQ line.
@@ -134,6 +135,21 @@ func (c *Controller) Request(source Source) {
 	c.updateLine()
 }
 
+// RequestExternal reports an asynchronous STOP-capable hardware signal.
+// Scheduler-owned integrations may consume it while the system clock is
+// stopped; consumed signals do not latch IF. When the clock is running, the
+// signal falls back to an ordinary interrupt request.
+func (c *Controller) RequestExternal(source Source) {
+	source &= StopWakeSources
+	if source == 0 {
+		return
+	}
+	if c.hooks.ExternalRequest != nil && c.hooks.ExternalRequest(source) {
+		return
+	}
+	c.Request(source)
+}
+
 // Reset clears IE, IF, and IME and deasserts the CPU IRQ line.
 func (c *Controller) Reset() {
 	c.ie = 0
@@ -160,12 +176,6 @@ func (c *Controller) EnabledPending() bool {
 // EnabledPendingMask returns the currently qualified IE & IF source bits.
 func (c *Controller) EnabledPendingMask() uint16 {
 	return c.ie & c.flags
-}
-
-// StopWakePending reports the stricter STOP wake condition. Only Serial,
-// Keypad, and Game Pak requests can restart the stopped system clock.
-func (c *Controller) StopWakePending() bool {
-	return c.EnabledPendingMask()&uint16(StopWakeSources) != 0
 }
 
 // IRQAsserted reports the controller's resolved output level.
