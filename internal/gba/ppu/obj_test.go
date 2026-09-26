@@ -56,6 +56,52 @@ func setOBJAffineParams(b *bus.Bus, group int, pa, pb, pc, pd int16) {
 	putOAM16(oam, base+30, uint16(pd))
 }
 
+
+func TestOBJScanlineCacheMatchesLegacySampling(t *testing.T) {
+	p, b := newTestPPU(t, Hooks{})
+	disableAllOBJ(b)
+
+	setOBJPaletteColor(b, 1, 0x001f)
+	setOBJPaletteColor(b, 2, 0x03e0)
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			setOBJ4bppPixel(b, 0, x, y, 1)
+			setOBJ4bppPixel(b, 1, x, y, 2)
+			setOBJ4bppPixel(b, 2, x, y, 1)
+		}
+	}
+
+	// Normal overlapping OBJs exercise lower-OAM-index priority.
+	setOBJAttrs(b, 3, 0, 4, 0)
+	setOBJAttrs(b, 7, 0, 4, 1|(3<<10))
+	// Wrapped OBJ exercises the 9-bit X coordinate.
+	setOBJAttrs(b, 11, 0, 508, 0)
+	// OBJ-window coverage is cached independently from visible OBJ pixels.
+	setOBJAttrs(b, 15, 2<<10, 20, 2)
+
+	b.Write16(bus.IOStart+dispCNTOffset, dispOBJEnable|dispOBJWINEnable, bus.Access{})
+
+	const y = 0
+	const mode = uint16(0)
+	var wantOBJ [ScreenWidth]objSample
+	var wantWindow [ScreenWidth]bool
+	for x := 0; x < ScreenWidth; x++ {
+		wantOBJ[x] = p.objPixel(x, y, mode)
+		wantWindow[x] = p.objWindowPixel(x, y, mode)
+	}
+
+	p.prepareOBJLine(y, mode)
+	defer func() { p.objLineValid = false }()
+	for x := 0; x < ScreenWidth; x++ {
+		if got := p.objLine[x]; got != wantOBJ[x] {
+			t.Fatalf("cached OBJ x=%d = %+v, want %+v", x, got, wantOBJ[x])
+		}
+		if got := p.objWindowLine[x]; got != wantWindow[x] {
+			t.Fatalf("cached OBJ-window x=%d = %v, want %v", x, got, wantWindow[x])
+		}
+	}
+}
+
 func TestOBJ4bppPaletteBank(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
 	disableAllOBJ(b)
