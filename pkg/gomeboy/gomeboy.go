@@ -20,6 +20,7 @@ package gomeboy
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/io"
@@ -40,6 +41,8 @@ const (
 	ButtonDown
 	ButtonLeft
 	ButtonRight
+	ButtonL
+	ButtonR
 )
 
 // buttonMap maps a public Button to the internal io.Button it corresponds to.
@@ -113,6 +116,13 @@ type Emulator struct {
 	// expose system-specific debugger, serial, cartridge, and model details.
 	// Core-neutral lifecycle/frame/state/memory APIs must go through core.
 	gb *gameboy.GameBoy
+
+	newGBCore  func() *gameBoyCore
+	newGBACore func() *gbaCore
+	paused     bool
+	initialised bool
+	speed      int
+	headless   bool
 
 	// Optional agent/debug tooling. Both are inert unless explicitly enabled.
 	flight         *FlightRecorder
@@ -216,70 +226,109 @@ func New(opts ...Option) (*Emulator, error) {
 		o(cfg)
 	}
 
-	var gbOpts []gameboy.Opt
+	var bootROM []byte
 	if cfg.bootROM != "" {
-		bootROM, err := utils.LoadFile(cfg.bootROM)
+		var err error
+		bootROM, err = utils.LoadFile(cfg.bootROM)
 		if err != nil {
 			return nil, err
 		}
-		gbOpts = append(gbOpts, gameboy.WithBootROM(bootROM))
 	}
 
-	// appended after WithBootROM so an explicit model overrides the model
-	// detected from the boot ROM
-	if cfg.model != ModelAuto {
+	var gbOpts []gameboy.Opt
+	if len(bootROM) != 0 {
+		gbOpts = append(gbOpts, gameboy.WithBootROM(bootROM))
+	}
+	if cfg.model != ModelAuto && cfg.model != ModelAGB {
 		internal, ok := modelMap[cfg.model]
 		if !ok {
 			return nil, fmt.Errorf("gomeboy: unknown model %q: use auto, DMG0, DMG, CGB0, CGB, MGB, SGB, SGB2, or AGB", cfg.model)
 		}
 		gbOpts = append(gbOpts, gameboy.AsModel(internal))
 	}
-
 	if cfg.printer {
 		gbOpts = append(gbOpts, gameboy.WithPrinter())
 	}
 	if cfg.noVideo {
 		gbOpts = append(gbOpts, gameboy.WithoutVideoOutput())
 	}
-
 	if cfg.cheats != "" {
 		gbOpts = append(gbOpts, gameboy.WithCheats(cfg.cheats))
 	}
-
 	if cfg.saves {
 		gbOpts = append(gbOpts, gameboy.WithSaveDir(cfg.saveDir))
 	} else {
 		gbOpts = append(gbOpts, gameboy.WithoutSaves())
 	}
 
-	gb := gameboy.NewGameBoy(gbOpts...)
-	e := newEmulatorWithCore(&gameBoyCore{gb: gb})
-	e.gb = gb
+	e := &Emulator{speed: 1, headless: cfg.headless}
+	e.newGBCore = func() *gameBoyCore {
+		return &gameBoyCore{gb: gameboy.NewGameBoy(gbOpts...)}
+	}
+	e.newGBACore = func() *gbaCore {
+		return newGBACore(bootROM)
+	}
 
-	// romName is only ever set by WithROMBytes, so it records whether an
-	// in-memory ROM was supplied (possibly empty, which is an error).
+	wantsGBA := cfg.model == ModelAGB || isGBAROMPath(cfg.romPath)
+	if isGBAROMPath(cfg.romPath) && cfg.model != ModelAuto && cfg.model != ModelAGB {
+		return nil, fmt.Errorf("gomeboy: .gba ROM requires model auto or AGB, got %s", cfg.model)
+	}
+	if wantsGBA && cfg.printer {
+		return nil, fmt.Errorf("gomeboy: Game Boy Printer is not supported by the GBA core")
+	}
+	if wantsGBA && cfg.cheats != "" {
+		return nil, fmt.Errorf("gomeboy: cheats are not supported by the GBA core yet")
+	}
+
+	if wantsGBA {
+		e.setCore(e.newGBACore())
+	} else {
+		e.setCore(e.newGBCore())
+	}
+
 	if cfg.romName != "" {
 		if err := e.core.LoadROMBytes(cfg.romBytes, cfg.romName); err != nil {
 			return nil, err
 		}
+		e.initialised = true
 	} else if cfg.romPath != "" {
 		if err := e.LoadROM(cfg.romPath); err != nil {
 			return nil, err
 		}
 	}
-
 	if cfg.headless {
-		e.gb.APU.SetHeadless(true)
+		if a, ok := e.core.(interface{ SetHeadless(bool) }); ok {
+			a.SetHeadless(true)
+		}
 	}
-
 	return e, nil
+}
+
+func isGBAROMPath(path string) bool {
+	return filepath.Ext(path) == ".gba" || filepath.Ext(path) == ".GBA"
+}
+
+func (e *Emulator) setCore(core emulationCore) {
+	e.core = core
+	e.gb = nil
+	if gbCore, ok := core.(*gameBoyCore); ok {
+		e.gb = gbCore.gb
+	}
+	if e.headless {
+		if a, ok := core.(interface{ SetHeadless(bool) }); ok {
+			a.SetHeadless(true)
+		}
+	}
 }
 
 // Model returns the hardware model the emulator is emulating. When ModelAuto
 // is in effect (the default), this is the model inferred from the loaded
 // cartridge, or ModelAuto before a ROM has been loaded.
 func (e *Emulator) Model() Model {
-	if e.gb.Bus == nil {
+	if e != nil && e.core != nil && e.core.CoreID() == "gba" {
+		return ModelAGB
+	}
+	if e == nil || e.gb == nil || e.gb.Bus == nil {
 		return ModelAuto
 	}
 	if m, ok := publicModelMap[e.gb.Bus.Model()]; ok {
@@ -290,24 +339,56 @@ func (e *Emulator) Model() Model {
 
 // LoadROM loads a ROM from disk and (re)initializes the emulator.
 func (e *Emulator) LoadROM(path string) error {
-	return e.core.LoadROM(path)
+	if e == nil {
+		return fmt.Errorf("gomeboy: nil emulator")
+	}
+	wantsGBA := isGBAROMPath(path)
+	if wantsGBA && (e.core == nil || e.core.CoreID() != "gba") {
+		if e.newGBACore == nil {
+			return fmt.Errorf("gomeboy: GBA core is unavailable")
+		}
+		e.setCore(e.newGBACore())
+	} else if !wantsGBA && e.core != nil && e.core.CoreID() == "gba" {
+		if e.newGBCore == nil {
+			return fmt.Errorf("gomeboy: GB core is unavailable")
+		}
+		e.setCore(e.newGBCore())
+	}
+	if err := e.core.LoadROM(path); err != nil {
+		e.initialised = false
+		return err
+	}
+	e.initialised = true
+	return nil
 }
 
 // LoadROMBytes loads an in-memory ROM image and (re)initializes the emulator.
 // name is used for save/state file naming and may be empty.
 func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
-	return e.core.LoadROMBytes(rom, name)
+	if e == nil || e.core == nil {
+		return fmt.Errorf("gomeboy: emulator core is not initialized")
+	}
+	if err := e.core.LoadROMBytes(rom, name); err != nil {
+		e.initialised = false
+		return err
+	}
+	e.initialised = true
+	return nil
 }
 
 // Press presses a joypad button.
 func (e *Emulator) Press(b Button) {
-	e.gb.Bus.Press(buttonMap[b])
+	if input, ok := e.core.(interface{ Press(Button) }); ok {
+		input.Press(b)
+	}
 	e.recordInputEvent(b, true)
 }
 
 // Release releases a joypad button.
 func (e *Emulator) Release(b Button) {
-	e.gb.Bus.Release(buttonMap[b])
+	if input, ok := e.core.(interface{ Release(Button) }); ok {
+		input.Release(b)
+	}
 	e.recordInputEvent(b, false)
 }
 
@@ -344,7 +425,8 @@ func (e *Emulator) Cycle() uint64 {
 // region locks, so it is not a pure observation of memory. Use Peek8 or
 // PeekInto to observe memory without side effects.
 func (e *Emulator) Read8(addr uint16) byte {
-	return e.gb.Bus.Read(addr)
+	value, _ := e.Read8At(uint32(addr))
+	return value
 }
 
 // Read performs CPU-accurate reads of length bytes starting at addr from the
@@ -360,9 +442,7 @@ func (e *Emulator) Read(addr uint16, length int) []byte {
 // ReadInto performs CPU-accurate reads into dst without allocating. Reads can
 // be affected by DMA conflicts and PPU region locks, just like Read8 and Read.
 func (e *Emulator) ReadInto(addr uint16, dst []byte) {
-	for i := range dst {
-		dst[i] = e.gb.Bus.Read(addr + uint16(i))
-	}
+	_ = e.ReadIntoAt(uint32(addr), dst)
 }
 
 // Frame returns the most recently rendered frame as a zero-copy view.
