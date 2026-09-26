@@ -273,6 +273,9 @@ func New(opts ...Option) (*Emulator, error) {
 	if isGBAROMPath(cfg.romPath) && cfg.model != ModelAuto && cfg.model != ModelAGB {
 		return nil, fmt.Errorf("gomeboy: .gba ROM requires model auto or AGB, got %s", cfg.model)
 	}
+	if wantsGBA && len(bootROM) != 0 && len(bootROM) != 0x4000 {
+		return nil, fmt.Errorf("gomeboy: GBA BIOS must be exactly 16 KiB, got %d bytes", len(bootROM))
+	}
 	if wantsGBA && cfg.printer {
 		return nil, fmt.Errorf("gomeboy: Game Boy Printer is not supported by the GBA core")
 	}
@@ -367,6 +370,15 @@ func (e *Emulator) LoadROM(path string) error {
 func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
 	if e == nil || e.core == nil {
 		return fmt.Errorf("gomeboy: emulator core is not initialized")
+	}
+	wantsGBA := isGBAROMPath(name)
+	if wantsGBA && e.core.CoreID() != "gba" {
+		if e.newGBACore == nil {
+			return fmt.Errorf("gomeboy: GBA core is unavailable")
+		}
+		e.setCore(e.newGBACore())
+	} else if !wantsGBA && e.core.CoreID() == "gba" && e.newGBCore != nil && filepath.Ext(name) != "" {
+		e.setCore(e.newGBCore())
 	}
 	if err := e.core.LoadROMBytes(rom, name); err != nil {
 		e.initialised = false
