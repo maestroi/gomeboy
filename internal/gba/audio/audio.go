@@ -98,6 +98,7 @@ type Audio struct {
 	controlHigh uint16
 	soundBias   uint16
 	channel     [2]directSoundChannel
+	psg         psgState
 
 	outputMu  sync.Mutex
 	buffer    []float32
@@ -114,6 +115,7 @@ func New(b *bus.Bus, hooks Hooks) *Audio {
 	}
 	a := &Audio{bus: b, hooks: hooks, soundBias: defaultSoundBias, buffer: make([]float32, outputBufferSize)}
 	a.install(b.IO())
+	a.installPSG(b.IO())
 	return a
 }
 
@@ -201,15 +203,30 @@ func (a *Audio) TimerOverflow(timer int, count uint32) {
 // Sound latches themselves are updated by TimerOverflow; this method only
 // samples those latches into the host-rate stereo buffer.
 func (a *Audio) Advance(cycles uint32) {
-	if cycles == 0 {
-		return
-	}
-	a.samplePhase += uint64(cycles) * SampleRate
-	for a.samplePhase >= masterClockHz {
-		a.samplePhase -= masterClockHz
-		if !a.headless {
-			left, right := a.mixDirectSound()
-			a.appendSample(left, right)
+	remaining := uint64(cycles)
+	for remaining > 0 {
+		untilSample := (masterClockHz - a.samplePhase + SampleRate - 1) / SampleRate
+		step := remaining
+		if untilSample < step {
+			step = untilSample
+		}
+		if a.psg.enabled {
+			untilFrame := psgFramePeriod - a.psg.frameCycles
+			if untilFrame < step {
+				step = untilFrame
+			}
+		}
+
+		a.advancePSG(step)
+		a.samplePhase += step * SampleRate
+		remaining -= step
+
+		if a.samplePhase >= masterClockHz {
+			a.samplePhase -= masterClockHz
+			if !a.headless {
+				left, right := a.mixOutput()
+				a.appendSample(left, right)
+			}
 		}
 	}
 }
@@ -231,6 +248,29 @@ func (a *Audio) mixDirectSound() (float32, float32) {
 			right += sample
 		}
 	}
+	return a.applyBias(left), a.applyBias(right)
+}
+
+func (a *Audio) mixOutput() (float32, float32) {
+	var left, right int32
+	for index := range a.channel {
+		sample := int32(a.channel[index].current) << 2
+		if (index == 0 && a.controlHigh&controlVolumeA == 0) ||
+			(index == 1 && a.controlHigh&controlVolumeB == 0) {
+			sample >>= 1
+		}
+		if (index == 0 && a.controlHigh&controlALeft != 0) ||
+			(index == 1 && a.controlHigh&controlBLeft != 0) {
+			left += sample
+		}
+		if (index == 0 && a.controlHigh&controlARight != 0) ||
+			(index == 1 && a.controlHigh&controlBRight != 0) {
+			right += sample
+		}
+	}
+	psgLeft, psgRight := a.mixPSG()
+	left += psgLeft
+	right += psgRight
 	return a.applyBias(left), a.applyBias(right)
 }
 
@@ -294,7 +334,7 @@ func (a *Audio) SetMute(mute bool) {
 
 // CurrentOutput returns the current routed, volume-scaled Direct Sound mix.
 func (a *Audio) CurrentOutput() (left, right float32) {
-	return a.mixDirectSound()
+	return a.mixOutput()
 }
 
 // SoundBias returns the masked SOUNDBIAS register state.
@@ -351,6 +391,9 @@ func (a *Audio) Reset() {
 	a.controlHigh = 0
 	a.soundBias = defaultSoundBias
 	a.channel = [2]directSoundChannel{}
+	waveRAM := a.psg.wave.ram
+	a.psg = psgState{}
+	a.psg.wave.ram = waveRAM
 	a.samplePhase = 0
 	a.outputMu.Lock()
 	a.bufferPos = 0
