@@ -223,3 +223,29 @@ func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
 		t.Fatalf("cycle after CPU-programmed DMA = %d, want 7", m.Cycle())
 	}
 }
+
+func TestDisableAndReenableDMAResetsStartLatency(t *testing.T) {
+	m := New(nil, nil)
+
+	source := uint32(bus.IWRAMStart + 0x1d00)
+	dest := uint32(bus.IWRAMStart + 0x1e00)
+	m.Bus.Write16(source, 0x1234, bus.Access{})
+	base := uint32(bus.IOStart + 0x0b0)
+	m.Bus.Write32(base, source, bus.Access{})
+	m.Bus.Write32(base+4, dest, bus.Access{})
+	m.Bus.Write16(base+8, 1, bus.Access{})
+
+	m.Bus.Write16(base+10, 1<<15, bus.Access{}) // due at cycle 2
+	m.Advance(1)
+	m.Bus.Write16(base+10, 0, bus.Access{})     // cancel old request at cycle 1
+	m.Bus.Write16(base+10, 1<<15, bus.Access{}) // new deadline is cycle 3
+
+	m.Advance(1)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("re-enabled DMA inherited old deadline: %04x", got)
+	}
+	m.Advance(1)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0x1234 {
+		t.Fatalf("re-enabled DMA missed fresh deadline: %04x", got)
+	}
+}
