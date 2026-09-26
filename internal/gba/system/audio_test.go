@@ -84,3 +84,22 @@ func TestDirectSoundTimerSelectionUsesTimer1ForFIFOB(t *testing.T) {
 		t.Fatalf("FIFO B sample = %d, want 5", got)
 	}
 }
+
+
+func TestDirectSoundMixerAdvancesOnSystemClock(t *testing.T) {
+	m := New(nil, nil)
+
+	m.Bus.Write8(bus.IOStart+0x0a0, 0x40, bus.Access{})
+	// FIFO A full volume to both outputs. Keep empty FIFO B on timer 1.
+	m.Bus.Write16(bus.IOStart+0x082, (1<<2)|(1<<8)|(1<<9)|(1<<14), bus.Access{})
+	m.Audio.TimerOverflow(0, 1)
+
+	m.Advance(175)
+	samples, count := m.Audio.Samples()
+	if count != 2 || len(samples) != 2 {
+		t.Fatalf("system clock produced %d audio values, want one stereo frame", count)
+	}
+	if samples[0] != 0.5 || samples[1] != 0.5 {
+		t.Fatalf("system mixer sample = %v, want [0.5 0.5]", samples)
+	}
+}
