@@ -446,3 +446,29 @@ func TestPublicOptionsModelAndBoot(t *testing.T) {
 		t.Errorf("PublicOptions = %d options, want 2 (boot ROM and model)", len(opts))
 	}
 }
+
+
+func TestDesktopOptionsLaunchGBAWithoutImplicitCheats(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	romPath := filepath.Join(dir, "frontend.gba")
+	if err := os.WriteFile(romPath, []byte{0xfe, 0xff, 0xff, 0xea}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A same-basename cheats file is historically auto-loaded for GB/GBC.
+	// GBA must not inherit that GB-only convention.
+	if err := os.WriteFile(filepath.Join(dir, "frontend.cheats"), []byte("invalid for gba"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	o := &Options{ROM: romPath, Model: gomeboy.ModelAuto}
+	opts := append(o.DesktopOptions(), gomeboy.WithROM(romPath), gomeboy.Headless())
+	e, err := gomeboy.New(opts...)
+	if err != nil {
+		t.Fatalf("GBA desktop options: %v", err)
+	}
+	defer e.Close()
+	if got := e.Model(); got != gomeboy.ModelAGB {
+		t.Fatalf("model = %s, want AGB", got)
+	}
+}
