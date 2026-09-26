@@ -58,10 +58,11 @@ type Machine struct {
 	irqScheduled bool
 	haltWakeSeq  uint64
 
-	halted        bool
-	stopped       bool
-	stopPending   bool
-	stopRequested bool
+	halted         bool
+	stopped        bool
+	stopPending    bool
+	stopWakePending bool
+	stopRequested  bool
 }
 
 // New creates a wired GBA timing domain around owned BIOS/ROM bus storage.
@@ -70,8 +71,9 @@ func New(bios, rom []byte) *Machine {
 	m.Bus = bus.New(bios, rom)
 	m.CPU = cpu.New()
 	m.IRQ = gbairq.NewWithHooks(m.Bus, m.CPU, gbairq.Hooks{
-		Evaluate:  m.evaluateIRQ,
-		DeferLine: true,
+		Evaluate:        m.evaluateIRQ,
+		ExternalRequest: m.handleExternalIRQ,
+		DeferLine:       true,
 	})
 	m.Power = power.New(m.Bus, power.Hooks{
 		BIOSAccess: func() bool {
@@ -132,15 +134,17 @@ func (m *Machine) Step() (StepResult, error) {
 	wasHalted := m.halted
 
 	if wasStopped {
-		// STOP freezes the system clock completely. Only enabled Serial, Keypad,
-		// or Game Pak requests can restart it. Once a valid source appears, resume
-		// the clock but keep the CPU asleep until the normal IRQ propagation event.
-		if m.IRQ.StopWakePending() {
+		// STOP-capable external signals are sampled outside the stopped system
+		// clock. If their IE bit is enabled they restart the oscillator, but the
+		// wake signal itself does not set IF on GBA hardware.
+		if m.stopWakePending {
+			m.stopWakePending = false
 			m.stopped = false
-			m.halted = true
-			m.scheduleIRQEvent()
-			if m.halted {
-				m.advanceHaltedEvent()
+			m.haltWakeSeq++
+			// Any IF bits that predated STOP begin normal IRQ propagation only now,
+			// after the system clock has restarted.
+			if m.IRQ.EnabledPending() {
+				m.scheduleIRQEvent()
 			}
 		}
 		return StepResult{
@@ -217,17 +221,15 @@ func (m *Machine) requestStop() {
 
 func (m *Machine) enterStop() {
 	m.stopPending = false
+	m.stopWakePending = false
 	m.halted = false
 	m.stopped = true
 
-	// STOP discards ordinary in-flight IRQ propagation. A STOP-capable request
-	// starts a fresh propagation event once it exists, while the CPU IRQ input
-	// itself remains low until that event is delivered.
+	// STOP freezes the interrupt controller clock as well. Existing IF state is
+	// preserved but cannot propagate until an external STOP wake signal restarts
+	// the clock.
 	m.irqScheduled = false
 	m.CPU.SetIRQLine(false)
-	if m.IRQ.StopWakePending() {
-		m.scheduleIRQEvent()
-	}
 }
 
 func (m *Machine) evaluateIRQ(enabledPending bool, irqAsserted bool) {
@@ -241,16 +243,26 @@ func (m *Machine) evaluateIRQ(enabledPending bool, irqAsserted bool) {
 	}
 
 	if m.stopped {
-		// STOP ignores ordinary interrupt sources. The stopped oscillator means
-		// their propagation cannot make progress until a permitted wake source
-		// (Serial, Keypad, or Game Pak) is enabled and pending.
-		if m.IRQ != nil && m.IRQ.StopWakePending() {
-			m.scheduleIRQEvent()
-		}
+		// IF/IE state cannot restart STOP. Wake comes from a separate external
+		// Keypad/Game Pak/general-purpose-SIO signal path.
 		return
 	}
 
 	m.scheduleIRQEvent()
+}
+
+func (m *Machine) handleExternalIRQ(source gbairq.Source) bool {
+	if !m.stopped {
+		return false
+	}
+
+	// RequestExternal already masks to StopWakeSources. While STOP is active,
+	// the signal is consumed without latching IF. It only arms wake when the
+	// corresponding source is enabled in IE.
+	if m.IRQ != nil && m.IRQ.IE()&uint16(source) != 0 {
+		m.stopWakePending = true
+	}
+	return true
 }
 
 func (m *Machine) scheduleIRQEvent() {
