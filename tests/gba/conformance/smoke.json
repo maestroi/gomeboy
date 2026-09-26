@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "suite": "gomeboy-gba-smoke",
+  "suite_revision": "1",
+  "tests": [
+    {
+      "name": "arm-memory-signature",
+      "rom": "roms/arm-memory-signature.gba",
+      "rom_sha256": "763aaab9e27ddf6a73c36d850ae20e39047181489bba2a70234558a8b551fb02",
+      "boot": {
+        "mode": "direct",
+        "entry_point": "0x08000000"
+      },
+      "limits": {
+        "steps": 16,
+        "cycles": 512
+      },
+      "pass_all": [
+        {
+          "type": "memory",
+          "address": "0x02000000",
+          "width": 4,
+          "value": "0x47424d47"
+        }
+      ]
+    }
+  ]
+}

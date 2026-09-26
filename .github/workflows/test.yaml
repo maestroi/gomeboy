@@ -46,6 +46,15 @@ jobs:
         run: go mod download
       - name: test GBA core packages
         run: go test ./internal/gba/...
+      - name: run GBA conformance smoke
+        run: go run ./cmd/gba-conformance -manifest tests/gba/conformance/smoke.json -output gba-conformance.json -commit "$GITHUB_SHA"
+      - name: upload GBA conformance result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gba-conformance
+          path: gba-conformance.json
+          if-no-files-found: ignore
 
   memory_safety:
     runs-on: ubuntu-latest
