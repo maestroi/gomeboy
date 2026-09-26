@@ -201,3 +201,38 @@ func (c *gameBoyCore) RestoreCheckpoint(src any) error {
 	c.gb.Restore(*state)
 	return nil
 }
+
+
+func (c *gameBoyCore) Press(button Button) {
+	if int(button) >= len(buttonMap) {
+		return
+	}
+	c.gb.Bus.Press(buttonMap[button])
+}
+
+func (c *gameBoyCore) Release(button Button) {
+	if int(button) >= len(buttonMap) {
+		return
+	}
+	c.gb.Bus.Release(buttonMap[button])
+}
+
+func (c *gameBoyCore) Samples() ([]float32, uint32) {
+	if c.gb == nil || c.gb.APU == nil {
+		return nil, 0
+	}
+	return c.gb.APU.Samples()
+}
+
+func (c *gameBoyCore) SetHeadless(headless bool) {
+	if c.gb != nil && c.gb.APU != nil {
+		c.gb.APU.SetHeadless(headless)
+	}
+}
+
+func (c *gameBoyCore) ToggleMute() bool {
+	if c.gb == nil {
+		return false
+	}
+	return c.gb.ToggleMute()
+}
