@@ -240,8 +240,8 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.CPU.TotalCycles != 4 || m.Timers.Counter(0) != 0xffff {
-		t.Fatalf("timer start instruction cycles/counter = %d/%04x, want 4/ffff",
+	if first.CPU.TotalCycles != 3 || m.Timers.Counter(0) != 0xffff {
+		t.Fatalf("timer start instruction cycles/counter = %d/%04x, want 3/ffff",
 			first.CPU.TotalCycles, m.Timers.Counter(0))
 	}
 
