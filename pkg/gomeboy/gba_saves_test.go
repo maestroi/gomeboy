@@ -139,3 +139,83 @@ func TestGBALoadRejectsSaveForWrongHardwareSize(t *testing.T) {
 		t.Fatal("LoadROMBytes accepted a 64 KiB save for 128 KiB flash")
 	}
 }
+
+func gbaRTCWriteReg(core *gbaCore, addr uint32, value byte) {
+	core.machine.Bus.Write16(addr, uint16(value), bus.Access{})
+}
+
+func gbaRTCWriteCommand(core *gbaCore, command byte) {
+	gbaRTCWriteReg(core, bus.GPIOControlAddress, 1)
+	gbaRTCWriteReg(core, bus.GPIODirectionAddress, 0x7)
+	gbaRTCWriteReg(core, bus.GPIODataAddress, 0x1)
+	gbaRTCWriteReg(core, bus.GPIODataAddress, 0x5)
+	for bit := 7; bit >= 0; bit-- {
+		value := byte(0x4 | ((command>>uint(bit))&1)<<1)
+		gbaRTCWriteReg(core, bus.GPIODataAddress, value)
+		gbaRTCWriteReg(core, bus.GPIODataAddress, value|1)
+	}
+}
+
+func gbaRTCWriteBytes(core *gbaCore, data []byte) {
+	gbaRTCWriteReg(core, bus.GPIODirectionAddress, 0x7)
+	for bit := 0; bit < len(data)*8; bit++ {
+		value := byte(0x4 | ((data[bit>>3]>>uint(bit&7))&1)<<1)
+		gbaRTCWriteReg(core, bus.GPIODataAddress, value)
+		gbaRTCWriteReg(core, bus.GPIODataAddress, value|1)
+	}
+}
+
+func TestGBARTCFooterPersistsWithSave(t *testing.T) {
+	dir := t.TempDir()
+	rom := gbaROMWithMarker("FLASH1M_V103 ... SIIRTC_V001")
+
+	first, err := New(Headless(), WithSaveDir(dir))
+	if err == nil {
+		err = first.LoadROMBytes(rom, "rtc.gba")
+	}
+	if err != nil {
+		t.Fatalf("first emulator: %v", err)
+	}
+	core := gbaMachine(t, first)
+	if core.machine.Cartridge.GPIO == nil || core.machine.Cartridge.GPIO.RTC() == nil {
+		t.Fatal("RTC marker did not attach GPIO RTC")
+	}
+
+	// Write a non-default control value through the serial GPIO protocol so the
+	// restart verifies RTC state rather than merely footer length.
+	gbaRTCWriteCommand(core, 0x62)
+	gbaRTCWriteBytes(core, []byte{0x08})
+	if got := core.machine.Cartridge.GPIO.RTC().Control(); got != 0x08 {
+		t.Fatalf("pre-close RTC control = %02x, want 08", got)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+
+	path := filepath.Join(dir, "rtc.sav")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	wantSize := cartridge.Flash128KSize + cartridge.RTCFooterSize
+	if len(data) != wantSize {
+		t.Fatalf("RTC save size = %d, want %d", len(data), wantSize)
+	}
+
+	second, err := New(Headless(), WithSaveDir(dir))
+	if err == nil {
+		err = second.LoadROMBytes(rom, "rtc.gba")
+	}
+	if err != nil {
+		t.Fatalf("second emulator: %v", err)
+	}
+	defer second.Close()
+
+	rtc := gbaMachine(t, second).machine.Cartridge.GPIO.RTC()
+	if rtc == nil {
+		t.Fatal("reloaded cartridge has no RTC")
+	}
+	if got := rtc.Control(); got != 0x08 {
+		t.Fatalf("reloaded RTC control = %02x, want 08", got)
+	}
+}
