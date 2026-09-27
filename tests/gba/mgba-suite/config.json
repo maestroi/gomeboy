@@ -12,7 +12,11 @@
       "expected_total": 1552,
       "enabled": true,
       "step_limit": 50000000,
-      "baseline": { "passed": 1304, "failed": 248, "total": 1552 }
+      "baseline": {
+        "passed": 1304,
+        "failed": 248,
+        "total": 1552
+      }
     },
     {
       "id": "io-read",
@@ -21,7 +25,11 @@
       "expected_total": 123,
       "enabled": true,
       "step_limit": 10000000,
-      "baseline": { "passed": 29, "failed": 94, "total": 123 }
+      "baseline": {
+        "passed": 29,
+        "failed": 94,
+        "total": 123
+      }
     },
     {
       "id": "timing",
@@ -36,21 +44,24 @@
       "name": "Timer count-up tests",
       "menu_index": 3,
       "expected_total": 936,
-      "enabled": false
+      "enabled": true,
+      "step_limit": 30000000
     },
     {
       "id": "timer-irq",
       "name": "Timer IRQ tests",
       "menu_index": 4,
       "expected_total": 90,
-      "enabled": false
+      "enabled": true,
+      "step_limit": 30000000
     },
     {
       "id": "dma",
       "name": "DMA tests",
       "menu_index": 9,
       "expected_total": 1256,
-      "enabled": false
+      "enabled": true,
+      "step_limit": 50000000
     }
   ]
 }
