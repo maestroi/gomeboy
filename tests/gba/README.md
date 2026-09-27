@@ -114,3 +114,48 @@ intentionally spends roughly 1,900 emulated frames in its splash/fade path
 before the menu. Realtime host performance is tracked separately from
 compatibility; a correct compatibility result does not imply the emulator is
 already sustaining the GBA's ~59.7 Hz realtime rate.
+
+
+# mGBA hardware conformance
+
+`cmd/gba-mgba-suite` adapts the upstream MIT-licensed
+`mgba-emu/suite` ROM into deterministic headless category reports. The first
+pinned target is **v0-r76**, corresponding to upstream source commit
+`7320640f9aad4e48418324d1243cb4402a03cfaa`.
+
+The upstream ROM is not committed. Fetch the immutable release with:
+
+```sh
+bash tests/gba/mgba-suite/fetch-suite.sh
+```
+
+Then run the enabled categories with:
+
+```sh
+go run ./cmd/gba-mgba-suite \
+  -config tests/gba/mgba-suite/config.json \
+  -rom tests/gba/mgba-suite/roms/suite.gba \
+  -output gba-mgba-suite.json \
+  -markdown gba-mgba-suite.md
+```
+
+The adapter drives the stock suite menu through KEYINPUT and consumes the
+suite's existing SRAM log. No test expectations are embedded in GomeBoy's
+hardware implementation. For BIOS-less CI, the adapter supplies only the suite
+UI/copy SWIs required by these categories (`VBlankIntrWait`, `CpuSet`, and
+`CpuFastSet`); that HLE is test-harness-only and is not part of the emulator
+core.
+
+Each category is tracked separately with exact passed/failed/total counts. A
+checked-in baseline has xfail-style behavior:
+
+- fewer passes / more failures => regression and CI failure;
+- more passes / fewer failures => XPASS and CI failure until the baseline is
+  intentionally reviewed and updated;
+- identical counts => expected;
+- disabled categories => `not-run`, never counted as passes or failures.
+
+The category rollout is explicit in `tests/gba/mgba-suite/config.json`:
+memory and I/O first, then timing, timer count/IRQ, and DMA. Generated JSON and
+Markdown reports keep these hardware-accuracy results separate from the
+compatibility matrix.
