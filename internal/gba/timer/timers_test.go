@@ -126,6 +126,42 @@ func TestTimerReloadByteWritesMergeAgainstReloadNotCounter(t *testing.T) {
 	}
 }
 
+func TestDeferredTimerWritesCommitAfterElapsedAccess(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+
+	// CPU-facing writes are deferred by the system until the bus access has
+	// elapsed. While the access is in flight the old timer state keeps running.
+	timers.BeginWriteAccess()
+	b.Write32(timerLow(0), uint32(controlEnable)<<16|0xffff, bus.Access{})
+	timers.Advance(2)
+	if timers.Control(0) != 0 || timers.Reload(0) != 0 || timers.Counter(0) != 0 {
+		t.Fatalf("deferred start became visible early: control=%04x reload=%04x counter=%04x",
+			timers.Control(0), timers.Reload(0), timers.Counter(0))
+	}
+	timers.EndWriteAccess()
+	if timers.Control(0) != controlEnable || timers.Reload(0) != 0xffff || timers.Counter(0) != 0xffff {
+		t.Fatalf("deferred start commit = control:%04x reload:%04x counter:%04x",
+			timers.Control(0), timers.Reload(0), timers.Counter(0))
+	}
+
+	// A reload write while running takes effect after that access. The access
+	// itself therefore overflows with the old reload value.
+	timers.BeginWriteAccess()
+	b.Write16(timerLow(0), 0x0000, bus.Access{})
+	timers.Advance(1)
+	timers.EndWriteAccess()
+	if got := timers.Counter(0); got != 0xffff {
+		t.Fatalf("reload write access used new latch too early: counter=%04x", got)
+	}
+	if got := timers.Reload(0); got != 0x0000 {
+		t.Fatalf("deferred reload did not commit: %04x", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 0x0000 {
+		t.Fatalf("next tick did not overflow into new reload: %04x", got)
+	}
+}
+
 func TestTimer32BitWriteUsesNewReloadOnStart(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
