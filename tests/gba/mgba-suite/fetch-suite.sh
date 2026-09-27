@@ -4,8 +4,8 @@ set -euo pipefail
 revision="v0-r76"
 source_commit="7320640f9aad4e48418324d1243cb4402a03cfaa"
 url="https://s3.amazonaws.com/mgba/tests/suite-v0-r76.zip"
-expected_zip_sha256=""
-expected_rom_sha256=""
+expected_zip_sha256="3dad215516545317201224c85bb09b1fc9d6a73ac927153c874e351042d3de7f"
+expected_rom_sha256="3dc46e69d36a60f0db55e72d138de07e2ba79456fc43e9a2416a2529c538bf41"
 
 root="$(cd "$(dirname "$0")" && pwd)"
 rom_dir="$root/roms"
