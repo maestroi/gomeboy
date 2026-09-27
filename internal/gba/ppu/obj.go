@@ -29,7 +29,6 @@ func (p *PPU) prepareOBJLine(screenY int, mode uint16) {
 	for index := 0; index < 128; index++ {
 		base := index * 8
 		attr0 := readOAM16(oam, base)
-		attr1 := readOAM16(oam, base+2)
 
 		affine := attr0&(1<<8) != 0
 		if !affine && attr0&(1<<9) != 0 {
@@ -44,6 +43,7 @@ func (p *PPU) prepareOBJLine(screenY int, mode uint16) {
 			continue
 		}
 
+		attr1 := readOAM16(oam, base+2)
 		width, height, ok := objDimensions((attr0>>14)&0x3, (attr1>>14)&0x3)
 		if !ok {
 			continue
@@ -61,6 +61,10 @@ func (p *PPU) prepareOBJLine(screenY int, mode uint16) {
 			continue
 		}
 
+		// Attr2 and the geometry above are invariant for every pixel of this
+		// sprite on the current scanline. Decode them once rather than routing
+		// every covered pixel back through objSampleAt.
+		attr2 := readOAM16(oam, base+4)
 		for dx := 0; dx < displayWidth; dx++ {
 			screenX := (objX + dx) & 0x01ff
 			if screenX >= ScreenWidth {
@@ -73,15 +77,15 @@ func (p *PPU) prepareOBJLine(screenY int, mode uint16) {
 				continue
 			}
 
-			sample, sampledMode, ok := p.objSampleAt(index, screenX, screenY, mode)
+			sample, ok := p.objSampleDecoded(index, attr0, attr1, attr2, objMode, width, height, screenX, screenY, mode)
 			if !ok {
 				continue
 			}
-			if sampledMode == 2 {
+			if objMode == 2 {
 				p.objWindowLine[screenX] = true
 				continue
 			}
-			if sampledMode < 2 && !p.objLine[screenX].opaque {
+			if !p.objLine[screenX].opaque {
 				p.objLine[screenX] = sample
 			}
 		}
@@ -160,27 +164,34 @@ func (p *PPU) objSampleAt(index, screenX, screenY int, mode uint16) (objSample, 
 
 	objX := int(attr1 & 0x01ff)
 	objY := int(attr0 & 0x00ff)
-
-	// Mosaic repeats a sampled OBJ pixel, but it must not extend the OBJ's
-	// display rectangle. Check the actual screen coordinate first, then sample
-	// from the display-grid-aligned mosaic coordinate.
 	if !objDisplayContains(attr0, width, height, objX, objY, screenX, screenY) {
 		return objSample{}, objMode, false
 	}
+
+	sample, ok := p.objSampleDecoded(index, attr0, attr1, attr2, objMode, width, height, screenX, screenY, mode)
+	return sample, objMode, ok
+}
+
+func (p *PPU) objSampleDecoded(index int, attr0, attr1, attr2, objMode uint16, width, height, screenX, screenY int, mode uint16) (objSample, bool) {
+	objX := int(attr1 & 0x01ff)
+	objY := int(attr0 & 0x00ff)
+
+	// Mosaic repeats a sampled OBJ pixel, but it must not extend the OBJ's
+	// display rectangle. The caller has already checked the actual coordinate.
 	sampleX, sampleY := p.objMosaicCoordinates(attr0, screenX, screenY)
 
 	var localX, localY int
-	if affine {
+	if attr0&(1<<8) != 0 {
 		var visible bool
 		localX, localY, visible = p.affineOBJSource(attr0, attr1, width, height, objX, objY, sampleX, sampleY)
 		if !visible {
-			return objSample{}, objMode, false
+			return objSample{}, false
 		}
 	} else {
 		localX = (sampleX - objX) & 0x01ff
 		localY = (sampleY - objY) & 0x00ff
 		if localX >= width || localY >= height {
-			return objSample{}, objMode, false
+			return objSample{}, false
 		}
 
 		if attr1&(1<<12) != 0 {
@@ -193,7 +204,7 @@ func (p *PPU) objSampleAt(index, screenX, screenY int, mode uint16) (objSample, 
 
 	color, opaque := p.objTilePixel(mode, attr0, attr2, width, localX, localY)
 	if !opaque {
-		return objSample{}, objMode, false
+		return objSample{}, false
 	}
 
 	return objSample{
@@ -202,7 +213,7 @@ func (p *PPU) objSampleAt(index, screenX, screenY int, mode uint16) (objSample, 
 		oamIndex:        index,
 		semiTransparent: objMode == 1,
 		opaque:          true,
-	}, objMode, true
+	}, true
 }
 
 func objDisplayContains(attr0 uint16, sourceWidth, sourceHeight, objX, objY, screenX, screenY int) bool {
