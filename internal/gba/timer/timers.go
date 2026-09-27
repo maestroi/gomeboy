@@ -51,7 +51,8 @@ type Timers struct {
 	irq   IRQSink
 	hooks Hooks
 
-	timer [4]state
+	timer  [4]state
+	active uint8
 }
 
 // New maps TM0-TM3 onto b.
@@ -105,6 +106,12 @@ func (t *Timers) writeControl(index int, value uint16) {
 
 	oldEnabled := oldControl&controlEnable != 0
 	newEnabled := s.control&controlEnable != 0
+	bit := uint8(1 << index)
+	if newEnabled {
+		t.active |= bit
+	} else {
+		t.active &^= bit
+	}
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
@@ -129,6 +136,9 @@ func (t *Timers) writeControl(index int, value uint16) {
 // any independently clocked timer. Count-up timers are driven by their parent
 // overflow at that same edge and therefore do not need a separate deadline.
 func (t *Timers) CyclesUntilEvent() uint32 {
+	if t.active == 0 {
+		return math.MaxUint32
+	}
 	best := uint64(math.MaxUint32)
 	for index := 0; index < 4; index++ {
 		s := &t.timer[index]
@@ -154,6 +164,9 @@ func (t *Timers) CyclesUntilEvent() uint32 {
 // Normal timers derive ticks from their prescaler. Count-up timers 1-3 ignore
 // the prescaler and receive one tick per overflow of the previous timer.
 func (t *Timers) Advance(cycles uint32) {
+	if t.active == 0 || cycles == 0 {
+		return
+	}
 	var overflows [4]uint32
 
 	for index := 0; index < 4; index++ {
@@ -212,7 +225,11 @@ func (t *Timers) advanceCounter(index int, ticks uint64) uint32 {
 // Reset clears timer reload/counter/control/prescaler state.
 func (t *Timers) Reset() {
 	t.timer = [4]state{}
+	t.active = 0
 }
+
+// Active reports whether at least one timer is enabled.
+func (t *Timers) Active() bool { return t.active != 0 }
 
 // Counter returns the current live/frozen counter for tests/debugging.
 func (t *Timers) Counter(index int) uint16 { return t.timer[index].counter }

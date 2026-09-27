@@ -2,7 +2,7 @@
 package audio
 
 import (
-	"sync"
+	"sync/atomic"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 )
@@ -100,12 +100,11 @@ type Audio struct {
 	channel     [2]directSoundChannel
 	psg         psgState
 
-	outputMu  sync.Mutex
-	buffer    []float32
-	bufferPos uint32
+	buffer      []float32
+	bufferPos   uint32
 	samplePhase uint64
-	headless bool
-	mute bool
+	headless    bool
+	mute        atomic.Bool
 }
 
 // New maps SOUNDCNT_H and FIFO_A/FIFO_B onto b.
@@ -203,6 +202,20 @@ func (a *Audio) TimerOverflow(timer int, count uint32) {
 // Sound latches themselves are updated by TimerOverflow; this method only
 // samples those latches into the host-rate stereo buffer.
 func (a *Audio) Advance(cycles uint32) {
+	if cycles == 0 {
+		return
+	}
+
+	// Headless consumers need hardware-visible PSG/timer/FIFO state but do not
+	// need to visit every 96 kHz host sample boundary. Preserve the host sample
+	// phase so toggling output back on remains deterministic.
+	if a.headless {
+		step := uint64(cycles)
+		a.advancePSG(step)
+		a.samplePhase = (a.samplePhase + step*SampleRate) % masterClockHz
+		return
+	}
+
 	remaining := uint64(cycles)
 	for remaining > 0 {
 		untilSample := (masterClockHz - a.samplePhase + SampleRate - 1) / SampleRate
@@ -286,9 +299,7 @@ func (a *Audio) applyBias(sample int32) float32 {
 }
 
 func (a *Audio) appendSample(left, right float32) {
-	a.outputMu.Lock()
-	defer a.outputMu.Unlock()
-	if a.mute {
+	if a.mute.Load() {
 		left, right = 0, 0
 	}
 	needed := int(a.bufferPos) + 2
@@ -303,8 +314,6 @@ func (a *Audio) appendSample(left, right float32) {
 // Samples returns interleaved stereo float32 output and clears the readable
 // portion of the host buffer. The count is the number of float32 values.
 func (a *Audio) Samples() ([]float32, uint32) {
-	a.outputMu.Lock()
-	defer a.outputMu.Unlock()
 	samples := a.buffer[:a.bufferPos]
 	count := a.bufferPos
 	a.bufferPos = 0
@@ -317,8 +326,6 @@ func (a *Audio) Samples() ([]float32, uint32) {
 // SetHeadless suppresses host sample buffering while preserving all
 // hardware-visible Direct Sound FIFO/timer state.
 func (a *Audio) SetHeadless(headless bool) {
-	a.outputMu.Lock()
-	defer a.outputMu.Unlock()
 	a.headless = headless
 	if headless {
 		a.bufferPos = 0
@@ -327,9 +334,7 @@ func (a *Audio) SetHeadless(headless bool) {
 
 // SetMute controls host output only; hardware-visible state keeps advancing.
 func (a *Audio) SetMute(mute bool) {
-	a.outputMu.Lock()
-	a.mute = mute
-	a.outputMu.Unlock()
+	a.mute.Store(mute)
 }
 
 // CurrentOutput returns the current routed, volume-scaled Direct Sound mix.
@@ -395,9 +400,7 @@ func (a *Audio) Reset() {
 	a.psg = psgState{}
 	a.psg.wave.ram = waveRAM
 	a.samplePhase = 0
-	a.outputMu.Lock()
 	a.bufferPos = 0
-	a.outputMu.Unlock()
 }
 
 func fifoIndex(fifo FIFO) (int, bool) {

@@ -28,6 +28,8 @@ jobs:
         run: go test -tags test ./tests -run '^$'
       - name: test library, HLE boot, and agent tooling packages
         run: go test ./internal/apu ./internal/cpu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+      - name: benchmark optimized GBA whole-frame performance
+        run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfGBAStepFrame(Headless|Audio)$' -benchmem -benchtime=250ms -count=2
 
   test_gba:
     runs-on: ubuntu-latest

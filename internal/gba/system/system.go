@@ -320,6 +320,12 @@ func (m *Machine) serviceDueEvents() {
 	if m.stopped {
 		return
 	}
+	// Ordinary CPU phases overwhelmingly have no deferred IRQ or DMA work.
+	// Avoid walking the DMA channels on every fetch/data/idle phase when there
+	// is nothing the scheduler can possibly service.
+	if !m.irqScheduled && m.dmaScheduled == 0 && !m.DMA.Active() {
+		return
+	}
 	m.serviceDueIRQ()
 	m.serviceDueDMA()
 	m.serviceDueIRQ()
@@ -388,6 +394,9 @@ func (m *Machine) scheduleDMAStart(channels uint8) {
 }
 
 func (m *Machine) cyclesUntilDMAStart() (uint64, bool) {
+	if m.dmaScheduled == 0 {
+		return 0, false
+	}
 	var best uint64
 	found := false
 	for channel := 0; channel < 4; channel++ {
@@ -408,6 +417,9 @@ func (m *Machine) cyclesUntilDMAStart() (uint64, bool) {
 }
 
 func (m *Machine) activateDueDMA() {
+	if m.dmaScheduled == 0 {
+		return
+	}
 	var ready uint8
 	for channel := 0; channel < 4; channel++ {
 		bit := uint8(1 << channel)
@@ -450,7 +462,7 @@ func (m *Machine) advanceCPU(cycles uint32) {
 }
 
 func (m *Machine) serviceDueDMA() {
-	if m.dmaRunning {
+	if m.dmaRunning || (m.dmaScheduled == 0 && !m.DMA.Active()) {
 		return
 	}
 
@@ -489,9 +501,22 @@ func (m *Machine) serviceDueDMA() {
 // advanceHardware moves peripherals without servicing DMA. Callers use this
 // while DMA owns the bus and while advancing a CPU phase between DMA deadlines.
 func (m *Machine) advanceHardware(cycles uint32) {
-	if m.stopped {
+	if m.stopped || cycles == 0 {
 		return
 	}
+
+	// Most ARM bus/idle phases are only a handful of cycles long. If no timer
+	// or IRQ deadline can occur and the phase ends no later than the next PPU
+	// edge, advance all hardware directly instead of entering the generic
+	// event-splitting loop. PPU hooks at an edge still observe the exact master
+	// cycle because m.cycles is advanced before PPU.Advance.
+	if !m.irqScheduled && !m.Timers.Active() && cycles <= m.PPU.CyclesUntilEvent() {
+		m.cycles += uint64(cycles)
+		m.Audio.Advance(cycles)
+		m.PPU.Advance(cycles)
+		return
+	}
+
 	remaining := cycles
 	for remaining > 0 {
 		m.serviceDueIRQ()
@@ -500,8 +525,11 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
 			step = untilPPU
 		}
-		if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
-			step = untilTimer
+		timersActive := m.Timers.Active()
+		if timersActive {
+			if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
+				step = untilTimer
+			}
 		}
 		if m.irqScheduled && m.irqEventAt > m.cycles {
 			if untilIRQ := m.irqEventAt - m.cycles; untilIRQ < uint64(step) {
@@ -514,7 +542,9 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		// end; timer overflow then updates the Direct Sound latch for the next
 		// interval.
 		m.Audio.Advance(step)
-		m.Timers.Advance(step)
+		if timersActive {
+			m.Timers.Advance(step)
+		}
 		m.PPU.Advance(step)
 		remaining -= step
 		m.serviceDueIRQ()
