@@ -121,45 +121,77 @@ func TestMenuDriverPulsesDownThenStartsCategory(t *testing.T) {
 }
 
 
-func TestHandleSuiteIRQAcknowledgesVBlankAndReturns(t *testing.T) {
+func TestSuiteIRQWrapperRunsUserVectorAndRestoresState(t *testing.T) {
 	m := system.New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
 	}
-	m.CPU.SetPC(bus.ROM0Start + 0x100)
-	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{})
-	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
-	m.IRQ.Request(gbairq.VBlank)
+	returnPC := uint32(bus.ROM0Start + 0x100)
+	handler := uint32(bus.ROM0Start + 0x200)
+	m.CPU.SetPC(returnPC)
+	m.CPU.WriteRegister(0, 0x10)
+	m.CPU.WriteRegister(1, 0x11)
+	m.CPU.WriteRegister(2, 0x12)
+	m.CPU.WriteRegister(3, 0x13)
+	m.CPU.WriteRegister(12, 0x1c)
+	m.Bus.Write32(0x03007ffc, handler, bus.Access{})
 
-	if err := m.CPU.EnterException(cpu.ExceptionIRQ, bus.ROM0Start+0x104); err != nil {
+	if err := m.CPU.EnterException(cpu.ExceptionIRQ, returnPC+4); err != nil {
 		t.Fatal(err)
 	}
-	if err := handleSuiteIRQ(m); err != nil {
+	state := suiteIRQState{}
+	if err := beginSuiteIRQ(m, &state); err != nil {
 		t.Fatal(err)
+	}
+	if !state.active {
+		t.Fatal("IRQ wrapper state not active")
+	}
+	if got := m.CPU.PC(); got != handler {
+		t.Fatalf("user IRQ vector PC = %#08x, want %#08x", got, handler)
+	}
+	if got := m.CPU.ReadRegister(0); got != bus.IOStart {
+		t.Fatalf("BIOS IRQ r0 = %#08x, want %#08x", got, uint32(bus.IOStart))
+	}
+	if got := m.CPU.ReadRegister(14); got != biosIRQReturnPC {
+		t.Fatalf("BIOS IRQ LR = %#08x, want %#08x", got, biosIRQReturnPC)
+	}
+
+	m.CPU.WriteRegister(0, 0)
+	m.CPU.WriteRegister(1, 0)
+	m.CPU.WriteRegister(2, 0)
+	m.CPU.WriteRegister(3, 0)
+	m.CPU.WriteRegister(12, 0)
+	m.CPU.SetPC(biosIRQReturnPC)
+	if err := finishSuiteIRQ(m, &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.active {
+		t.Fatal("IRQ wrapper state remained active")
 	}
 	if got := m.CPU.CPSR().Mode(); got != cpu.ModeSystem {
 		t.Fatalf("mode after IRQ return = %v, want system", got)
 	}
-	if got := m.CPU.PC(); got != bus.ROM0Start+0x100 {
-		t.Fatalf("PC after IRQ return = %#08x, want %#08x", got, bus.ROM0Start+0x100)
+	if got := m.CPU.PC(); got != returnPC {
+		t.Fatalf("PC after IRQ return = %#08x, want %#08x", got, returnPC)
 	}
-	if got := m.IRQ.IF(); got&uint16(gbairq.VBlank) != 0 {
-		t.Fatalf("VBlank IF remained set: %#04x", got)
+	for reg, want := range map[int]uint32{0: 0x10, 1: 0x11, 2: 0x12, 3: 0x13, 12: 0x1c} {
+		if got := m.CPU.ReadRegister(reg); got != want {
+			t.Fatalf("r%d after IRQ return = %#08x, want %#08x", reg, got, want)
+		}
 	}
 }
 
-func TestHandleSuiteIRQRejectsNonVBlank(t *testing.T) {
+func TestSuiteIRQWrapperRequiresUserVector(t *testing.T) {
 	m := system.New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
 	}
-	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
-	m.IRQ.Request(gbairq.Timer0)
 	if err := m.CPU.EnterException(cpu.ExceptionIRQ, bus.ROM0Start+4); err != nil {
 		t.Fatal(err)
 	}
-	if err := handleSuiteIRQ(m); err == nil || !strings.Contains(err.Error(), "unsupported IRQ") {
-		t.Fatalf("non-VBlank IRQ error = %v", err)
+	state := suiteIRQState{}
+	if err := beginSuiteIRQ(m, &state); err == nil || !strings.Contains(err.Error(), "no user vector") {
+		t.Fatalf("missing vector error = %v", err)
 	}
 }
 
