@@ -152,8 +152,9 @@ func (r *RTC) WritePins(previous, current, direction byte) {
 func (r *RTC) executeCommand() {
 	switch r.command {
 	case rtcCommandReset:
-		// Force reset resets the serial/control circuitry, not the oscillator.
-		r.control = 0x40
+		// Force reset clears the RTC control/status register but does not stop
+		// the oscillator itself.
+		r.control = 0
 		r.resetSerial()
 	case rtcCommandWriteStatus:
 		r.beginInput(rtcCommandWriteStatus, 1)
@@ -237,7 +238,7 @@ func (r *RTC) dateTimeBytes() []byte {
 		encodeBCD(now.Year() % 100),
 		encodeBCD(int(now.Month())),
 		encodeBCD(now.Day()),
-		encodeBCD((int(now.Weekday()) + 6) % 7), // Monday=0, Sunday=6.
+		encodeBCD(int(now.Weekday())), // Sunday=0, Saturday=6.
 		r.encodeHour(now.Hour()),
 		encodeBCD(now.Minute()),
 		encodeBCD(now.Second()),
@@ -250,9 +251,6 @@ func (r *RTC) encodeHour(hour int) byte {
 	}
 	pm := hour >= 12
 	hour %= 12
-	if hour == 0 {
-		hour = 12
-	}
 	value := encodeBCD(hour)
 	if pm {
 		value |= 0x80
@@ -267,11 +265,8 @@ func (r *RTC) decodeHour(value byte) (int, bool) {
 	}
 	pm := value&0x80 != 0
 	hour, ok := decodeBCD(value & 0x7f)
-	if !ok || hour < 1 || hour > 12 {
+	if !ok || hour > 11 {
 		return 0, false
-	}
-	if hour == 12 {
-		hour = 0
 	}
 	if pm {
 		hour += 12
