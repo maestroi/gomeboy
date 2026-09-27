@@ -23,6 +23,36 @@ func timerHigh(index int) uint32 {
 	return timerLow(index) + 2
 }
 
+
+func TestActiveTracksEnabledTimers(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	if timers.Active() {
+		t.Fatal("new timer block unexpectedly active")
+	}
+
+	b.Write16(timerHigh(2), controlEnable, bus.Access{})
+	if !timers.Active() {
+		t.Fatal("enabled timer was not marked active")
+	}
+
+	b.Write16(timerHigh(2), 0, bus.Access{})
+	if timers.Active() {
+		t.Fatal("disabled final timer left active flag set")
+	}
+
+	b.Write16(timerHigh(0), controlEnable, bus.Access{})
+	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
+	b.Write16(timerHigh(0), 0, bus.Access{})
+	if !timers.Active() {
+		t.Fatal("disabling one of multiple timers cleared active flag")
+	}
+
+	timers.Reset()
+	if timers.Active() {
+		t.Fatal("Reset left timers active")
+	}
+}
+
 func TestTimerRegistersAndControlMasks(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
