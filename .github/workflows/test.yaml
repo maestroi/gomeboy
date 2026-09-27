@@ -30,6 +30,11 @@ jobs:
         run: go test ./internal/apu ./internal/cpu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
       - name: benchmark optimized GBA whole-frame performance
         run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfGBAStepFrame(Headless|Audio)$' -benchmem -benchtime=250ms -count=2
+      - name: profile optimized GBA frame
+        run: |
+          go test -c ./pkg/gomeboy -o /tmp/gomeboy.test
+          /tmp/gomeboy.test -test.run '^$' -test.bench '^BenchmarkPerfGBAStepFrameHeadless$' -test.benchtime=1s -test.cpuprofile=/tmp/gba-cpu.pprof
+          go tool pprof -top -nodecount=30 /tmp/gomeboy.test /tmp/gba-cpu.pprof
 
   test_gba:
     runs-on: ubuntu-latest
