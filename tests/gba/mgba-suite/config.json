@@ -11,7 +11,8 @@
       "menu_index": 0,
       "expected_total": 1552,
       "enabled": true,
-      "step_limit": 50000000
+      "step_limit": 50000000,
+      "baseline": { "passed": 1304, "failed": 248, "total": 1552 }
     },
     {
       "id": "io-read",
@@ -19,14 +20,16 @@
       "menu_index": 1,
       "expected_total": 123,
       "enabled": true,
-      "step_limit": 10000000
+      "step_limit": 10000000,
+      "baseline": { "passed": 29, "failed": 94, "total": 123 }
     },
     {
       "id": "timing",
       "name": "Timing tests",
       "menu_index": 2,
       "expected_total": 1560,
-      "enabled": false
+      "enabled": true,
+      "step_limit": 50000000
     },
     {
       "id": "timers",
