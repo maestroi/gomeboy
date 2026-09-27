@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "suite": "mgba-emu/suite",
+  "suite_revision": "v0-r76",
+  "source_commit": "7320640f9aad4e48418324d1243cb4402a03cfaa",
+  "rom_sha256": "3dc46e69d36a60f0db55e72d138de07e2ba79456fc43e9a2416a2529c538bf41",
+  "categories": [
+    {
+      "id": "memory",
+      "name": "Memory tests",
+      "menu_index": 0,
+      "expected_total": 1552,
+      "enabled": true,
+      "step_limit": 50000000,
+      "baseline": {
+        "passed": 1304,
+        "failed": 248,
+        "total": 1552
+      }
+    },
+    {
+      "id": "io-read",
+      "name": "I/O read tests",
+      "menu_index": 1,
+      "expected_total": 123,
+      "enabled": true,
+      "step_limit": 10000000,
+      "baseline": {
+        "passed": 29,
+        "failed": 94,
+        "total": 123
+      }
+    },
+    {
+      "id": "timing",
+      "name": "Timing tests",
+      "menu_index": 2,
+      "expected_total": 1920,
+      "enabled": true,
+      "step_limit": 50000000,
+      "baseline": {
+        "passed": 290,
+        "failed": 1630,
+        "total": 1920
+      }
+    },
+    {
+      "id": "timers",
+      "name": "Timer count-up tests",
+      "menu_index": 3,
+      "expected_total": 936,
+      "enabled": true,
+      "step_limit": 30000000,
+      "baseline": {
+        "passed": 270,
+        "failed": 666,
+        "total": 936
+      }
+    },
+    {
+      "id": "timer-irq",
+      "name": "Timer IRQ tests",
+      "menu_index": 4,
+      "expected_total": 90,
+      "enabled": true,
+      "step_limit": 30000000,
+      "baseline": {
+        "passed": 0,
+        "failed": 90,
+        "total": 90
+      }
+    },
+    {
+      "id": "dma",
+      "name": "DMA tests",
+      "menu_index": 9,
+      "expected_total": 1256,
+      "enabled": true,
+      "step_limit": 50000000,
+      "baseline": {
+        "passed": 996,
+        "failed": 260,
+        "total": 1256
+      }
+    }
+  ]
+}

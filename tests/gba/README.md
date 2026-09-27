@@ -114,3 +114,59 @@ intentionally spends roughly 1,900 emulated frames in its splash/fade path
 before the menu. Realtime host performance is tracked separately from
 compatibility; a correct compatibility result does not imply the emulator is
 already sustaining the GBA's ~59.7 Hz realtime rate.
+
+
+# mGBA hardware conformance
+
+`cmd/gba-mgba-suite` adapts the upstream MIT-licensed
+`mgba-emu/suite` ROM into deterministic headless category reports. The pinned
+target is **v0-r76**, corresponding to upstream source commit
+`7320640f9aad4e48418324d1243cb4402a03cfaa`.
+
+The upstream ROM is not committed. Fetch the immutable release with:
+
+```sh
+bash tests/gba/mgba-suite/fetch-suite.sh
+```
+
+Then run all enabled categories with:
+
+```sh
+go run ./cmd/gba-mgba-suite \
+  -config tests/gba/mgba-suite/config.json \
+  -rom tests/gba/mgba-suite/roms/suite.gba \
+  -output gba-mgba-suite.json \
+  -markdown gba-mgba-suite.md
+```
+
+The adapter drives the stock suite menu through KEYINPUT and consumes the
+suite's SRAM result stream. No test expectations are embedded in GomeBoy's
+hardware implementation. BIOS-less CI supplies the BIOS services required by
+the enabled suite categories (`IntrWait`, `VBlankIntrWait`, `Div`,
+`DivArm`, `Sqrt`, `ArcTan`, `CpuSet`, and `CpuFastSet`) and forwards
+hardware IRQs through the suite's real libgba user IRQ vector. This support is
+test-harness-only and is not part of the emulator core.
+
+Every planned Lane B category is enabled and tracked independently. The pinned
+v0-r76 baseline is:
+
+| Category | Passed | Failed | Total |
+| --- | ---: | ---: | ---: |
+| Memory | 1304 | 248 | 1552 |
+| I/O reads | 29 | 94 | 123 |
+| Timing | 290 | 1630 | 1920 |
+| Timer count-up | 270 | 666 | 936 |
+| Timer IRQ | 0 | 90 | 90 |
+| DMA | 996 | 260 | 1256 |
+
+The checked-in baseline has xfail-style behavior:
+
+- fewer passes / more failures => regression and CI failure;
+- more passes / fewer failures => XPASS and CI failure until the baseline is
+  intentionally reviewed and updated;
+- identical counts => expected.
+
+Generated JSON and Markdown reports keep these hardware-accuracy results
+separate from the compatibility matrix. The baseline records current hardware
+accuracy; individual failures are follow-up correctness work, not silently
+accepted emulator behavior.
