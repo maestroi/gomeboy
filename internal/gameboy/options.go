@@ -59,3 +59,9 @@ func WithPrinter() Opt { return func(gb *GameBoy) { gb.Serial.Attach(accessories
 func WithoutVideoOutput() Opt {
 	return func(gb *GameBoy) { gb.PPU.SetVideoOutput(false) }
 }
+
+// WithHeadlessAudio discards APU sample output. As an Opt it is re-applied by
+// every Init, so it survives LoadROMBytes rebuilding the APU.
+func WithHeadlessAudio() Opt {
+	return func(gb *GameBoy) { gb.APU.SetHeadless(true) }
+}

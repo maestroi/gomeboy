@@ -1,5 +1,7 @@
 package apu
 
+import "github.com/maestroi/gomeboy/internal/scheduler"
+
 // ChannelState is a snapshot of a single APU channel's state.
 type ChannelState struct {
 	EnableTime              uint64
@@ -187,7 +189,16 @@ func (a *APU) Restore(s State) {
 	a.enableTimer = s.EnableTimer
 	a.lastCatchup = s.LastCatchup
 	a.mute = s.Mute
-	a.headless = s.Headless
+	// headless is a host output policy, not machine state: a state saved by an
+	// audio-producing emulator must not re-enable unbounded sample buffering
+	// in a headless one, so keep the receiver's mode and reconcile the
+	// sample event the snapshot's scheduler may (or may not) carry.
+	if a.headless && !s.Headless {
+		a.s.DescheduleEvent(scheduler.APUSample)
+	} else if !a.headless && s.Headless {
+		a.s.DescheduleEvent(scheduler.APUSample)
+		a.s.ScheduleEvent(scheduler.APUSample, samplePeriod)
+	}
 	a.capacitors = s.Capacitors
 	if a.headless {
 		a.buffer = nil
