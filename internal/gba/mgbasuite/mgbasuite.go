@@ -4,6 +4,7 @@ package mgbasuite
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -209,7 +210,7 @@ func runCategory(rom []byte, category Category) CategoryResult {
 		stepLimit = defaultStepLimit
 	}
 
-	m := system.NewWithCartridgeConfig(nil, rom, cartridge.Config{SaveType: cartridge.SaveSRAM})
+	m := system.NewWithCartridgeConfig(suiteBIOS(), rom, cartridge.Config{SaveType: cartridge.SaveSRAM})
 	m.Audio.SetHeadless(true)
 	if err := initPostBIOS(m); err != nil {
 		result.Status = StatusError
@@ -224,33 +225,15 @@ func runCategory(rom []byte, category Category) CategoryResult {
 
 	driver := newMenuDriver(m, category.MenuIndex)
 	collector := resultCollector{}
-	irqState := suiteIRQState{}
 	startCycle := m.Cycle()
 	for result.Steps < stepLimit {
-		if irqState.active && m.CPU.PC() == biosIRQReturnPC {
-			if err := finishSuiteIRQ(m, &irqState); err != nil {
-				result.Status = StatusError
-				result.Detail = err.Error()
-				result.Cycles = m.Cycle() - startCycle
-				return result
-			}
-			continue
-		}
-		stepResult, err := m.Step()
+		_, err := m.Step()
 		result.Steps++
 		if err != nil {
 			result.Status = StatusError
 			result.Detail = fmt.Sprintf("emulation error at pc=%#08x cpsr=%#08x: %v", m.CPU.PC(), uint32(m.CPU.CPSR()), err)
 			result.Cycles = m.Cycle() - startCycle
 			return result
-		}
-		if stepResult.CPU.ExceptionTaken && stepResult.CPU.Exception == cpu.ExceptionIRQ {
-			if err := beginSuiteIRQ(m, &irqState); err != nil {
-				result.Status = StatusError
-				result.Detail = err.Error()
-				result.Cycles = m.Cycle() - startCycle
-				return result
-			}
 		}
 		if m.CPU.PC() == 0x08 && m.CPU.CPSR().Mode() == cpu.ModeSupervisor {
 			number, handled, err := handleSuiteSWI(m)
@@ -364,70 +347,23 @@ func (d *menuDriver) vblankWait() {
 	d.releaseGap = true
 }
 
-const biosIRQReturnPC uint32 = 0x138
-
-type suiteIRQState struct {
-	active   bool
-	returnLR uint32
-	r0       uint32
-	r1       uint32
-	r2       uint32
-	r3       uint32
-	r12      uint32
-}
-
-func beginSuiteIRQ(m *system.Machine, state *suiteIRQState) error {
-	if state.active {
-		return fmt.Errorf("nested mGBA-suite IRQ before BIOS wrapper return")
+func suiteBIOS() []byte {
+	bios := make([]byte, bus.BIOSSize)
+	put := func(addr uint32, instruction uint32) {
+		binary.LittleEndian.PutUint32(bios[addr:addr+4], instruction)
 	}
-	handler := peek32(m, 0x03007ffc)
-	if handler == 0 {
-		return fmt.Errorf("mGBA-suite IRQ has no user vector at 0x03007ffc; IE&IF=%#04x", m.IRQ.EnabledPendingMask())
-	}
-	state.active = true
-	state.returnLR = m.CPU.ReadRegister(14)
-	state.r0 = m.CPU.ReadRegister(0)
-	state.r1 = m.CPU.ReadRegister(1)
-	state.r2 = m.CPU.ReadRegister(2)
-	state.r3 = m.CPU.ReadRegister(3)
-	state.r12 = m.CPU.ReadRegister(12)
 
-	// Emulate the BIOS IRQ wrapper at 0x128..0x134: it preserves the volatile
-	// registers, sets LR_irq to the BIOS return stub, and jumps to the ARM user
-	// vector stored at 0x03007ffc. The user dispatcher itself runs normally in
-	// the emulator, so libgba irqSet handlers are exercised rather than faked.
-	m.CPU.WriteRegister(0, bus.IOStart)
-	m.CPU.WriteRegister(14, biosIRQReturnPC)
-	m.CPU.SetPC(handler &^ 3)
-	return nil
-}
-
-func finishSuiteIRQ(m *system.Machine, state *suiteIRQState) error {
-	if !state.active {
-		return fmt.Errorf("mGBA-suite BIOS IRQ return without active wrapper")
-	}
-	if state.returnLR < 4 {
-		return fmt.Errorf("invalid IRQ return address %#x", state.returnLR)
-	}
-	m.CPU.WriteRegister(0, state.r0)
-	m.CPU.WriteRegister(1, state.r1)
-	m.CPU.WriteRegister(2, state.r2)
-	m.CPU.WriteRegister(3, state.r3)
-	m.CPU.WriteRegister(12, state.r12)
-	m.CPU.WriteRegister(14, state.returnLR)
-	if err := m.CPU.RestoreCPSRFromSPSR(); err != nil {
-		return fmt.Errorf("restore IRQ SPSR: %w", err)
-	}
-	m.CPU.SetPC(state.returnLR - 4)
-	state.active = false
-	return nil
-}
-
-func peek32(m *system.Machine, addr uint32) uint32 {
-	return uint32(m.Bus.Peek8(addr)) |
-		uint32(m.Bus.Peek8(addr+1))<<8 |
-		uint32(m.Bus.Peek8(addr+2))<<16 |
-		uint32(m.Bus.Peek8(addr+3))<<24
+	// Real GBA BIOS IRQ forwarding path. Running these instructions instead of
+	// teleporting directly to the libgba vector preserves IRQ stack, pipeline,
+	// and timer-visible timing in BIOS-less conformance runs.
+	put(0x018, 0xea000042) // B 0x128
+	put(0x128, 0xe92d500f) // STMFD sp!, {r0-r3,r12,lr}
+	put(0x12c, 0xe3a00301) // MOV r0, #0x04000000
+	put(0x130, 0xe28fe000) // ADD lr, pc, #0
+	put(0x134, 0xe510f004) // LDR pc, [r0, #-4]
+	put(0x138, 0xe8bd500f) // LDMFD sp!, {r0-r3,r12,lr}
+	put(0x13c, 0xe25ef004) // SUBS pc, lr, #4
+	return bios
 }
 
 func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
