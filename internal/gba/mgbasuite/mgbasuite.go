@@ -413,6 +413,8 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 		}
 	case 0x08: // Sqrt
 		hleSqrt(m)
+	case 0x09: // ArcTan
+		hleArcTan(m)
 	case 0x0b:
 		hleCPUSet(m, false)
 	case 0x0c:
@@ -442,6 +444,12 @@ func advanceToNextVBlank(m *system.Machine) {
 		cycles = uint32(ppu.ScanlinesPerFrame) * ppu.CyclesPerLine
 	}
 	m.Advance(cycles)
+}
+
+func hleArcTan(m *system.Machine) {
+	value := float64(int32(m.CPU.ReadRegister(0))) / 16384.0
+	angle := int32(math.Round(math.Atan(value) * (32768.0 / math.Pi)))
+	m.CPU.WriteRegister(0, uint32(angle))
 }
 
 func hleSqrt(m *system.Machine) {
