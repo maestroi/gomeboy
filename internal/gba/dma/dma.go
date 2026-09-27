@@ -113,6 +113,7 @@ type DMA struct {
 	ch [4]channel
 
 	pending   uint8
+	active    uint8
 	servicing bool
 }
 
@@ -428,18 +429,10 @@ func (d *DMA) Pending() bool { return d.pending != 0 }
 func (d *DMA) PendingMask() uint8 { return d.pending }
 
 // Active reports whether at least one DMA request is mid-transfer.
-func (d *DMA) Active() bool { return d.ActiveMask() != 0 }
+func (d *DMA) Active() bool { return d.active != 0 }
 
 // ActiveMask returns channels currently eligible for unit service.
-func (d *DMA) ActiveMask() uint8 {
-	var mask uint8
-	for index := 0; index < 4; index++ {
-		if d.ch[index].transferActive {
-			mask |= 1 << index
-		}
-	}
-	return mask
-}
+func (d *DMA) ActiveMask() uint8 { return d.active }
 
 // UnitResult describes one scheduler-visible DMA transfer unit.
 type UnitResult struct {
@@ -485,6 +478,7 @@ func (d *DMA) startTransfer(index int) {
 	}
 
 	c.transferActive = true
+	d.active |= 1 << index
 	c.transferRemaining = units
 	c.transferUnits = units
 	c.transferWidth = width
@@ -543,6 +537,7 @@ func (d *DMA) ServiceUnit() UnitResult {
 		cycles += internal
 		c.transferCycles += internal
 		c.transferActive = false
+		d.active &^= 1 << index
 		c.completionPending = true
 		c.countCurrent = 0
 	}
@@ -741,6 +736,7 @@ func isGamePak(address uint32) bool {
 func (d *DMA) Reset() {
 	d.ch = [4]channel{}
 	d.pending = 0
+	d.active = 0
 	d.servicing = false
 }
 
