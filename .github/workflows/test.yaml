@@ -52,6 +52,10 @@ jobs:
         run: bash tests/gba/compatibility/fetch-rkanoid.sh
       - name: run GBA conformance smoke
         run: go run ./cmd/gba-conformance -manifest tests/gba/conformance/smoke.json -output gba-conformance.json -commit "$GITHUB_SHA"
+      - name: fetch pinned mGBA hardware suite
+        run: bash tests/gba/mgba-suite/fetch-suite.sh
+      - name: run mGBA hardware conformance
+        run: go run ./cmd/gba-mgba-suite -config tests/gba/mgba-suite/config.json -rom tests/gba/mgba-suite/roms/suite.gba -output gba-mgba-suite.json -markdown gba-mgba-suite.md -commit "$GITHUB_SHA"
       - name: run GBA compatibility smoke
         run: go run ./cmd/gba-compat -manifest tests/gba/compatibility/smoke.json -output gba-compatibility.json -markdown gba-compatibility.md -commit "$GITHUB_SHA"
       - name: upload GBA conformance result
@@ -60,6 +64,15 @@ jobs:
         with:
           name: gba-conformance
           path: gba-conformance.json
+          if-no-files-found: ignore
+      - name: upload mGBA hardware conformance result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gba-mgba-suite
+          path: |
+            gba-mgba-suite.json
+            gba-mgba-suite.md
           if-no-files-found: ignore
       - name: upload GBA compatibility result
         if: always()
