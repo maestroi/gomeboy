@@ -253,6 +253,9 @@ func New(opts ...Option) (*Emulator, error) {
 	if cfg.noVideo {
 		gbOpts = append(gbOpts, gameboy.WithoutVideoOutput())
 	}
+	if cfg.headless {
+		gbOpts = append(gbOpts, gameboy.WithHeadlessAudio())
+	}
 	if cfg.cheats != "" {
 		gbOpts = append(gbOpts, gameboy.WithCheats(cfg.cheats))
 	}
