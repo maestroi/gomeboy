@@ -396,6 +396,7 @@ func (m *Machine) serviceDueEvents() {
 }
 
 func (m *Machine) advanceHaltedEvent() {
+	m.flushHardwareDebt()
 	// PPU always supplies a finite deadline. Timers and a deferred DMA start
 	// may provide an earlier one.
 	step := uint64(m.PPU.CyclesUntilEvent())
@@ -506,6 +507,28 @@ func (m *Machine) advanceCPU(cycles uint32) {
 		return
 	}
 
+	// Realtime frame execution can account short CPU-only intervals with a
+	// couple of integer operations. Staying strictly before the next PPU edge
+	// guarantees that no hook, DMA request, or IRQ can become due here.
+	if m.deferHardware &&
+		!m.halted &&
+		!m.irqScheduled &&
+		!m.Timers.Active() &&
+		m.dmaScheduled == 0 &&
+		!m.DMA.Active() &&
+		m.memory.requestAfterAccess == 0 &&
+		!m.stopPending {
+		untilPPU := uint64(m.PPU.CyclesUntilEvent())
+		deferred := uint64(m.hardwareDebt)
+		if deferred+uint64(cycles) < untilPPU {
+			m.cycles += uint64(cycles)
+			m.hardwareDebt += cycles
+			return
+		}
+	}
+
+	m.flushHardwareDebt()
+
 	// Ordinary CPU fetch/data/idle phases have no deferred DMA or IRQ work.
 	// Let the hardware timeline consume the whole CPU-owned phase directly,
 	// then service anything a PPU/timer edge scheduled during that phase.
@@ -578,28 +601,6 @@ func (m *Machine) advanceHardware(cycles uint32) {
 	if m.stopped || cycles == 0 {
 		return
 	}
-
-	// During realtime frame execution, CPU-only intervals may be accumulated
-	// while they remain strictly before the next PPU edge and no timer/DMA/IRQ
-	// deadline exists. Any data access flushes this debt first, so register and
-	// memory-visible hardware state is still observed at the exact master cycle.
-	if m.deferHardware &&
-		!m.irqScheduled &&
-		!m.Timers.Active() &&
-		m.dmaScheduled == 0 &&
-		!m.DMA.Active() &&
-		m.memory.requestAfterAccess == 0 &&
-		!m.stopPending {
-		untilPPU := uint64(m.PPU.CyclesUntilEvent())
-		deferred := uint64(m.hardwareDebt)
-		if deferred+uint64(cycles) < untilPPU {
-			m.cycles += uint64(cycles)
-			m.hardwareDebt += cycles
-			return
-		}
-	}
-
-	m.flushHardwareDebt()
 
 	// Most ARM bus/idle phases are only a handful of cycles long. If no timer
 	// or IRQ deadline can occur and the phase ends no later than the next PPU
@@ -727,7 +728,9 @@ func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access
 }
 
 func (t *timedMemory) Idle(cycles uint32) {
-	t.m.Bus.Idle(cycles)
+	if t.m.Bus.PrefetchEnabled() {
+		t.m.Bus.Idle(cycles)
+	}
 	t.consume(cycles)
 }
 
