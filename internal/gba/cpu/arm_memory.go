@@ -80,11 +80,7 @@ func (c *CPU) executeARMSingleTransfer(instruction uint32, mem Memory) (Executio
 	}
 
 	c.advancePC()
-	internalCycles := uint8(0)
-	if load {
-		internalCycles = 1
-	}
-	return ExecutionResult{InternalCycles: internalCycles, MemoryCycles: cycles}, nil
+	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
 }
 
 func (c *CPU) armTransferOffset(instruction uint32) (uint32, error) {
@@ -182,9 +178,5 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 	}
 
 	c.advancePC()
-	internalCycles := uint8(0)
-	if load {
-		internalCycles = 1
-	}
-	return ExecutionResult{InternalCycles: internalCycles, MemoryCycles: cycles}, nil
+	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
 }
