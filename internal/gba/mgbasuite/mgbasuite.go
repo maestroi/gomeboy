@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/bits"
 	"os"
 	"strconv"
 	"strings"
@@ -440,16 +441,25 @@ func hleCPUSet(m *system.Machine, fast bool) {
 			dst += 4
 		}
 	} else {
-		src &^= 1
-		dst &^= 1
 		var fillValue uint16
 		if fill {
+			// The BIOS fill path explicitly BICs source/destination bit 0.
+			src &^= 1
+			dst &^= 1
 			fillValue, _ = m.Bus.Read16(src, access)
 		}
 		for i := uint32(0); i < count; i++ {
 			value := fillValue
 			if !fill {
-				value, _ = m.Bus.Read16(src, access)
+				// The BIOS copy path uses LDRH at the caller's address. On
+				// ARM7TDMI an odd LDRH is an aligned halfword read followed by
+				// a 32-bit ROR #8; STRH then stores its low halfword.
+				raw, _ := m.Bus.Read16(src&^1, access)
+				loaded := uint32(raw)
+				if src&1 != 0 {
+					loaded = bits.RotateLeft32(loaded, -8)
+				}
+				value = uint16(loaded)
 				src += 2
 			}
 			m.Bus.Write16(dst, value, access)
