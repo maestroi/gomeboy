@@ -6,6 +6,8 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	"github.com/maestroi/gomeboy/internal/gba/cartridge"
+	"github.com/maestroi/gomeboy/internal/gba/cpu"
+	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
 
@@ -104,5 +106,48 @@ func TestMenuDriverPulsesDownThenStartsCategory(t *testing.T) {
 	wantA := uint16(1) << 0
 	if got := m.Keypad.PressedMask(); got != wantA {
 		t.Fatalf("start mask = %04x, want A", got)
+	}
+}
+
+
+func TestHandleSuiteIRQAcknowledgesVBlankAndReturns(t *testing.T) {
+	m := system.New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+	m.CPU.SetPC(bus.ROM0Start + 0x100)
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	m.IRQ.Request(gbairq.VBlank)
+
+	if err := m.CPU.EnterException(cpu.ExceptionIRQ, bus.ROM0Start+0x104); err != nil {
+		t.Fatal(err)
+	}
+	if err := handleSuiteIRQ(m); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.CPU.CPSR().Mode(); got != cpu.ModeSystem {
+		t.Fatalf("mode after IRQ return = %v, want system", got)
+	}
+	if got := m.CPU.PC(); got != bus.ROM0Start+0x100 {
+		t.Fatalf("PC after IRQ return = %#08x, want %#08x", got, bus.ROM0Start+0x100)
+	}
+	if got := m.IRQ.IF(); got&uint16(gbairq.VBlank) != 0 {
+		t.Fatalf("VBlank IF remained set: %#04x", got)
+	}
+}
+
+func TestHandleSuiteIRQRejectsNonVBlank(t *testing.T) {
+	m := system.New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
+	m.IRQ.Request(gbairq.Timer0)
+	if err := m.CPU.EnterException(cpu.ExceptionIRQ, bus.ROM0Start+4); err != nil {
+		t.Fatal(err)
+	}
+	if err := handleSuiteIRQ(m); err == nil || !strings.Contains(err.Error(), "unsupported IRQ") {
+		t.Fatalf("non-VBlank IRQ error = %v", err)
 	}
 }
