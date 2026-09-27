@@ -88,17 +88,8 @@ func (c *gbaCore) StepFrame() {
 	if c.machine == nil || c.lastError != nil {
 		return
 	}
-	start := c.machine.PPU.FrameCount()
-	for c.machine.PPU.FrameCount() == start {
-		result, err := c.machine.Step()
-		if err != nil {
-			c.lastError = err
-			return
-		}
-		if result.Stopped && result.ElapsedCycles == 0 {
-			// STOP is released by asynchronous keypad/SIO/Game Pak input.
-			return
-		}
+	if err := c.machine.RunFrame(); err != nil {
+		c.lastError = err
 	}
 }
 
