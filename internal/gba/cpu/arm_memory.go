@@ -35,9 +35,6 @@ func (c *CPU) executeARMSingleTransfer(instruction uint32, mem Memory) (Executio
 	if writeBack && rn == 15 {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM transfer writeback to r15 is unpredictable")
 	}
-	if load && writeBack && rn == rd {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM load with writeback and Rn == Rd is unpredictable")
-	}
 	if byteTransfer && rd == 15 {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: LDRB/STRB using r15 is unpredictable")
 	}
@@ -145,9 +142,6 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 	}
 	if writeBack && rn == 15 {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: halfword transfer writeback to r15 is unpredictable")
-	}
-	if load && writeBack && rn == rd {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: halfword load with writeback and Rn == Rd is unpredictable")
 	}
 
 	access := gbamemory.Access{}
