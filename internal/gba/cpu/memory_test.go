@@ -64,8 +64,8 @@ func TestARMStepFetchesExecutesAndAccountsBusCycles(t *testing.T) {
 	if got := c.ReadRegister(3); got != 0x11223345 {
 		t.Fatalf("ADD r3 = %08x, want 11223345", got)
 	}
-	if third.FetchCycles != 6 || third.MemoryCycles != 0 || third.TotalCycles != 7 {
-		t.Fatalf("third step timing = %+v, want fetch=6 internal=1 total=7", third)
+	if third.FetchCycles != 6 || third.MemoryCycles != 0 || third.InternalCycles != 0 || third.TotalCycles != 6 {
+		t.Fatalf("third step timing = %+v, want fetch=6 internal=0 total=6", third)
 	}
 	if got := c.PC(); got != bus.ROM0Start+12 {
 		t.Fatalf("PC = %08x, want %08x", got, bus.ROM0Start+12)
