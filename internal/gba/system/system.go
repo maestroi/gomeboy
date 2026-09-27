@@ -438,9 +438,19 @@ func (m *Machine) activateDueDMA() {
 // does not consume remaining CPU work: a transfer pauses that work, advances
 // the rest of the machine, then the CPU phase resumes.
 func (m *Machine) advanceCPU(cycles uint32) {
-	if m.stopped {
+	if m.stopped || cycles == 0 {
 		return
 	}
+
+	// Ordinary CPU fetch/data/idle phases have no deferred DMA or IRQ work.
+	// Let the hardware timeline consume the whole CPU-owned phase directly,
+	// then service anything a PPU/timer edge scheduled during that phase.
+	if !m.irqScheduled && m.dmaScheduled == 0 && !m.DMA.Active() {
+		m.advanceHardware(cycles)
+		m.serviceDueEvents()
+		return
+	}
+
 	remaining := uint64(cycles)
 	for remaining > 0 {
 		m.serviceDueEvents()
