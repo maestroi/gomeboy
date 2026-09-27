@@ -1,6 +1,7 @@
 package system
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
@@ -65,6 +66,9 @@ func TestRunFrameMatchesDetailedStepExecution(t *testing.T) {
 		t.Fatalf("RunFrame diverged: detailed cycle/frame/pc/stall=%d/%d/%08x/%d fast=%d/%d/%08x/%d",
 			detailed.Cycle(), detailed.PPU.FrameCount(), detailed.CPU.PC(), detailed.DMAStallCycles(),
 			fast.Cycle(), fast.PPU.FrameCount(), fast.CPU.PC(), fast.DMAStallCycles())
+	}
+	if !bytes.Equal(detailed.PPU.FrameBuffer(), fast.PPU.FrameBuffer()) {
+		t.Fatal("RunFrame framebuffer differs from detailed stepping")
 	}
 	for _, m := range []*Machine{detailed, fast} {
 		got, _ := m.Bus.Read16(bus.IWRAMStart+0x700, bus.Access{})
