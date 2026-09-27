@@ -52,19 +52,28 @@ func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This ARM data-processing NOP is one IWRAM fetch plus one internal cycle.
-	// The DMA deadline therefore lands inside this instruction: after its two
-	// CPU-owned cycles, DMA takes the bus for four cycles before Step returns.
-	if first.CPU.TotalCycles != 2 {
-		t.Fatalf("first CPU instruction cycles = %d, want 2", first.CPU.TotalCycles)
+	// A plain ARM NOP in IWRAM is one overlapped fetch/execute cycle, so the
+	// two-cycle DMA start latency is not reached until the next instruction.
+	if first.CPU.TotalCycles != 1 || first.DMAStallCycles != 0 || first.ElapsedCycles != 1 {
+		t.Fatalf("first CPU step cycles/stall/elapsed = %d/%d/%d, want 1/0/1",
+			first.CPU.TotalCycles, first.DMAStallCycles, first.ElapsedCycles)
 	}
-	// IWRAM->IWRAM halfword DMA is 1 read + 1 write + 2 internal = 4 cycles.
-	if first.DMAStallCycles != 4 || first.ElapsedCycles != 6 {
-		t.Fatalf("first CPU step elapsed/stall = %d/%d, want 6/4",
-			first.ElapsedCycles, first.DMAStallCycles)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("DMA started after only one CPU cycle: %04x", got)
+	}
+
+	second, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The second fetch reaches cycle 2; DMA then owns the bus for four cycles
+	// before the instruction boundary returns.
+	if second.CPU.TotalCycles != 1 || second.DMAStallCycles != 4 || second.ElapsedCycles != 5 {
+		t.Fatalf("second CPU step cycles/stall/elapsed = %d/%d/%d, want 1/4/5",
+			second.CPU.TotalCycles, second.DMAStallCycles, second.ElapsedCycles)
 	}
 	if m.Cycle() != 6 {
-		t.Fatalf("cycle after DMA-stalled step = %d, want 6", m.Cycle())
+		t.Fatalf("cycle after DMA-stalled second step = %d, want 6", m.Cycle())
 	}
 	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0x55aa {
 		t.Fatalf("scheduled DMA result = %04x, want 55aa", got)
@@ -75,19 +84,19 @@ func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
 	if got := m.PPU.LineCycle(); got != 6 {
 		t.Fatalf("PPU cycle during CPU+DMA time = %d, want 6", got)
 	}
-	if m.CPU.PC() != code+4 {
-		t.Fatalf("CPU executed during DMA stall: PC=%08x, want %08x", m.CPU.PC(), code+4)
+	if m.CPU.PC() != code+8 {
+		t.Fatalf("CPU executed during DMA stall: PC=%08x, want %08x", m.CPU.PC(), code+8)
 	}
 
-	second, err := m.Step()
+	third, err := m.Step()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.DMAStallCycles != 0 {
-		t.Fatalf("completed DMA stalled the next instruction by %d cycles", second.DMAStallCycles)
+	if third.DMAStallCycles != 0 {
+		t.Fatalf("completed DMA stalled the next instruction by %d cycles", third.DMAStallCycles)
 	}
-	if m.CPU.PC() != code+8 {
-		t.Fatalf("second instruction PC=%08x, want %08x", m.CPU.PC(), code+8)
+	if m.CPU.PC() != code+12 {
+		t.Fatalf("third instruction PC=%08x, want %08x", m.CPU.PC(), code+12)
 	}
 }
 
