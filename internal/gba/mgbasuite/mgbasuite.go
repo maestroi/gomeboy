@@ -227,7 +227,7 @@ func runCategory(rom []byte, category Category) CategoryResult {
 		result.Steps++
 		if err != nil {
 			result.Status = StatusError
-			result.Detail = fmt.Sprintf("emulation error: %v", err)
+			result.Detail = fmt.Sprintf("emulation error at pc=%#08x cpsr=%#08x: %v", m.CPU.PC(), uint32(m.CPU.CPSR()), err)
 			result.Cycles = m.Cycle() - startCycle
 			return result
 		}
