@@ -53,10 +53,13 @@ func (s SaveType) String() string {
 	}
 }
 
-// Config selects cartridge save hardware. SaveAuto scans the ROM for standard
-// Nintendo/SDK save-library markers. Exact values always override detection.
+// Config selects cartridge save and optional GPIO hardware. SaveAuto scans
+// the ROM for standard Nintendo/SDK save-library markers. Peripherals is
+// additive to marker detection so callers can explicitly attach hardware for
+// dumps/homebrew without recognizable library strings.
 type Config struct {
-	SaveType SaveType
+	SaveType    SaveType
+	Peripherals Peripheral
 }
 
 // Detection reports the marker-derived save type. Ambiguous is set when a ROM
@@ -68,17 +71,16 @@ type Detection struct {
 	Ambiguous bool
 }
 
-// Setup is the resolved cartridge save configuration attached to a bus.
-//
-// Save and EEPROM intentionally retain their concrete bus-facing interfaces so
-// the persistence layer can reuse the selected device in the next slice.
+// Setup is the resolved cartridge configuration attached to a bus.
 type Setup struct {
-	SaveType  SaveType
-	Detected  Detection
-	Explicit  bool
-	Fallback  bool
-	Save      bus.SaveDevice
-	EEPROM    bus.EEPROMDevice
+	SaveType    SaveType
+	Detected    Detection
+	Explicit    bool
+	Fallback    bool
+	Save        bus.SaveDevice
+	EEPROM      bus.EEPROMDevice
+	Peripherals Peripheral
+	GPIO        *GPIO
 }
 
 type markerDefinition struct {
@@ -147,9 +149,10 @@ func Configure(b *bus.Bus, rom []byte, config Config) Setup {
 	}
 
 	setup := Setup{
-		SaveType: selected,
-		Detected: detection,
-		Explicit: explicit,
+		SaveType:    selected,
+		Detected:    detection,
+		Explicit:    explicit,
+		Peripherals: DetectPeripherals(rom) | config.Peripherals,
 	}
 
 	if selected == SaveEEPROM {
@@ -179,5 +182,9 @@ func Configure(b *bus.Bus, rom []byte, config Config) Setup {
 
 	b.AttachSaveDevice(setup.Save)
 	b.AttachEEPROMDevice(setup.EEPROM)
+	if setup.Peripherals != 0 {
+		setup.GPIO = NewGPIO(setup.Peripherals)
+		b.AttachGamePakDevice(setup.GPIO)
+	}
 	return setup
 }
