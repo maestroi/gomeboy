@@ -3,7 +3,7 @@
   "suite": "mgba-emu/suite",
   "suite_revision": "v0-r76",
   "source_commit": "7320640f9aad4e48418324d1243cb4402a03cfaa",
-  "rom_sha256": "",
+  "rom_sha256": "3dc46e69d36a60f0db55e72d138de07e2ba79456fc43e9a2416a2529c538bf41",
   "categories": [
     {
       "id": "memory",
