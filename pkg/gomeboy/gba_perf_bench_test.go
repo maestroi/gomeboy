@@ -10,7 +10,7 @@ import (
 // OBJ VRAM at reset values intentionally exercises the renderer's sprite
 // traversal on every visible frame without depending on external ROM assets.
 func gbaPerfROM() []byte {
-	rom := make([]byte, 24)
+	rom := make([]byte, 512)
 
 	// 08000000: ldr r0, [pc, #8]  ; r0 = DISPCNT
 	// 08000004: ldr r1, [pc, #8]  ; r1 = OBJ enable
