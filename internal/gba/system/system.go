@@ -512,6 +512,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 	// cycle because m.cycles is advanced before PPU.Advance.
 	if !m.irqScheduled && !m.Timers.Active() && cycles <= m.PPU.CyclesUntilEvent() {
 		m.cycles += uint64(cycles)
+		m.Cartridge.Advance(cycles)
 		m.Audio.Advance(cycles)
 		m.PPU.Advance(cycles)
 		return
@@ -538,6 +539,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		}
 
 		m.cycles += uint64(step)
+		m.Cartridge.Advance(step)
 		// Host-rate audio samples cover the interval before timer edges at its
 		// end; timer overflow then updates the Direct Sound latch for the next
 		// interval.
