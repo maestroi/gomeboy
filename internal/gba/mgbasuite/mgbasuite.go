@@ -18,6 +18,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	"github.com/maestroi/gomeboy/internal/gba/keypad"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
+	"github.com/maestroi/gomeboy/internal/gba/ppu"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
 
@@ -400,7 +401,8 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 	}
 
 	switch number {
-	case 0x05: // VBlankIntrWait: only used for suite UI pacing here.
+	case 0x05: // VBlankIntrWait
+		advanceToNextVBlank(m)
 	case 0x0b:
 		hleCPUSet(m, false)
 	case 0x0c:
@@ -413,6 +415,23 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 	}
 	m.CPU.SetPC(lr)
 	return number, true, nil
+}
+
+func advanceToNextVBlank(m *system.Machine) {
+	vcount := uint32(m.PPU.VCount())
+	lineCycle := m.PPU.LineCycle()
+
+	var lines uint32
+	if vcount < uint32(ppu.VBlankStartLine) {
+		lines = uint32(ppu.VBlankStartLine) - vcount
+	} else {
+		lines = uint32(ppu.ScanlinesPerFrame) - vcount + uint32(ppu.VBlankStartLine)
+	}
+	cycles := lines*ppu.CyclesPerLine - lineCycle
+	if cycles == 0 {
+		cycles = uint32(ppu.ScanlinesPerFrame) * ppu.CyclesPerLine
+	}
+	m.Advance(cycles)
 }
 
 func hleCPUSet(m *system.Machine, fast bool) {
