@@ -35,7 +35,7 @@
       "id": "timing",
       "name": "Timing tests",
       "menu_index": 2,
-      "expected_total": 1560,
+      "expected_total": 1920,
       "enabled": true,
       "step_limit": 50000000
     },
