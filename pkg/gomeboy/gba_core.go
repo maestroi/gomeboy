@@ -28,8 +28,9 @@ type gbaCore struct {
 	headless  bool
 	muted     bool
 	lastError error
-	saveDir   string
-	saves     bool
+	saveDir    string
+	saves      bool
+	saveLoaded bool
 }
 
 var _ emulationCore = (*gbaCore)(nil)
@@ -69,8 +70,13 @@ func (c *gbaCore) LoadROMBytes(rom []byte, name string) error {
 	}
 	c.rom = append(c.rom[:0], rom...)
 	c.name = gbaSaveName(name)
+	c.saveLoaded = false
 	c.resetMachine()
-	return c.loadSave()
+	if err := c.loadSave(); err != nil {
+		return err
+	}
+	c.saveLoaded = true
+	return nil
 }
 
 func (c *gbaCore) resetMachine() {
@@ -321,6 +327,9 @@ func (c *gbaCore) loadSave() error {
 }
 
 func (c *gbaCore) flushSave() error {
+	if !c.saveLoaded {
+		return nil
+	}
 	path := c.saveFilePath()
 	if path == "" {
 		return nil
