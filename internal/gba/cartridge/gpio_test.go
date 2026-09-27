@@ -103,6 +103,11 @@ func TestRTCStatusReadWrite(t *testing.T) {
 	if got := rtcReadBytes(b, 1)[0]; got != 0x08 {
 		t.Fatalf("read-back status = %02x, want 08", got)
 	}
+
+	rtcBeginCommand(b, rtcCommandReset)
+	if got := rtc.Control(); got != 0 {
+		t.Fatalf("force-reset control = %02x, want 00", got)
+	}
 }
 
 func TestRTCDateTimeReadBCD(t *testing.T) {
@@ -111,7 +116,7 @@ func TestRTCDateTimeReadBCD(t *testing.T) {
 
 	rtcBeginCommand(b, rtcCommandReadDateTime)
 	got := rtcReadBytes(b, 7)
-	want := []byte{0x26, 0x09, 0x27, 0x06, 0x23, 0x58, 0x41}
+	want := []byte{0x26, 0x09, 0x27, 0x00, 0x23, 0x58, 0x41}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("datetime[%d] = %02x, want %02x (all=% x)", i, got[i], want[i], got)
