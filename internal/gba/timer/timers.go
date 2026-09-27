@@ -46,6 +46,19 @@ type state struct {
 	phase   uint32
 }
 
+type pendingWriteKind uint8
+
+const (
+	pendingReload pendingWriteKind = iota
+	pendingControl
+)
+
+type pendingWrite struct {
+	index int
+	kind  pendingWriteKind
+	value uint16
+}
+
 // Timers owns TM0-TM3 register state and deterministic cycle advancement.
 type Timers struct {
 	irq   IRQSink
@@ -53,6 +66,9 @@ type Timers struct {
 
 	timer  [4]state
 	active uint8
+
+	deferWrites   bool
+	pendingWrites []pendingWrite
 }
 
 // New maps TM0-TM3 onto b.
@@ -73,15 +89,15 @@ func (t *Timers) install(io *bus.IO) {
 
 		io.Register16WithByteWrite(low,
 			func() uint16 { return t.timer[index].counter },
-			func(value uint16) { t.timer[index].reload = value },
+			func(value uint16) { t.writeReload(index, value) },
 			func(byteOffset uint32, value byte) {
-				current := t.timer[index].reload
+				current := t.reloadForWrite(index)
 				if byteOffset == 0 {
 					current = current&0xff00 | uint16(value)
 				} else {
 					current = current&0x00ff | uint16(value)<<8
 				}
-				t.timer[index].reload = current
+				t.writeReload(index, current)
 			},
 		)
 
@@ -92,6 +108,54 @@ func (t *Timers) install(io *bus.IO) {
 	}
 }
 
+// BeginWriteAccess defers timer register side effects until EndWriteAccess.
+// CPU-facing system memory uses this so timer I/O writes become visible at
+// the completion edge of the bus access, rather than at its start.
+func (t *Timers) BeginWriteAccess() {
+	if t.deferWrites {
+		panic("gba timer: nested deferred write access")
+	}
+	t.deferWrites = true
+}
+
+// EndWriteAccess commits timer writes in bus order after the access cycles have
+// elapsed. Direct bus/debug writes remain immediate because they do not call
+// BeginWriteAccess.
+func (t *Timers) EndWriteAccess() {
+	if !t.deferWrites {
+		return
+	}
+	t.deferWrites = false
+	pending := t.pendingWrites
+	t.pendingWrites = t.pendingWrites[:0]
+	for _, write := range pending {
+		switch write.kind {
+		case pendingReload:
+			t.timer[write.index].reload = write.value
+		case pendingControl:
+			t.applyControl(write.index, write.value)
+		}
+	}
+}
+
+func (t *Timers) writeReload(index int, value uint16) {
+	if t.deferWrites {
+		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingReload, value: value})
+		return
+	}
+	t.timer[index].reload = value
+}
+
+func (t *Timers) reloadForWrite(index int) uint16 {
+	for i := len(t.pendingWrites) - 1; i >= 0; i-- {
+		write := t.pendingWrites[i]
+		if write.index == index && write.kind == pendingReload {
+			return write.value
+		}
+	}
+	return t.timer[index].reload
+}
+
 func controlMask(index int) uint16 {
 	if index == 0 {
 		return controlPrescalerMask | controlIRQ | controlEnable
@@ -100,6 +164,14 @@ func controlMask(index int) uint16 {
 }
 
 func (t *Timers) writeControl(index int, value uint16) {
+	if t.deferWrites {
+		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingControl, value: value})
+		return
+	}
+	t.applyControl(index, value)
+}
+
+func (t *Timers) applyControl(index int, value uint16) {
 	s := &t.timer[index]
 	oldControl := s.control
 	s.control = value & controlMask(index)
@@ -226,6 +298,8 @@ func (t *Timers) advanceCounter(index int, ticks uint64) uint32 {
 func (t *Timers) Reset() {
 	t.timer = [4]state{}
 	t.active = 0
+	t.deferWrites = false
+	t.pendingWrites = t.pendingWrites[:0]
 }
 
 // Active reports whether at least one timer is enabled.
