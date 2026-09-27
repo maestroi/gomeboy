@@ -199,6 +199,38 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	}
 }
 
+func TestCPUTimerWritesCommitAfterBusAccess(t *testing.T) {
+	m := New(nil, nil)
+	base := uint32(bus.IOStart + 0x100)
+
+	// A 32-bit I/O store takes two cycles. The timer must not start counting
+	// until those cycles are complete.
+	if cycles := m.memory.Write32(base, uint32(1<<7)<<16|0xffff, bus.Access{}); cycles != 2 {
+		t.Fatalf("timer start write cycles = %d, want 2", cycles)
+	}
+	if m.Cycle() != 2 || m.Timers.Counter(0) != 0xffff {
+		t.Fatalf("timer start edge cycle/counter = %d/%04x, want 2/ffff",
+			m.Cycle(), m.Timers.Counter(0))
+	}
+
+	// Updating the reload latch while enabled also commits at the end of the
+	// access. The write cycle itself still sees the previous reload value.
+	if cycles := m.memory.Write16(base, 0x0000, bus.Access{}); cycles != 1 {
+		t.Fatalf("timer reload write cycles = %d, want 1", cycles)
+	}
+	if got := m.Timers.Counter(0); got != 0xffff {
+		t.Fatalf("timer counted with new reload during write access: %04x", got)
+	}
+	if got := m.Timers.Reload(0); got != 0 {
+		t.Fatalf("timer reload after write = %04x, want 0000", got)
+	}
+
+	m.Advance(1)
+	if got := m.Timers.Counter(0); got != 0 {
+		t.Fatalf("timer did not use new reload on following tick: %04x", got)
+	}
+}
+
 func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
 	m := New(nil, nil)
 
