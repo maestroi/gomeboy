@@ -173,6 +173,38 @@ func TestBrightnessIncreaseAndDecrease(t *testing.T) {
 	}
 }
 
+
+func TestTopOnlyCompositionRequiresIdentityEffectsAndNoWindows(t *testing.T) {
+	p, _ := newTestPPU(t, Hooks{})
+
+	if !p.topOnlyComposition() {
+		t.Fatal("default PPU should allow top-only composition")
+	}
+
+	p.bldcnt = uint16(effectDarken << 6)
+	p.bldy = 0
+	if !p.topOnlyComposition() {
+		t.Fatal("zero-coefficient darken should be an identity effect")
+	}
+
+	p.bldy = 1
+	if p.topOnlyComposition() {
+		t.Fatal("non-zero darken coefficient requires full color-effects composition")
+	}
+
+	p.bldy = 0
+	p.bldcnt = uint16(effectNone<<6) | (1 << 8)
+	if p.topOnlyComposition() {
+		t.Fatal("second-target selection can affect semi-transparent OBJ pixels")
+	}
+
+	p.bldcnt = 0
+	p.dispcnt = dispWIN0Enable
+	if p.topOnlyComposition() {
+		t.Fatal("enabled windows require per-pixel window masks")
+	}
+}
+
 func TestBrightnessOnlyAffectsSelectedFirstTarget(t *testing.T) {
 	render := func(firstTarget bool) [3]byte {
 		p, b := newTestPPU(t, Hooks{})
