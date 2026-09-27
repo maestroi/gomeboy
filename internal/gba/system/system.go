@@ -204,10 +204,7 @@ func (m *Machine) Step() (StepResult, error) {
 	}
 
 	m.memory.cpuCycles = 0
-	m.memory.inInstruction = true
 	result, err := m.CPU.Step(&m.memory)
-	m.memory.inInstruction = false
-	m.Timers.EndWriteAccess()
 	if missing := result.TotalCycles - min(result.TotalCycles, m.memory.cpuCycles); missing != 0 {
 		// Exception entry currently reports one internal cycle without calling
 		// Memory.Idle. Keep it on the same central timeline.
@@ -559,7 +556,6 @@ type timedMemory struct {
 	m                  *Machine
 	cpuCycles          uint32
 	inBusCall          bool
-	inInstruction      bool
 	requestAfterAccess uint8
 }
 
@@ -583,36 +579,33 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 
 func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) uint32 {
 	t.inBusCall = true
-	if t.inInstruction {
-		t.m.Timers.BeginWriteAccess()
-	}
+	t.m.Timers.BeginWriteAccess()
 	cycles := t.m.Bus.Write8(addr, value, access)
 	t.inBusCall = false
 	t.consume(cycles)
+	t.m.Timers.EndWriteAccess()
 	t.flushDeferredDMARequest()
 	return cycles
 }
 
 func (t *timedMemory) Write16(addr uint32, value uint16, access gbamemory.Access) uint32 {
 	t.inBusCall = true
-	if t.inInstruction {
-		t.m.Timers.BeginWriteAccess()
-	}
+	t.m.Timers.BeginWriteAccess()
 	cycles := t.m.Bus.Write16(addr, value, access)
 	t.inBusCall = false
 	t.consume(cycles)
+	t.m.Timers.EndWriteAccess()
 	t.flushDeferredDMARequest()
 	return cycles
 }
 
 func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access) uint32 {
 	t.inBusCall = true
-	if t.inInstruction {
-		t.m.Timers.BeginWriteAccess()
-	}
+	t.m.Timers.BeginWriteAccess()
 	cycles := t.m.Bus.Write32(addr, value, access)
 	t.inBusCall = false
 	t.consume(cycles)
+	t.m.Timers.EndWriteAccess()
 	t.flushDeferredDMARequest()
 	return cycles
 }
