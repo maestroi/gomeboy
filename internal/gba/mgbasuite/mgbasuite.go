@@ -15,6 +15,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/gba/cartridge"
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	"github.com/maestroi/gomeboy/internal/gba/keypad"
+	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
 
@@ -223,13 +224,21 @@ func runCategory(rom []byte, category Category) CategoryResult {
 	collector := resultCollector{}
 	startCycle := m.Cycle()
 	for result.Steps < stepLimit {
-		_, err := m.Step()
+		stepResult, err := m.Step()
 		result.Steps++
 		if err != nil {
 			result.Status = StatusError
 			result.Detail = fmt.Sprintf("emulation error at pc=%#08x cpsr=%#08x: %v", m.CPU.PC(), uint32(m.CPU.CPSR()), err)
 			result.Cycles = m.Cycle() - startCycle
 			return result
+		}
+		if stepResult.CPU.ExceptionTaken && stepResult.CPU.Exception == cpu.ExceptionIRQ {
+			if err := handleSuiteIRQ(m); err != nil {
+				result.Status = StatusError
+				result.Detail = err.Error()
+				result.Cycles = m.Cycle() - startCycle
+				return result
+			}
 		}
 		if m.CPU.PC() == 0x08 && m.CPU.CPSR().Mode() == cpu.ModeSupervisor {
 			number, handled, err := handleSuiteSWI(m)
@@ -323,6 +332,29 @@ func (d *menuDriver) vblankWait() {
 		return
 	}
 	d.releaseGap = true
+}
+
+func handleSuiteIRQ(m *system.Machine) error {
+	pending := m.IRQ.EnabledPendingMask()
+	if pending&uint16(gbairq.VBlank) == 0 {
+		return fmt.Errorf("mGBA-suite entered unsupported IRQ with IE&IF=%#04x", pending)
+	}
+
+	// The stock suite enables VBlank IRQ only for its menu/UI pacing. The
+	// no-BIOS harness already handles VBlankIntrWait directly, so acknowledge
+	// that UI interrupt and perform the architectural IRQ return here. Other
+	// interrupt sources remain visible and will be rejected on a later IRQ
+	// entry until their categories get a proper BIOS/IRQ adapter.
+	m.Bus.Write16(bus.IOStart+0x202, uint16(gbairq.VBlank), bus.Access{})
+	lr := m.CPU.ReadRegister(14)
+	if lr < 4 {
+		return fmt.Errorf("invalid IRQ return address %#x", lr)
+	}
+	if err := m.CPU.RestoreCPSRFromSPSR(); err != nil {
+		return fmt.Errorf("restore IRQ SPSR: %w", err)
+	}
+	m.CPU.SetPC(lr - 4)
+	return nil
 }
 
 func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
