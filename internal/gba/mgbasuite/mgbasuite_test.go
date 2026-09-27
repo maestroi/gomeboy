@@ -176,3 +176,24 @@ func TestReadSuiteCountFromTextVRAM(t *testing.T) {
 		t.Fatalf("suite count = %d/%d ok=%v, want 1290/1552 true", passed, total, ok)
 	}
 }
+
+
+func TestAdvanceToNextVBlank(t *testing.T) {
+	m := system.New(nil, nil)
+	if m.PPU.InVBlank() {
+		t.Fatal("new PPU unexpectedly starts in VBlank")
+	}
+	advanceToNextVBlank(m)
+	if !m.PPU.InVBlank() || m.PPU.VCount() != 160 || m.PPU.LineCycle() != 0 {
+		t.Fatalf("first wait ended at vcount=%d lineCycle=%d vblank=%v", m.PPU.VCount(), m.PPU.LineCycle(), m.PPU.InVBlank())
+	}
+	first := m.Cycle()
+	advanceToNextVBlank(m)
+	if !m.PPU.InVBlank() || m.PPU.VCount() != 160 || m.PPU.LineCycle() != 0 {
+		t.Fatalf("second wait ended at vcount=%d lineCycle=%d vblank=%v", m.PPU.VCount(), m.PPU.LineCycle(), m.PPU.InVBlank())
+	}
+	wantDelta := uint64(228 * 1232)
+	if got := m.Cycle() - first; got != wantDelta {
+		t.Fatalf("second VBlank wait advanced %d cycles, want %d", got, wantDelta)
+	}
+}
