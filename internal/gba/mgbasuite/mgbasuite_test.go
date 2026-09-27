@@ -76,6 +76,17 @@ func TestHLECPUSetCopiesAndFillsThroughGBABus(t *testing.T) {
 		t.Fatalf("CpuSet r3 = %08x, want 00000170", got)
 	}
 
+	// Halfword copy keeps an odd source address. ARM7TDMI LDRH rotates the
+	// zero-extended aligned halfword by 8 before STRH stores the low half.
+	m.Bus.Write32(src, 0xdeadbeef, bus.Access{})
+	m.CPU.WriteRegister(0, src+1)
+	m.CPU.WriteRegister(1, dst)
+	m.CPU.WriteRegister(2, 2)
+	hleCPUSet(m, false)
+	if got, _ := m.Bus.Read32(dst, bus.Access{}); got != 0x00de00be {
+		t.Fatalf("unaligned CpuSet halfword copy = %08x, want 00de00be", got)
+	}
+
 	m.Bus.Write32(src, 0xaabbccdd, bus.Access{})
 	m.CPU.WriteRegister(0, src)
 	m.CPU.WriteRegister(1, dst)
