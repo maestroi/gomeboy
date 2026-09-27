@@ -29,7 +29,7 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 	cond := uint8(instruction >> 28)
 	if !conditionPassed(cond, c.cpsr) {
 		c.advancePC()
-		return ExecutionResult{InternalCycles: 1}, nil
+		return ExecutionResult{}, nil
 	}
 
 	if instruction&0x0ffffff0 == 0x012fff10 {
@@ -233,10 +233,10 @@ func (c *CPU) armOperand2(instruction uint32) (uint32, bool, uint8, error) {
 		imm := uint32(instruction & 0xff)
 		rotate := int((instruction>>8)&0xf) * 2
 		if rotate == 0 {
-			return imm, oldCarry, 1, nil
+			return imm, oldCarry, 0, nil
 		}
 		value := bits.RotateLeft32(imm, -rotate)
-		return value, value>>31 != 0, 1, nil
+		return value, value>>31 != 0, 0, nil
 	}
 
 	rm := int(instruction & 0xf)
@@ -245,7 +245,7 @@ func (c *CPU) armOperand2(instruction uint32) (uint32, bool, uint8, error) {
 		shiftType := uint8((instruction >> 5) & 0x3)
 		amount := uint8((instruction >> 7) & 0x1f)
 		value, carry, err := shiftImmediate(value, shiftType, amount, oldCarry)
-		return value, carry, 1, err
+		return value, carry, 0, err
 	}
 
 	// Register-specified shifts take an additional internal cycle. ARM7TDMI
@@ -258,7 +258,7 @@ func (c *CPU) armOperand2(instruction uint32) (uint32, bool, uint8, error) {
 		value += 4
 	}
 	value, carry := shiftRegister(value, uint8((instruction>>5)&0x3), uint8(c.ReadRegister(rs)), oldCarry)
-	return value, carry, 2, nil
+	return value, carry, 1, nil
 }
 
 func (c *CPU) executeARMMultiply(instruction uint32) (ExecutionResult, error) {
