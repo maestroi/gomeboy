@@ -34,19 +34,25 @@ func gbaPerfROM() []byte {
 
 func newGBAPerfEmulator(b *testing.B, headless bool) *Emulator {
 	b.Helper()
-	opts := []Option{
-		WithROMBytes(gbaPerfROM()),
-		WithModel(ModelAGB),
-	}
+	var opts []Option
 	if headless {
 		opts = append(opts, Headless())
 	}
 	e, err := New(opts...)
+	if err == nil {
+		err = e.LoadROMBytes(gbaPerfROM(), "perf.gba")
+	}
 	if err != nil {
 		b.Fatalf("New GBA perf emulator: %v", err)
 	}
+	if e.core == nil || e.core.CoreID() != "gba" {
+		b.Fatalf("perf core = %T/%q, want native GBA core", e.core, e.core.CoreID())
+	}
 	for i := 0; i < 10; i++ {
 		e.StepFrame()
+	}
+	if core := e.core.(*gbaCore); core.lastError != nil {
+		b.Fatalf("GBA perf warmup failed: %v", core.lastError)
 	}
 	return e
 }
