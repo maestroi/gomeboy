@@ -87,9 +87,10 @@ func (c *CPU) executeThumbMultiple(instruction uint16, mem Memory) (ExecutionRes
 	load := instruction&(1<<11) != 0
 	rb := int((instruction >> 8) & 0x7)
 	registerList := uint16(instruction & 0xff)
+	emptyList := registerList == 0
 
 	addressCount := bits.OnesCount16(registerList)
-	if registerList == 0 {
+	if emptyList {
 		registerList = 1 << 15
 		addressCount = 16
 	}
@@ -122,6 +123,13 @@ func (c *CPU) executeThumbMultiple(instruction uint16, mem Memory) (ExecutionRes
 			value := c.ReadRegister(reg)
 			if reg == 15 {
 				value = c.VisiblePC()
+				if emptyList {
+					// Empty-list STMIA behaves as a PC transfer with the
+					// extra internal sequencing visible in Thumb state: the
+					// stored value is current instruction +6, while writeback
+					// still advances by 16 registers (64 bytes).
+					value += 2
+				}
 			} else if reg == rb && reg != firstReg {
 				// On ARM7TDMI a base register stored after the first transfer
 				// observes the updated writeback value.
