@@ -401,3 +401,30 @@ func TestThumbEmptyMultipleListLoadsPCAndAdvancesBase64Bytes(t *testing.T) {
 		t.Fatalf("empty Thumb LDM writeback = %08x, want %08x", got, base+0x40)
 	}
 }
+
+
+func TestThumbEmptyMultipleListStoreUsesLatePCAndAdvancesBase64Bytes(t *testing.T) {
+	b := newExecutionBus(nil)
+	c := newThumbCPU(t)
+	base := uint32(bus.IWRAMStart + 0x740)
+	c.WriteRegister(0, base)
+	c.SetPC(0x100)
+
+	result, err := c.ExecuteThumbWithMemory(0xc000, b) // STMIA r0!,{}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.PipelineFlush {
+		t.Fatal("empty Thumb STM unexpectedly flushed pipeline")
+	}
+	if got, _ := b.Read32(base, bus.Access{}); got != 0x106 {
+		t.Fatalf("empty Thumb STM stored PC = %08x, want 00000106", got)
+	}
+	if got := c.ReadRegister(0); got != base+0x40 {
+		t.Fatalf("empty Thumb STM writeback = %08x, want %08x", got, base+0x40)
+	}
+	if got := c.PC(); got != 0x102 {
+		t.Fatalf("PC = %08x, want 00000102", got)
+	}
+}
+

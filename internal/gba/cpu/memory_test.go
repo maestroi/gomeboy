@@ -232,6 +232,62 @@ func TestARMHalfwordAndSignedTransfers(t *testing.T) {
 	}
 }
 
+
+func TestARMLoadWritebackSameRegisterLoadedValueWins(t *testing.T) {
+	b := newExecutionBus(nil)
+
+	t.Run("word pre-index", func(t *testing.T) {
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		base := uint32(bus.IWRAMStart + 0x380)
+		b.Write32(base+4, 32, bus.Access{})
+		c.WriteRegister(0, base)
+
+		if _, err := c.ExecuteARMWithMemory(0xe5b00004, b); err != nil { // LDR r0,[r0,#4]!
+			t.Fatal(err)
+		}
+		if got := c.ReadRegister(0); got != 32 {
+			t.Fatalf("pre-index Rn==Rd load = %08x, want 00000020", got)
+		}
+	})
+
+	t.Run("word post-index", func(t *testing.T) {
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		base := uint32(bus.IWRAMStart + 0x3c0)
+		b.Write32(base, 32, bus.Access{})
+		c.WriteRegister(0, base)
+
+		if _, err := c.ExecuteARMWithMemory(0xe4900004, b); err != nil { // LDR r0,[r0],#4
+			t.Fatal(err)
+		}
+		if got := c.ReadRegister(0); got != 32 {
+			t.Fatalf("post-index Rn==Rd load = %08x, want 00000020", got)
+		}
+	})
+
+	t.Run("halfword pre-index", func(t *testing.T) {
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		base := uint32(bus.IWRAMStart + 0x400)
+		b.Write16(base+4, 32, bus.Access{})
+		c.WriteRegister(0, base)
+
+		if _, err := c.ExecuteARMWithMemory(0xe1f000b4, b); err != nil { // LDRH r0,[r0,#4]!
+			t.Fatal(err)
+		}
+		if got := c.ReadRegister(0); got != 32 {
+			t.Fatalf("halfword Rn==Rd load = %08x, want 00000020", got)
+		}
+	})
+}
+
 func TestARMTransferNeedsMemoryOnlyWhenConditionPasses(t *testing.T) {
 	c := New()
 	if err := c.SetMode(ModeSystem); err != nil {

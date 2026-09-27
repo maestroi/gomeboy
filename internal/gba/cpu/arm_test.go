@@ -238,6 +238,46 @@ func TestARMRegisterSpecifiedShiftR15Semantics(t *testing.T) {
 	}
 }
 
+
+func TestARMTestOpcodeWithR15DestinationRestoresCPSRWithoutBranch(t *testing.T) {
+	c := New()
+	if err := c.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	c.WriteRegister(8, 32)
+	if err := c.SetMode(ModeFIQ); err != nil {
+		t.Fatal(err)
+	}
+	c.WriteRegister(8, 64)
+	if err := c.SetSPSR(PSR(ModeSystem) | FlagCarry); err != nil {
+		t.Fatal(err)
+	}
+	c.SetPC(0x100)
+	// Make the ordinary CMP result equal so Z would be set if its flags were
+	// retained instead of the SPSR being restored.
+	c.WriteRegister(0, c.VisiblePC())
+
+	result, err := c.ExecuteARM(0xe15ff000) // CMP pc,r0 with encoded Rd=pc.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.PipelineFlush {
+		t.Fatal("CMP with encoded Rd=pc unexpectedly flushed the pipeline")
+	}
+	if got := c.PC(); got != 0x104 {
+		t.Fatalf("PC = %08x, want 00000104", got)
+	}
+	if got := c.CPSR().Mode(); got != ModeSystem {
+		t.Fatalf("mode = %v, want system", got)
+	}
+	if c.CPSR().Zero() || !c.CPSR().Carry() {
+		t.Fatalf("restored flags Z=%v C=%v, want false/true", c.CPSR().Zero(), c.CPSR().Carry())
+	}
+	if got := c.ReadRegister(8); got != 32 {
+		t.Fatalf("restored bank r8 = %d, want 32", got)
+	}
+}
+
 func TestARMMultiplyAndLongMultiply(t *testing.T) {
 	c := New()
 	if err := c.SetMode(ModeSystem); err != nil {
@@ -282,6 +322,20 @@ func TestARMMultiplyAndLongMultiply(t *testing.T) {
 	}
 	if result.InternalCycles != 2 {
 		t.Fatalf("UMULL cycles = %d, want 2", result.InternalCycles)
+	}
+
+
+	// The pinned external suite's ARM text renderer uses MLA with Rd == Rm.
+	// ARM7TDMI executes this deterministically on GBA despite the architectural
+	// restriction, so source operands must be captured before Rd is written.
+	c.WriteRegister(4, 240)
+	c.WriteRegister(1, 2)
+	c.WriteRegister(0, 3)
+	if _, err := c.ExecuteARM(0xe0240194); err != nil { // MLA r4,r4,r1,r0
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(4); got != 483 {
+		t.Fatalf("MLA Rd==Rm result = %d, want 483", got)
 	}
 
 	c.WriteRegister(0, 0xffffffff) // -1
