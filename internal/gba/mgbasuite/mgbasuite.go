@@ -401,6 +401,10 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 	}
 
 	switch number {
+	case 0x04: // IntrWait
+		if err := hleIntrWait(m); err != nil {
+			return number, true, err
+		}
 	case 0x05: // VBlankIntrWait
 		advanceToNextVBlank(m)
 	case 0x06: // Div
@@ -444,6 +448,37 @@ func advanceToNextVBlank(m *system.Machine) {
 		cycles = uint32(ppu.ScanlinesPerFrame) * ppu.CyclesPerLine
 	}
 	m.Advance(cycles)
+}
+
+func hleIntrWait(m *system.Machine) error {
+	mask := uint16(m.CPU.ReadRegister(1)) & 0x3fff
+	if mask == 0 {
+		return fmt.Errorf("mGBA-suite BIOS IntrWait mask is zero")
+	}
+	if m.CPU.ReadRegister(0) != 0 {
+		m.Bus.Write16(bus.IOStart+0x202, mask, bus.Access{})
+	}
+
+	const maxWaitCycles uint64 = 2 * 16_777_216
+	start := m.Cycle()
+	for m.Cycle()-start < maxWaitCycles {
+		if pending := m.IRQ.IF() & mask; pending != 0 {
+			m.Bus.Write16(bus.IOStart+0x202, pending, bus.Access{})
+			return nil
+		}
+		step := m.Timers.CyclesUntilEvent()
+		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
+			step = untilPPU
+		}
+		if step == 0 {
+			step = 1
+		}
+		if step > 1<<20 {
+			step = 1 << 20
+		}
+		m.Advance(step)
+	}
+	return fmt.Errorf("mGBA-suite BIOS IntrWait timed out waiting for IF mask %#04x", mask)
 }
 
 func hleArcTan(m *system.Machine) {
