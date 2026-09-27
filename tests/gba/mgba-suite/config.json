@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "suite": "mgba-emu/suite",
+  "suite_revision": "v0-r76",
+  "source_commit": "7320640f9aad4e48418324d1243cb4402a03cfaa",
+  "rom_sha256": "",
+  "categories": [
+    {
+      "id": "memory",
+      "name": "Memory tests",
+      "menu_index": 0,
+      "expected_total": 1552,
+      "enabled": true,
+      "step_limit": 50000000
+    },
+    {
+      "id": "io-read",
+      "name": "I/O read tests",
+      "menu_index": 1,
+      "expected_total": 123,
+      "enabled": true,
+      "step_limit": 10000000
+    },
+    {
+      "id": "timing",
+      "name": "Timing tests",
+      "menu_index": 2,
+      "expected_total": 1560,
+      "enabled": false
+    },
+    {
+      "id": "timers",
+      "name": "Timer count-up tests",
+      "menu_index": 3,
+      "expected_total": 936,
+      "enabled": false
+    },
+    {
+      "id": "timer-irq",
+      "name": "Timer IRQ tests",
+      "menu_index": 4,
+      "expected_total": 90,
+      "enabled": false
+    },
+    {
+      "id": "dma",
+      "name": "DMA tests",
+      "menu_index": 9,
+      "expected_total": 1256,
+      "enabled": false
+    }
+  ]
+}
