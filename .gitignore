@@ -8,3 +8,4 @@ tests/gba/compatibility/roms/
 /diag
 *.sav
 *.state
+tests/gba/mgba-suite/roms/\n
