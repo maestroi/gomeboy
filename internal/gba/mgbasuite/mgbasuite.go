@@ -17,7 +17,6 @@ import (
 	"github.com/maestroi/gomeboy/internal/gba/cartridge"
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	"github.com/maestroi/gomeboy/internal/gba/keypad"
-	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 	"github.com/maestroi/gomeboy/internal/gba/ppu"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
