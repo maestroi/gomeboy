@@ -46,6 +46,83 @@ func TestRunnerPassesOnMemorySignature(t *testing.T) {
 	}
 }
 
+func TestRunnerRecognizesSelfLoopBeforeExecutingIt(t *testing.T) {
+	progress := &Progress{
+		FailureRegister: 0,
+		Groups: []FailureGroup{
+			{Name: "conditions", First: 1, Last: 20},
+			{Name: "branches", First: 50, Last: 57},
+		},
+	}
+	runner := Runner{Suite: "upstream", SuiteRevision: "rev", GomeBoyCommit: "test"}
+	result := runner.Run(Case{
+		Name:     "self-loop",
+		ROM:      armROM(0xeafffffe),
+		Boot:     BootDirect,
+		Limits:   Limits{Steps: 1},
+		PassAll:  []Condition{{Type: "self_loop"}},
+		Progress: progress,
+	})
+	if result.Status != StatusPass || result.Steps != 0 {
+		t.Fatalf("result = %+v, want zero-step pass", result)
+	}
+	if result.Checks == nil || *result.Checks != (CheckSummary{Passed: 28, Total: 28}) {
+		t.Fatalf("checks = %+v, want 28/28", result.Checks)
+	}
+}
+
+func TestRunnerCapturesSWIFirstFailureProgress(t *testing.T) {
+	progress := &Progress{
+		FailureRegister: 0,
+		Groups: []FailureGroup{
+			{Name: "conditions", First: 1, Last: 20},
+			{Name: "branches", First: 50, Last: 57},
+		},
+	}
+	runner := Runner{Suite: "upstream", SuiteRevision: "rev", GomeBoyCommit: "test"}
+	result := runner.Run(Case{
+		Name:             "swi-failure",
+		ROM:              armROM(0xef060000), // swi 0x60000
+		Boot:             BootDirect,
+		InitialRegisters: []RegisterValue{{Register: 0, Value: 52}},
+		Limits:           Limits{Steps: 1},
+		PassAll:          []Condition{{Type: "self_loop"}},
+		FailAny:          []Condition{{Type: "swi", Value: 0x60000}},
+		Progress:         progress,
+	})
+	if result.Status != StatusFail || result.Steps != 0 {
+		t.Fatalf("result = %+v, want zero-step failure", result)
+	}
+	if result.Failure == nil || result.Failure.TestID != 52 || result.Failure.Group != "branches" || result.Failure.Register != "r0" {
+		t.Fatalf("failure = %+v", result.Failure)
+	}
+	wantChecks := CheckSummary{Passed: 22, Failed: 1, NotRun: 5, Total: 28}
+	if result.Checks == nil || *result.Checks != wantChecks {
+		t.Fatalf("checks = %+v, want %+v", result.Checks, wantChecks)
+	}
+}
+
+func TestRunnerAppliesExplicitDirectBootCPUState(t *testing.T) {
+	cpsr := uint32(0x1f)
+	runner := Runner{Suite: "smoke", SuiteRevision: "1", GomeBoyCommit: "test"}
+	result := runner.Run(Case{
+		Name:             "initial-sp",
+		ROM:              armROM(0xeafffffe),
+		Boot:             BootDirect,
+		InitialCPSR:      &cpsr,
+		InitialRegisters: []RegisterValue{{Register: 13, Value: 0x03007f00}},
+		Limits:           Limits{Steps: 1},
+		PassAll: []Condition{{
+			Type:     "register",
+			Register: 13,
+			Value:    0x03007f00,
+		}},
+	})
+	if result.Status != StatusPass || result.Steps != 0 {
+		t.Fatalf("result = %+v, want explicit boot state to match before first instruction", result)
+	}
+}
+
 func TestRunnerTimesOutDeterministically(t *testing.T) {
 	rom := armROM(0xeafffffe) // b .
 	tc := Case{
