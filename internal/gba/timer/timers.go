@@ -109,18 +109,19 @@ func (t *Timers) install(io *bus.IO) {
 }
 
 // BeginWriteAccess defers timer register side effects until EndWriteAccess.
-// CPU-facing system memory uses this so timer I/O writes become visible at
-// the completion edge of the bus access, rather than at its start.
+// The system keeps this scope open through the remainder of the current CPU
+// instruction so writes become visible at the ARM7 instruction completion
+// edge instead of at the start of the I/O access.
 func (t *Timers) BeginWriteAccess() {
 	if t.deferWrites {
-		panic("gba timer: nested deferred write access")
+		return
 	}
 	t.deferWrites = true
 }
 
-// EndWriteAccess commits timer writes in bus order after the access cycles have
-// elapsed. Direct bus/debug writes remain immediate because they do not call
-// BeginWriteAccess.
+// EndWriteAccess commits queued timer writes in bus order at the CPU
+// instruction boundary. Direct bus/debug writes remain immediate because they
+// do not call BeginWriteAccess.
 func (t *Timers) EndWriteAccess() {
 	if !t.deferWrites {
 		return
