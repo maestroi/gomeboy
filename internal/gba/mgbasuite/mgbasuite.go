@@ -411,6 +411,8 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 		if err := hleDiv(m, true); err != nil {
 			return number, true, err
 		}
+	case 0x08: // Sqrt
+		hleSqrt(m)
 	case 0x0b:
 		hleCPUSet(m, false)
 	case 0x0c:
@@ -440,6 +442,10 @@ func advanceToNextVBlank(m *system.Machine) {
 		cycles = uint32(ppu.ScanlinesPerFrame) * ppu.CyclesPerLine
 	}
 	m.Advance(cycles)
+}
+
+func hleSqrt(m *system.Machine) {
+	m.CPU.WriteRegister(0, uint32(math.Sqrt(float64(m.CPU.ReadRegister(0)))))
 }
 
 func hleDiv(m *system.Machine, arm bool) error {
