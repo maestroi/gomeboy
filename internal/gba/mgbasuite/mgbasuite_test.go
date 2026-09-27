@@ -201,7 +201,7 @@ func TestAdvanceToNextVBlank(t *testing.T) {
 func TestHLEDivAndDivArm(t *testing.T) {
 	m := system.New(nil, nil)
 
-	m.CPU.WriteRegister(0, uint32(int32(-13)))
+	m.CPU.WriteRegister(0, 0xfffffff3)
 	m.CPU.WriteRegister(1, 5)
 	if err := hleDiv(m, false); err != nil {
 		t.Fatal(err)
