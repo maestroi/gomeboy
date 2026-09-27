@@ -64,6 +64,30 @@ func TestROMWaitStateWindowsMapSameCartridge(t *testing.T) {
 	}
 }
 
+
+func TestROMWideReadsPreserveAlignmentAndOpenBusBehavior(t *testing.T) {
+	b := testBus()
+
+	if got, _ := b.Read32(ROM0Start+0x21, Access{}); got != 0x20232221 {
+		t.Fatalf("misaligned ROM word = %08x, want 20232221", got)
+	}
+	if got, _ := b.Read16(ROM0Start+0x21, Access{}); got != 0x2021 {
+		t.Fatalf("odd ROM halfword = %04x, want 2021", got)
+	}
+
+	// A wide read that straddles the end of the mapped ROM is wholly open bus,
+	// matching the generic per-byte path rather than returning a partial word.
+	short := New(nil, make([]byte, 0x402))
+	short.SetOpenBus(0x44332211)
+	if got, _ := short.Read32(ROM0Start+0x400, Access{}); got != 0x44332211 {
+		t.Fatalf("partial ROM word = %08x, want open bus 44332211", got)
+	}
+	short.SetOpenBus(0x44332211)
+	if got, _ := short.Read16(ROM0Start+0x402, Access{}); got != 0x2211 {
+		t.Fatalf("unmapped ROM halfword = %04x, want open bus 2211", got)
+	}
+}
+
 func TestBIOSAndIOAreNotGenerallyMirrored(t *testing.T) {
 	b := testBus()
 	b.SetOpenBus(0xaabbccdd)
