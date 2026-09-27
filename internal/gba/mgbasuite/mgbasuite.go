@@ -220,6 +220,7 @@ func runCategory(rom []byte, category Category) CategoryResult {
 	}
 
 	driver := newMenuDriver(m, category.MenuIndex)
+	collector := resultCollector{}
 	startCycle := m.Cycle()
 	for result.Steps < stepLimit {
 		_, err := m.Step()
@@ -249,11 +250,10 @@ func runCategory(rom []byte, category Category) CategoryResult {
 			}
 		}
 
-		log := readSRAMLog(m.Cartridge.Save)
-		passed, failed, failures := parseResults(log)
-		result.Passed, result.Failed = passed, failed
-		result.Total = passed + failed
-		result.Failures = failures
+		collector.poll(m.Cartridge.Save)
+		result.Passed, result.Failed = collector.passed, collector.failed
+		result.Total = collector.passed + collector.failed
+		result.Failures = collector.failures
 		if result.Total >= category.ExpectedTotal {
 			result.Cycles = m.Cycle() - startCycle
 			if result.Total > 0 {
@@ -416,6 +416,46 @@ func hleCPUSet(m *system.Machine, fast bool) {
 	}
 	if !fast {
 		m.CPU.WriteRegister(3, 0x170)
+	}
+}
+
+type resultCollector struct {
+	offset   uint32
+	pending  string
+	passed   int
+	failed   int
+	failures []string
+}
+
+func (c *resultCollector) poll(save bus.SaveDevice) {
+	if save == nil || c.offset >= sramLogSize {
+		return
+	}
+	start := c.offset
+	data := make([]byte, 0, 256)
+	for c.offset < sramLogSize {
+		b := save.Read8(c.offset)
+		if b == 0 || b == 0xff {
+			break
+		}
+		data = append(data, b)
+		c.offset++
+	}
+	if c.offset == start {
+		return
+	}
+	text := c.pending + string(data)
+	lines := strings.Split(text, "\n")
+	c.pending = lines[len(lines)-1]
+	for _, line := range lines[:len(lines)-1] {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasSuffix(line, "PASS"):
+			c.passed++
+		case strings.HasSuffix(line, "FAIL"):
+			c.failed++
+			c.failures = append(c.failures, line)
+		}
 	}
 }
 
