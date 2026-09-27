@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
@@ -20,6 +21,43 @@ func newTestAudio(t *testing.T) (*Audio, *bus.Bus, *requestLog) {
 	requests := &requestLog{}
 	a := New(b, Hooks{RequestFIFO: requests.request})
 	return a, b, requests
+}
+
+
+func TestHeadlessAdvanceBatchesHostSamplingWithoutChangingPSGState(t *testing.T) {
+	big, _, _ := newTestAudio(t)
+	chunked, _, _ := newTestAudio(t)
+
+	for _, a := range []*Audio{big, chunked} {
+		a.SetHeadless(true)
+		a.psg.enabled = true
+		a.psg.square[0] = squarePSG{
+			enabled:   true,
+			frequency: 1980,
+			envelope:  psgEnvelope{dac: true, volume: 7},
+		}
+	}
+
+	const total = uint32(250000)
+	big.Advance(total)
+	for remaining := total; remaining != 0; {
+		step := uint32(997)
+		if remaining < step {
+			step = remaining
+		}
+		chunked.Advance(step)
+		remaining -= step
+	}
+
+	if big.samplePhase != chunked.samplePhase {
+		t.Fatalf("headless sample phase = %d, want %d", big.samplePhase, chunked.samplePhase)
+	}
+	if !reflect.DeepEqual(big.psg, chunked.psg) {
+		t.Fatalf("batched headless PSG state differs:\nbig=%+v\nchunked=%+v", big.psg, chunked.psg)
+	}
+	if _, count := big.Samples(); count != 0 {
+		t.Fatalf("headless batched advance buffered %d values", count)
+	}
 }
 
 func TestFIFORegisterWritesPreserveLittleEndianSampleOrder(t *testing.T) {
