@@ -26,6 +26,54 @@ func programDMA(m *Machine, index int, source, dest uint32, count uint16, contro
 	m.Bus.Write16(base+10, control, bus.Access{})
 }
 
+
+func TestRunFrameMatchesDetailedStepExecution(t *testing.T) {
+	newLoop := func() *Machine {
+		// ARM B . keeps execution deterministic while the PPU/timers/DMA run.
+		m := New(nil, []byte{0xfe, 0xff, 0xff, 0xea})
+		if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+			t.Fatal(err)
+		}
+		m.CPU.SetPC(bus.ROM0Start)
+
+		// Exercise an event generated inside the frame runner rather than only
+		// comparing the no-event instruction loop.
+		source := uint32(bus.IWRAMStart + 0x600)
+		dest := uint32(bus.IWRAMStart + 0x700)
+		m.Bus.Write16(source, 0xbeef, bus.Access{})
+		programDMA(m, 1, source, dest, 1, (2<<12)|(1<<15)) // HBlank DMA1
+		return m
+	}
+
+	detailed := newLoop()
+	fast := newLoop()
+
+	start := detailed.PPU.FrameCount()
+	for detailed.PPU.FrameCount() == start {
+		if _, err := detailed.Step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := fast.RunFrame(); err != nil {
+		t.Fatal(err)
+	}
+
+	if detailed.Cycle() != fast.Cycle() ||
+		detailed.PPU.FrameCount() != fast.PPU.FrameCount() ||
+		detailed.CPU.PC() != fast.CPU.PC() ||
+		detailed.DMAStallCycles() != fast.DMAStallCycles() {
+		t.Fatalf("RunFrame diverged: detailed cycle/frame/pc/stall=%d/%d/%08x/%d fast=%d/%d/%08x/%d",
+			detailed.Cycle(), detailed.PPU.FrameCount(), detailed.CPU.PC(), detailed.DMAStallCycles(),
+			fast.Cycle(), fast.PPU.FrameCount(), fast.CPU.PC(), fast.DMAStallCycles())
+	}
+	for _, m := range []*Machine{detailed, fast} {
+		got, _ := m.Bus.Read16(bus.IWRAMStart+0x700, bus.Access{})
+		if got != 0xbeef {
+			t.Fatalf("frame runner lost HBlank DMA result: %04x", got)
+		}
+	}
+}
+
 func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
 	m := New(nil, nil)
 	code := uint32(bus.IWRAMStart + 0x100)
