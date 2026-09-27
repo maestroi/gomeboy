@@ -228,3 +228,17 @@ func TestHLEDivAndDivArm(t *testing.T) {
 		t.Fatalf("DivArm remainder = %d, want 3", got)
 	}
 }
+
+func TestHLESqrt(t *testing.T) {
+	m := system.New(nil, nil)
+	m.CPU.WriteRegister(0, 81)
+	hleSqrt(m)
+	if got := m.CPU.ReadRegister(0); got != 9 {
+		t.Fatalf("Sqrt(81) = %d, want 9", got)
+	}
+	m.CPU.WriteRegister(0, 80)
+	hleSqrt(m)
+	if got := m.CPU.ReadRegister(0); got != 8 {
+		t.Fatalf("Sqrt(80) = %d, want floor 8", got)
+	}
+}
