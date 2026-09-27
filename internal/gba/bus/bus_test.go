@@ -83,8 +83,8 @@ func TestROMWideReadsPreserveAlignmentAndOpenBusBehavior(t *testing.T) {
 		t.Fatalf("partial ROM word = %08x, want open bus 44332211", got)
 	}
 	short.SetOpenBus(0x44332211)
-	if got, _ := short.Read16(ROM0Start+0x402, Access{}); got != 0x2211 {
-		t.Fatalf("unmapped ROM halfword = %04x, want open bus 2211", got)
+	if got, _ := short.Read16(ROM0Start+0x402, Access{}); got != 0x4433 {
+		t.Fatalf("unmapped ROM halfword = %04x, want open bus lane 4433", got)
 	}
 }
 
