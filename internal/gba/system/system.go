@@ -21,9 +21,10 @@ const (
 	// The transfer then stalls the CPU for the bus/internal cycles reported by DMA.
 	DMAStartLatency uint64 = 2
 
-	// IRQPropagationLatency is the GBA interrupt-controller delay from an
-	// enabled pending request (IE & IF) to the CPU-visible IRQ delivery event.
-	IRQPropagationLatency uint64 = 7
+	// IRQPropagationLatency is the number of master cycles from the request
+	// edge through CPU-visible delivery. The request edge itself is cycle one,
+	// so six subsequent cycles elapse before the line is visible.
+	IRQPropagationLatency uint64 = 6
 )
 
 // StepResult describes one architectural CPU step plus any DMA stalls that
