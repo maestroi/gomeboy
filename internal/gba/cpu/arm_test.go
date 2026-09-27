@@ -182,8 +182,8 @@ func TestARMRegisterSpecifiedShift(t *testing.T) {
 	if got := c.ReadRegister(2); got != 16 {
 		t.Fatalf("shifted result = %d, want 16", got)
 	}
-	if result.InternalCycles != 2 {
-		t.Fatalf("register shift cycles = %d, want 2", result.InternalCycles)
+	if result.InternalCycles != 1 {
+		t.Fatalf("register shift cycles = %d, want 1 extra cycle", result.InternalCycles)
 	}
 	if c.CPSR().Zero() || c.CPSR().Negative() {
 		t.Fatalf("unexpected flags N=%v Z=%v", c.CPSR().Negative(), c.CPSR().Zero())
@@ -207,8 +207,8 @@ func TestARMRegisterSpecifiedShiftR15Semantics(t *testing.T) {
 	if got := c.ReadRegister(0); got != 0x10c {
 		t.Fatalf("register-shifted Rm=pc = %08x, want 0000010c", got)
 	}
-	if result.InternalCycles != 2 {
-		t.Fatalf("register-shifted pc cycles = %d, want 2", result.InternalCycles)
+	if result.InternalCycles != 1 {
+		t.Fatalf("register-shifted pc cycles = %d, want 1 extra cycle", result.InternalCycles)
 	}
 	if got := c.PC(); got != 0x104 {
 		t.Fatalf("PC after register-shifted MOV = %08x, want 00000104", got)
