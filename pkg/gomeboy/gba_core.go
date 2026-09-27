@@ -212,6 +212,10 @@ func (c *gbaCore) Reset() error {
 	if device := c.persistentDevice(); device != nil {
 		liveSave = device.SaveData()
 	}
+	var liveRTC []byte
+	if rtc := c.cartridgeRTC(); rtc != nil {
+		liveRTC = rtc.SaveFooter()
+	}
 
 	c.resetMachine()
 	if liveSave != nil {
@@ -221,6 +225,15 @@ func (c *gbaCore) Reset() error {
 		}
 		if err := device.LoadSaveData(liveSave); err != nil {
 			return fmt.Errorf("gomeboy: restore GBA cartridge save after reset: %w", err)
+		}
+	}
+	if liveRTC != nil {
+		rtc := c.cartridgeRTC()
+		if rtc == nil {
+			return errors.New("gomeboy: GBA cartridge RTC disappeared across reset")
+		}
+		if err := rtc.LoadFooter(liveRTC); err != nil {
+			return fmt.Errorf("gomeboy: restore GBA cartridge RTC after reset: %w", err)
 		}
 	}
 	return nil
@@ -246,8 +259,18 @@ func (c *gbaCore) persistentDevice() cartridge.PersistentDevice {
 	return c.machine.Cartridge.PersistentDevice()
 }
 
+func (c *gbaCore) cartridgeRTC() *cartridge.RTC {
+	if c.machine == nil || c.machine.Cartridge.GPIO == nil {
+		return nil
+	}
+	return c.machine.Cartridge.GPIO.RTC()
+}
+
 func (c *gbaCore) saveFilePath() string {
-	if !c.saves || c.name == "" || c.persistentDevice() == nil {
+	if !c.saves || c.name == "" {
+		return ""
+	}
+	if c.persistentDevice() == nil && c.cartridgeRTC() == nil {
 		return ""
 	}
 	return filepath.Join(c.saveDir, c.name+".sav")
@@ -266,8 +289,33 @@ func (c *gbaCore) loadSave() error {
 	if err != nil {
 		return fmt.Errorf("gomeboy: read GBA save %s: %w", path, err)
 	}
-	if err := c.persistentDevice().LoadSaveData(data); err != nil {
-		return fmt.Errorf("gomeboy: load GBA save %s: %w", path, err)
+
+	device := c.persistentDevice()
+	baseSize := 0
+	if device != nil {
+		baseSize = device.SaveSize()
+	}
+
+	var footer []byte
+	switch {
+	case len(data) == baseSize:
+		// Raw SRAM/Flash/EEPROM save without an RTC trailer.
+	case c.cartridgeRTC() != nil && len(data) == baseSize+cartridge.RTCFooterSize:
+		footer = data[baseSize:]
+		data = data[:baseSize]
+	default:
+		return fmt.Errorf("gomeboy: load GBA save %s: size %d bytes does not match selected cartridge payload %d", path, len(data), baseSize)
+	}
+
+	if device != nil {
+		if err := device.LoadSaveData(data); err != nil {
+			return fmt.Errorf("gomeboy: load GBA save %s: %w", path, err)
+		}
+	}
+	if footer != nil {
+		if err := c.cartridgeRTC().LoadFooter(footer); err != nil {
+			return fmt.Errorf("gomeboy: load GBA RTC %s: %w", path, err)
+		}
 	}
 	return nil
 }
@@ -284,7 +332,15 @@ func (c *gbaCore) flushSave() error {
 			return fmt.Errorf("gomeboy: create GBA save directory %s: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, c.persistentDevice().SaveData(), 0o644); err != nil {
+
+	var data []byte
+	if device := c.persistentDevice(); device != nil {
+		data = device.SaveData()
+	}
+	if rtc := c.cartridgeRTC(); rtc != nil {
+		data = append(data, rtc.SaveFooter()...)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("gomeboy: write GBA save %s: %w", path, err)
 	}
 	return nil
