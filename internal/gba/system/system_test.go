@@ -177,6 +177,45 @@ func TestCentralClockDelaysTimerIRQPropagation(t *testing.T) {
 	}
 }
 
+func TestIRQBecomingVisibleDuringFetchDiscardsFetchedInstruction(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+	code := uint32(bus.IWRAMStart + 0x1800)
+	m.Bus.Write32(code, 0xe3a0002a, bus.Access{}) // MOV r0,#42
+	m.CPU.SetPC(code)
+
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	m.IRQ.Request(gbairq.VBlank)
+
+	// Leave one master cycle before CPU-visible delivery. The IWRAM opcode
+	// fetch consumes that cycle; once the line becomes visible, the fetched MOV
+	// must be discarded instead of executing before IRQ entry.
+	m.Advance(uint32(IRQPropagationLatency - 1))
+	if m.CPU.IRQLine() {
+		t.Fatal("IRQ line asserted before final propagation cycle")
+	}
+
+	result, err := m.Step()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.CPU.ExceptionTaken || result.CPU.Exception != cpu.ExceptionIRQ {
+		t.Fatalf("fetch-boundary step did not take IRQ: %+v", result.CPU)
+	}
+	if result.CPU.FetchCycles != 1 {
+		t.Fatalf("discarded IWRAM fetch cycles = %d, want 1", result.CPU.FetchCycles)
+	}
+	if got := m.CPU.ReadRegister(0); got != 0 {
+		t.Fatalf("instruction executed after IRQ became visible during fetch: r0=%d", got)
+	}
+	if got := m.CPU.PC(); got != 0x18 {
+		t.Fatalf("IRQ vector PC = %#08x, want 00000018", got)
+	}
+}
+
 func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
