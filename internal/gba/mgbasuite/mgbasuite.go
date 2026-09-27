@@ -403,6 +403,14 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 	switch number {
 	case 0x05: // VBlankIntrWait
 		advanceToNextVBlank(m)
+	case 0x06: // Div
+		if err := hleDiv(m, false); err != nil {
+			return number, true, err
+		}
+	case 0x07: // DivArm
+		if err := hleDiv(m, true); err != nil {
+			return number, true, err
+		}
 	case 0x0b:
 		hleCPUSet(m, false)
 	case 0x0c:
@@ -432,6 +440,27 @@ func advanceToNextVBlank(m *system.Machine) {
 		cycles = uint32(ppu.ScanlinesPerFrame) * ppu.CyclesPerLine
 	}
 	m.Advance(cycles)
+}
+
+func hleDiv(m *system.Machine, arm bool) error {
+	numerator := int32(m.CPU.ReadRegister(0))
+	denominator := int32(m.CPU.ReadRegister(1))
+	if arm {
+		numerator, denominator = denominator, numerator
+	}
+	if denominator == 0 {
+		return fmt.Errorf("mGBA-suite BIOS Div denominator is zero")
+	}
+	quotient := numerator / denominator
+	remainder := numerator % denominator
+	m.CPU.WriteRegister(0, uint32(quotient))
+	m.CPU.WriteRegister(1, uint32(remainder))
+	abs := quotient
+	if abs < 0 {
+		abs = -abs
+	}
+	m.CPU.WriteRegister(3, uint32(abs))
+	return nil
 }
 
 func hleCPUSet(m *system.Machine, fast bool) {
