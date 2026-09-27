@@ -324,6 +324,20 @@ func TestARMMultiplyAndLongMultiply(t *testing.T) {
 		t.Fatalf("UMULL cycles = %d, want 2", result.InternalCycles)
 	}
 
+
+	// The pinned external suite's ARM text renderer uses MLA with Rd == Rm.
+	// ARM7TDMI executes this deterministically on GBA despite the architectural
+	// restriction, so source operands must be captured before Rd is written.
+	c.WriteRegister(4, 240)
+	c.WriteRegister(1, 2)
+	c.WriteRegister(0, 3)
+	if _, err := c.ExecuteARM(0xe0240194); err != nil { // MLA r4,r4,r1,r0
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(4); got != 483 {
+		t.Fatalf("MLA Rd==Rm result = %d, want 483", got)
+	}
+
 	c.WriteRegister(0, 0xffffffff) // -1
 	c.WriteRegister(1, 2)
 	// SMULL r4,r5,r0,r1.
