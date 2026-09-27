@@ -149,3 +149,36 @@ func TestConfigureAutoAttachesRTCFromStandardMarker(t *testing.T) {
 		t.Fatalf("save type = %s, want flash-128k", setup.SaveType)
 	}
 }
+
+func TestRTCFooterRestoresOffsetAndElapsedTime(t *testing.T) {
+	now := time.Date(2026, time.September, 27, 9, 0, 0, 0, time.UTC)
+	first := newRTC(func() time.Time { return now })
+	if !first.setDateTime([]byte{0x26, 0x09, 0x27, 0x06, 0x17, 0x30, 0x00}) {
+		t.Fatal("setDateTime rejected valid BCD")
+	}
+	footer := first.SaveFooter()
+
+	now = now.Add(2 * time.Hour)
+	second := newRTC(func() time.Time { return now })
+	if err := second.LoadFooter(footer); err != nil {
+		t.Fatalf("LoadFooter: %v", err)
+	}
+	got := second.CurrentTime()
+	if got.Hour() != 19 || got.Minute() != 30 || got.Second() != 0 {
+		t.Fatalf("restored RTC = %s, want 19:30:00 after two hours elapsed", got.Format(time.RFC3339))
+	}
+	if second.Control() != first.Control() {
+		t.Fatalf("restored control = %02x, want %02x", second.Control(), first.Control())
+	}
+}
+
+func TestRTCFooterRejectsInvalidBCD(t *testing.T) {
+	rtc := newRTC(func() time.Time {
+		return time.Date(2026, time.September, 27, 9, 0, 0, 0, time.UTC)
+	})
+	footer := rtc.SaveFooter()
+	footer[1] = 0x1a
+	if err := rtc.LoadFooter(footer); err == nil {
+		t.Fatal("LoadFooter accepted invalid month BCD")
+	}
+}
