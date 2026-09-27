@@ -29,8 +29,11 @@ const (
 	ROMWindowSize         = 0x02000000
 	EEPROMStart    uint32 = 0x0d000000
 	EEPROMHighStart uint32 = 0x0dffff00
-	SaveStart      uint32 = 0x0e000000
-	SaveWindowSize      = 0x02000000
+	GPIODataAddress      uint32 = ROM0Start + 0x000000c4
+	GPIODirectionAddress uint32 = ROM0Start + 0x000000c6
+	GPIOControlAddress   uint32 = ROM0Start + 0x000000c8
+	SaveStart            uint32 = 0x0e000000
+	SaveWindowSize              = 0x02000000
 )
 
 // Access is retained as a compatibility alias for the shared GBA access
@@ -51,6 +54,13 @@ type EEPROMDevice interface {
 	WriteBit(value byte)
 }
 
+// GamePakDevice intercepts cartridge ROM-space bytes implemented by hardware
+// rather than ROM. Returning handled=false exposes the original ROM byte.
+type GamePakDevice interface {
+	Read8(addr uint32) (value byte, handled bool)
+	Write8(addr uint32, value byte) (handled bool)
+}
+
 // Bus is the GBA address-space implementation.
 type Bus struct {
 	bios    []byte
@@ -63,6 +73,7 @@ type Bus struct {
 	io      *IO
 	save    SaveDevice
 	eeprom  EEPROMDevice
+	gamePak GamePakDevice
 
 	wait     WaitControl
 	prefetch prefetchState
@@ -99,6 +110,10 @@ func (b *Bus) AttachSaveDevice(device SaveDevice) { b.save = device }
 
 // AttachEEPROMDevice attaches serial EEPROM storage in the ROM2 window.
 func (b *Bus) AttachEEPROMDevice(device EEPROMDevice) { b.eeprom = device }
+
+// AttachGamePakDevice attaches ROM-space cartridge hardware such as the GPIO
+// port used by the S-3511A real-time clock.
+func (b *Bus) AttachGamePakDevice(device GamePakDevice) { b.gamePak = device }
 
 // SetOBJVRAMStart selects the first VRAM byte treated as OBJ data for STRB.
 // Use 0x10000 for tile modes and 0x14000 for bitmap modes.
@@ -336,6 +351,11 @@ func (b *Bus) readByte(addr uint32) (byte, bool) {
 	case 0x07:
 		return b.oam[(addr-OAMStart)&(OAMSize-1)], true
 	case 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d:
+		if b.gamePak != nil {
+			if value, handled := b.gamePak.Read8(addr); handled {
+				return value, true
+			}
+		}
 		offset := addr & (ROMWindowSize - 1)
 		if offset < uint32(len(b.rom)) {
 			return b.rom[offset], true
@@ -375,6 +395,10 @@ func (b *Bus) writeByte(addr uint32, value byte) {
 		b.vram[off+1] = value
 	case 0x07:
 		// OAM ignores byte writes.
+	case 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d:
+		if b.gamePak != nil {
+			b.gamePak.Write8(addr, value)
+		}
 	case 0x0e, 0x0f:
 		if b.save != nil {
 			b.save.Write8(addr-SaveStart, value)
@@ -398,6 +422,10 @@ func (b *Bus) writeByteWide(addr uint32, value byte) {
 		b.vram[vramOffset(addr)] = value
 	case 0x07:
 		b.oam[(addr-OAMStart)&(OAMSize-1)] = value
+	case 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d:
+		if b.gamePak != nil {
+			b.gamePak.Write8(addr, value)
+		}
 	case 0x0e, 0x0f:
 		if b.save != nil {
 			// Wider save writes are byte-bus accesses; each lane is presented
