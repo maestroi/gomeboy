@@ -6,7 +6,6 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	"github.com/maestroi/gomeboy/internal/gba/cartridge"
-	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
@@ -121,80 +120,27 @@ func TestMenuDriverPulsesDownThenStartsCategory(t *testing.T) {
 }
 
 
-func TestSuiteIRQWrapperRunsUserVectorAndRestoresState(t *testing.T) {
-	m := system.New(nil, nil)
-	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
-		t.Fatal(err)
+func TestSuiteBIOSContainsRealIRQForwarder(t *testing.T) {
+	bios := suiteBIOS()
+	want := map[uint32]uint32{
+		0x018: 0xea000042,
+		0x128: 0xe92d500f,
+		0x12c: 0xe3a00301,
+		0x130: 0xe28fe000,
+		0x134: 0xe510f004,
+		0x138: 0xe8bd500f,
+		0x13c: 0xe25ef004,
 	}
-	returnPC := uint32(bus.ROM0Start + 0x100)
-	handler := uint32(bus.ROM0Start + 0x200)
-	m.CPU.SetPC(returnPC)
-	m.CPU.WriteRegister(0, 0x10)
-	m.CPU.WriteRegister(1, 0x11)
-	m.CPU.WriteRegister(2, 0x12)
-	m.CPU.WriteRegister(3, 0x13)
-	m.CPU.WriteRegister(12, 0x1c)
-	m.Bus.Write32(0x03007ffc, handler, bus.Access{})
-
-	if err := m.CPU.EnterException(cpu.ExceptionIRQ, returnPC+4); err != nil {
-		t.Fatal(err)
-	}
-	state := suiteIRQState{}
-	if err := beginSuiteIRQ(m, &state); err != nil {
-		t.Fatal(err)
-	}
-	if !state.active {
-		t.Fatal("IRQ wrapper state not active")
-	}
-	if got := m.CPU.PC(); got != handler {
-		t.Fatalf("user IRQ vector PC = %#08x, want %#08x", got, handler)
-	}
-	if got := m.CPU.ReadRegister(0); got != bus.IOStart {
-		t.Fatalf("BIOS IRQ r0 = %#08x, want %#08x", got, uint32(bus.IOStart))
-	}
-	if got := m.CPU.ReadRegister(14); got != biosIRQReturnPC {
-		t.Fatalf("BIOS IRQ LR = %#08x, want %#08x", got, biosIRQReturnPC)
-	}
-
-	m.CPU.WriteRegister(0, 0)
-	m.CPU.WriteRegister(1, 0)
-	m.CPU.WriteRegister(2, 0)
-	m.CPU.WriteRegister(3, 0)
-	m.CPU.WriteRegister(12, 0)
-	m.CPU.SetPC(biosIRQReturnPC)
-	if err := finishSuiteIRQ(m, &state); err != nil {
-		t.Fatal(err)
-	}
-	if state.active {
-		t.Fatal("IRQ wrapper state remained active")
-	}
-	if got := m.CPU.CPSR().Mode(); got != cpu.ModeSystem {
-		t.Fatalf("mode after IRQ return = %v, want system", got)
-	}
-	if got := m.CPU.PC(); got != returnPC {
-		t.Fatalf("PC after IRQ return = %#08x, want %#08x", got, returnPC)
-	}
-	for reg, want := range map[int]uint32{0: 0x10, 1: 0x11, 2: 0x12, 3: 0x13, 12: 0x1c} {
-		if got := m.CPU.ReadRegister(reg); got != want {
-			t.Fatalf("r%d after IRQ return = %#08x, want %#08x", reg, got, want)
+	for addr, instruction := range want {
+		got := uint32(bios[addr]) |
+			uint32(bios[addr+1])<<8 |
+			uint32(bios[addr+2])<<16 |
+			uint32(bios[addr+3])<<24
+		if got != instruction {
+			t.Fatalf("BIOS IRQ instruction at %#03x = %#08x, want %#08x", addr, got, instruction)
 		}
 	}
 }
-
-func TestSuiteIRQWrapperRequiresUserVector(t *testing.T) {
-	m := system.New(nil, nil)
-	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.CPU.EnterException(cpu.ExceptionIRQ, bus.ROM0Start+4); err != nil {
-		t.Fatal(err)
-	}
-	state := suiteIRQState{}
-	if err := beginSuiteIRQ(m, &state); err == nil || !strings.Contains(err.Error(), "no user vector") {
-		t.Fatalf("missing vector error = %v", err)
-	}
-}
-
 
 func TestReadSuiteCountFromTextVRAM(t *testing.T) {
 	b := bus.New(nil, nil)
