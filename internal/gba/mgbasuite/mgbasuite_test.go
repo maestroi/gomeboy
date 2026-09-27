@@ -197,3 +197,34 @@ func TestAdvanceToNextVBlank(t *testing.T) {
 		t.Fatalf("second VBlank wait advanced %d cycles, want %d", got, wantDelta)
 	}
 }
+
+func TestHLEDivAndDivArm(t *testing.T) {
+	m := system.New(nil, nil)
+
+	m.CPU.WriteRegister(0, uint32(int32(-13)))
+	m.CPU.WriteRegister(1, 5)
+	if err := hleDiv(m, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := int32(m.CPU.ReadRegister(0)); got != -2 {
+		t.Fatalf("Div quotient = %d, want -2", got)
+	}
+	if got := int32(m.CPU.ReadRegister(1)); got != -3 {
+		t.Fatalf("Div remainder = %d, want -3", got)
+	}
+	if got := m.CPU.ReadRegister(3); got != 2 {
+		t.Fatalf("Div abs quotient = %d, want 2", got)
+	}
+
+	m.CPU.WriteRegister(0, 5)
+	m.CPU.WriteRegister(1, 13)
+	if err := hleDiv(m, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.CPU.ReadRegister(0); got != 2 {
+		t.Fatalf("DivArm quotient = %d, want 2", got)
+	}
+	if got := m.CPU.ReadRegister(1); got != 3 {
+		t.Fatalf("DivArm remainder = %d, want 3", got)
+	}
+}
