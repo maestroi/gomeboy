@@ -151,3 +151,17 @@ func TestHandleSuiteIRQRejectsNonVBlank(t *testing.T) {
 		t.Fatalf("non-VBlank IRQ error = %v", err)
 	}
 }
+
+
+func TestReadSuiteCountFromTextVRAM(t *testing.T) {
+	b := bus.New(nil, nil)
+	const displayed = "1290/1552"
+	const offset = (1*32 + 21) * 2
+	for i := 0; i < len(displayed); i++ {
+		b.VRAM()[offset+i*2] = displayed[i] - ' '
+	}
+	passed, total, ok := readSuiteCount(b)
+	if !ok || passed != 1290 || total != 1552 {
+		t.Fatalf("suite count = %d/%d ok=%v, want 1290/1552 true", passed, total, ok)
+	}
+}
