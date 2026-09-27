@@ -390,6 +390,7 @@ func beginSuiteIRQ(m *system.Machine, state *suiteIRQState) error {
 	// registers, sets LR_irq to the BIOS return stub, and jumps to the ARM user
 	// vector stored at 0x03007ffc. The user dispatcher itself runs normally in
 	// the emulator, so libgba irqSet handlers are exercised rather than faked.
+	m.CPU.WriteRegister(0, bus.IOStart)
 	m.CPU.WriteRegister(14, biosIRQReturnPC)
 	m.CPU.SetPC(handler &^ 3)
 	return nil
