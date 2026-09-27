@@ -242,3 +242,17 @@ func TestHLESqrt(t *testing.T) {
 		t.Fatalf("Sqrt(80) = %d, want floor 8", got)
 	}
 }
+
+func TestHLEArcTan(t *testing.T) {
+	m := system.New(nil, nil)
+	m.CPU.WriteRegister(0, 0)
+	hleArcTan(m)
+	if got := m.CPU.ReadRegister(0); got != 0 {
+		t.Fatalf("ArcTan(0) = %#x, want 0", got)
+	}
+	m.CPU.WriteRegister(0, 0x4000)
+	hleArcTan(m)
+	if got := m.CPU.ReadRegister(0); got != 0x2000 {
+		t.Fatalf("ArcTan(1.0) = %#x, want 0x2000", got)
+	}
+}
