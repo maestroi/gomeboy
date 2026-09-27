@@ -201,11 +201,13 @@ func (c *CPU) executeARMDataProcessing(instruction uint32) (ExecutionResult, err
 	// but because these test opcodes do not write a result they do not branch
 	// or flush the pipeline. jsmolka/gba-tests ARM #234/#235 rely on this.
 	if !writeResult && rd == 15 && setFlags {
-		if err := c.RestoreCPSRFromSPSR(); err != nil {
-			return ExecutionResult{}, err
+		if _, ok := c.SPSR(); ok {
+			if err := c.RestoreCPSRFromSPSR(); err != nil {
+				return ExecutionResult{}, err
+			}
+			c.advancePC()
+			return ExecutionResult{InternalCycles: coreCycles}, nil
 		}
-		c.advancePC()
-		return ExecutionResult{InternalCycles: coreCycles}, nil
 	}
 
 	if writeResult {
@@ -270,10 +272,10 @@ func (c *CPU) executeARMMultiply(instruction uint32) (ExecutionResult, error) {
 	if rd == 15 || rm == 15 || rs == 15 || (accumulate && rn == 15) {
 		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM multiply using r15 is unpredictable")
 	}
-	if rd == rm {
-		return ExecutionResult{}, fmt.Errorf("arm7tdmi: ARM multiply with Rd == Rm is unpredictable on ARM7TDMI")
-	}
-
+	// ARM7TDMI documents Rd == Rm as constrained/unpredictable for MUL/MLA,
+	// but real GBA software (including jsmolka's text renderer) relies on the
+	// observed ARM7TDMI behavior. Read all operands before writing Rd so the
+	// overlap behaves deterministically like the hardware.
 	result := c.ReadRegister(rm) * c.ReadRegister(rs)
 	cycles := multiplyInternalCycles(c.ReadRegister(rs))
 	if accumulate {
