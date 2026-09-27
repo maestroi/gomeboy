@@ -1,8 +1,17 @@
 package cartridge
 
-import "time"
+import (
+	"encoding/binary"
+	"fmt"
+	"time"
+)
 
 const (
+	// RTCFooterSize is the conventional GBA RTC trailer size used alongside
+	// raw cartridge save data: seven BCD clock bytes, control, and an int64
+	// little-endian host timestamp.
+	RTCFooterSize = 16
+
 	rtcCommandReset         byte = 0x60
 	rtcCommandWriteStatus   byte = 0x62
 	rtcCommandReadStatus    byte = 0x63
@@ -184,10 +193,42 @@ func (r *RTC) finishInput() {
 	case rtcCommandWriteStatus:
 		r.control = r.input[0]
 	case rtcCommandWriteDateTime:
-		r.setDateTime(r.input)
+		_ = r.setDateTime(r.input)
 	case rtcCommandWriteTime:
 		r.setTime(r.input)
 	}
+}
+
+// SaveFooter serializes the RTC using the widely used 16-byte GBA RTC save
+// trailer. The timestamp anchors the BCD wall-clock reading so configured RTC
+// offsets continue to advance while the emulator is not running.
+func (r *RTC) SaveFooter() []byte {
+	footer := make([]byte, RTCFooterSize)
+	copy(footer[:7], r.dateTimeBytes())
+	footer[7] = r.control
+	binary.LittleEndian.PutUint64(footer[8:], uint64(r.now().Unix()))
+	return footer
+}
+
+// LoadFooter restores a 16-byte GBA RTC save trailer.
+func (r *RTC) LoadFooter(footer []byte) error {
+	if len(footer) != RTCFooterSize {
+		return fmt.Errorf("gba cartridge: RTC footer size %d, want %d", len(footer), RTCFooterSize)
+	}
+
+	now := r.now()
+	oldControl := r.control
+	r.control = footer[7]
+	if !r.setDateTime(footer[:7]) {
+		r.control = oldControl
+		return fmt.Errorf("gba cartridge: invalid RTC BCD footer")
+	}
+
+	savedUnix := int64(binary.LittleEndian.Uint64(footer[8:]))
+	savedAt := time.Unix(savedUnix, 0)
+	r.offset += now.Sub(savedAt)
+	r.resetSerial()
+	return nil
 }
 
 func (r *RTC) dateTimeBytes() []byte {
@@ -238,9 +279,9 @@ func (r *RTC) decodeHour(value byte) (int, bool) {
 	return hour, true
 }
 
-func (r *RTC) setDateTime(data []byte) {
+func (r *RTC) setDateTime(data []byte) bool {
 	if len(data) != 7 {
-		return
+		return false
 	}
 	year, yOK := decodeBCD(data[0])
 	month, mOK := decodeBCD(data[1])
@@ -251,15 +292,16 @@ func (r *RTC) setDateTime(data []byte) {
 	if !yOK || !mOK || !dOK || !hOK || !minOK || !sOK ||
 		month < 1 || month > 12 || day < 1 || day > 31 ||
 		minute > 59 || second > 59 {
-		return
+		return false
 	}
 
 	now := r.now()
 	target := time.Date(2000+year, time.Month(month), day, hour, minute, second, 0, now.Location())
 	if target.Month() != time.Month(month) || target.Day() != day {
-		return
+		return false
 	}
 	r.offset = target.Sub(now)
+	return true
 }
 
 func (r *RTC) setTime(data []byte) {
