@@ -267,7 +267,7 @@ func New(opts ...Option) (*Emulator, error) {
 		return &gameBoyCore{gb: gameboy.NewGameBoy(gbOpts...)}
 	}
 	e.newGBACore = func() *gbaCore {
-		return newGBACore(bootROM)
+		return newGBACore(bootROM, cfg.saveDir, cfg.saves)
 	}
 
 	wantsGBA := isGBAROMPath(cfg.romPath)
