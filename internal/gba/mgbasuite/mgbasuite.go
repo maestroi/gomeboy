@@ -275,6 +275,13 @@ func runCategory(rom []byte, category Category) CategoryResult {
 		result.Failed = collector.failed
 		result.Failures = collector.failures
 		if passed, total, ok := readSuiteCount(m.Bus); ok {
+			// The suite rewrites the text grid in place. Multi-digit totals can
+			// therefore be briefly parseable while only a prefix has been drawn
+			// (for example 0/9 on the way to 0/90). Only accept the configured
+			// pinned denominator as a terminal result.
+			if total != category.ExpectedTotal {
+				continue
+			}
 			result.Passed = passed
 			result.Total = total
 			result.Failed = total - passed
