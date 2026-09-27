@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
@@ -260,20 +261,29 @@ func runCategory(rom []byte, category Category) CategoryResult {
 		}
 
 		collector.poll(m.Cartridge.Save)
-		result.Passed, result.Failed = collector.passed, collector.failed
-		result.Total = collector.passed + collector.failed
+		result.Failed = collector.failed
 		result.Failures = collector.failures
-		if result.Total >= category.ExpectedTotal {
+		if passed, total, ok := readSuiteCount(m.Bus); ok {
+			result.Passed = passed
+			result.Total = total
+			result.Failed = total - passed
 			result.Cycles = m.Cycle() - startCycle
 			if result.Total > 0 {
 				result.PassRate = math.Round((float64(result.Passed)/float64(result.Total))*10000) / 100
+			}
+			if collector.failed != result.Failed {
+				result.Status = StatusError
+				result.Detail = fmt.Sprintf("suite screen reports %d failures, SRAM log contains %d failure lines", result.Failed, collector.failed)
 			}
 			return result
 		}
 	}
 	result.Status = StatusError
 	result.Cycles = m.Cycle() - startCycle
-	result.Detail = fmt.Sprintf("step budget %d exhausted after %d/%d results", stepLimit, result.Total, category.ExpectedTotal)
+	result.Detail = fmt.Sprintf("step budget %d exhausted before suite result screen; observed %d SRAM failure lines", stepLimit, collector.failed)
+	if collector.pending != "" {
+		result.Detail += "; last partial SRAM line: " + collector.pending
+	}
 	return result
 }
 
@@ -454,7 +464,6 @@ func hleCPUSet(m *system.Machine, fast bool) {
 type resultCollector struct {
 	offset   uint32
 	pending  string
-	passed   int
 	failed   int
 	failures []string
 }
@@ -481,14 +490,42 @@ func (c *resultCollector) poll(save bus.SaveDevice) {
 	c.pending = lines[len(lines)-1]
 	for _, line := range lines[:len(lines)-1] {
 		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasSuffix(line, "PASS"):
-			c.passed++
-		case strings.HasSuffix(line, "FAIL"):
+		if strings.HasSuffix(line, "FAIL") {
 			c.failed++
 			c.failures = append(c.failures, line)
 		}
 	}
+}
+
+func readSuiteCount(b *bus.Bus) (passed, total int, ok bool) {
+	const (
+		gridStride = 32
+		row = 1
+		column = 21
+		width = 9
+	)
+	var text [width]byte
+	for i := 0; i < width; i++ {
+		tile := b.Peek8(bus.VRAMStart + uint32((row*gridStride+column+i)*2))
+		if tile == 0 {
+			text[i] = ' '
+		} else {
+			text[i] = tile + ' '
+		}
+	}
+	parts := strings.Split(string(text[:]), "/")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	p, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 0, 0, false
+	}
+	t, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || t == 0 || p < 0 || p > t {
+		return 0, 0, false
+	}
+	return p, t, true
 }
 
 func readSRAMLog(save bus.SaveDevice) string {
