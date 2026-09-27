@@ -37,7 +37,12 @@
       "menu_index": 2,
       "expected_total": 1920,
       "enabled": true,
-      "step_limit": 50000000
+      "step_limit": 50000000,
+      "baseline": {
+        "passed": 290,
+        "failed": 1630,
+        "total": 1920
+      }
     },
     {
       "id": "timers",
@@ -45,7 +50,12 @@
       "menu_index": 3,
       "expected_total": 936,
       "enabled": true,
-      "step_limit": 30000000
+      "step_limit": 30000000,
+      "baseline": {
+        "passed": 270,
+        "failed": 666,
+        "total": 936
+      }
     },
     {
       "id": "timer-irq",
@@ -53,7 +63,12 @@
       "menu_index": 4,
       "expected_total": 90,
       "enabled": true,
-      "step_limit": 30000000
+      "step_limit": 30000000,
+      "baseline": {
+        "passed": 0,
+        "failed": 90,
+        "total": 90
+      }
     },
     {
       "id": "dma",
@@ -61,7 +76,12 @@
       "menu_index": 9,
       "expected_total": 1256,
       "enabled": true,
-      "step_limit": 50000000
+      "step_limit": 50000000,
+      "baseline": {
+        "passed": 996,
+        "failed": 260,
+        "total": 1256
+      }
     }
   ]
 }
