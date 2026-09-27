@@ -222,6 +222,58 @@ func (m *Machine) Step() (StepResult, error) {
 	}, err
 }
 
+// RunFrame advances until the PPU completes one frame, or until STOP leaves the
+// machine waiting for an asynchronous wake source. Unlike Step, it deliberately
+// avoids collecting per-instruction timing/debug fields that realtime frontends
+// do not consume.
+func (m *Machine) RunFrame() error {
+	startFrame := m.PPU.FrameCount()
+	for m.PPU.FrameCount() == startFrame {
+		if m.stopped && !m.stopWakePending {
+			return nil
+		}
+		if err := m.stepFast(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// stepFast executes the same architectural boundary as Step without materializing
+// the detailed StepResult. Keep changes here paired with Step so debugger and
+// realtime execution retain identical event ordering.
+func (m *Machine) stepFast() error {
+	wasStopped := m.stopped
+	wasHalted := m.halted
+
+	if wasStopped {
+		if m.stopWakePending {
+			m.stopWakePending = false
+			m.stopped = false
+			m.haltWakeSeq++
+			if m.IRQ.EnabledPending() {
+				m.scheduleIRQEvent()
+			}
+		}
+		return nil
+	}
+
+	m.serviceDueEvents()
+	if wasHalted {
+		if m.halted {
+			m.advanceHaltedEvent()
+		}
+		return nil
+	}
+
+	m.memory.cpuCycles = 0
+	result, err := m.CPU.Step(&m.memory)
+	if missing := result.TotalCycles - min(result.TotalCycles, m.memory.cpuCycles); missing != 0 {
+		m.advanceCPU(missing)
+	}
+	return err
+}
+
 // Advance advances the system while the CPU itself performs no bus work. DMA
 // requests that become due still seize the bus and extend elapsed master time.
 func (m *Machine) Advance(cycles uint32) {
