@@ -256,3 +256,22 @@ func TestHLEArcTan(t *testing.T) {
 		t.Fatalf("ArcTan(1.0) = %#x, want 0x2000", got)
 	}
 }
+
+func TestHLEIntrWaitAdvancesToTimerIRQAndAcknowledgesIt(t *testing.T) {
+	m := system.New(nil, nil)
+	m.Bus.Write16(bus.IOStart+0x100, 0xfffc, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x102, 0x00c0, bus.Access{}) // enable + IRQ, /1
+	m.CPU.WriteRegister(0, 1)
+	m.CPU.WriteRegister(1, uint32(gbairq.Timer0))
+
+	start := m.Cycle()
+	if err := hleIntrWait(m); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Cycle() - start; got != 4 {
+		t.Fatalf("IntrWait advanced %d cycles, want 4", got)
+	}
+	if got := m.IRQ.IF() & uint16(gbairq.Timer0); got != 0 {
+		t.Fatalf("IntrWait left Timer0 IF set: %#04x", got)
+	}
+}
