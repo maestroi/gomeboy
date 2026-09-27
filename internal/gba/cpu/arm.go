@@ -196,6 +196,18 @@ func (c *CPU) executeARMDataProcessing(instruction uint32) (ExecutionResult, err
 		}
 	}
 
+	// ARM7TDMI retains an ARM2/ARM3-era quirk for the otherwise-invalid
+	// TST/TEQ/CMP/CMN encodings with Rd=R15: S=1 restores CPSR from SPSR,
+	// but because these test opcodes do not write a result they do not branch
+	// or flush the pipeline. jsmolka/gba-tests ARM #234/#235 rely on this.
+	if !writeResult && rd == 15 && setFlags {
+		if err := c.RestoreCPSRFromSPSR(); err != nil {
+			return ExecutionResult{}, err
+		}
+		c.advancePC()
+		return ExecutionResult{InternalCycles: coreCycles}, nil
+	}
+
 	if writeResult {
 		if rd == 15 {
 			if setFlags {
