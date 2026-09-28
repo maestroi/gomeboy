@@ -40,6 +40,7 @@ func loadUnsignedHalfword(mem Memory, addr uint32, access gbamemory.Access) (uin
 type StepResult struct {
 	FetchCycles    uint32
 	MemoryCycles   uint32
+	RefillCycles   uint32
 	InternalCycles uint8
 	TotalCycles    uint32
 	PipelineFlush  bool
@@ -103,14 +104,36 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		mem.Idle(uint32(exec.InternalCycles))
 	}
 
+	// A taken conditional branch refills the two pipeline slots after the
+	// branch target. The target opcode itself is fetched by the following Step,
+	// so these are the two sequential phases after it.
+	var refill uint32
+	if exec.PipelineRefill {
+		if timing, ok := mem.(interface {
+			AccessCycles(addr uint32, width uint32, access gbamemory.Access) uint32
+		}); ok {
+			width := uint32(4)
+			if c.cpsr.Thumb() {
+				width = 2
+			}
+			seq := gbamemory.Access{Sequential: true}
+			refill = timing.AccessCycles(c.pc+width, width, seq) +
+				timing.AccessCycles(c.pc+2*width, width, seq)
+			if spender, ok := mem.(interface{ SpendCycles(uint32) }); ok {
+				spender.SpendCycles(refill)
+			}
+		}
+	}
+
 	// A data bus phase interrupts the sequential opcode-fetch stream. The next
 	// instruction fetch is therefore non-sequential even without a control-flow
 	// flush; Game Pak prefetch may still satisfy that fetch independently.
 	c.fetchSequential = !exec.PipelineFlush && exec.MemoryCycles == 0 && !exec.BreakSequentialFetch
-	total := fetch + exec.MemoryCycles + uint32(exec.InternalCycles)
+	total := fetch + exec.MemoryCycles + refill + uint32(exec.InternalCycles)
 	return StepResult{
 		FetchCycles:    fetch,
 		MemoryCycles:   exec.MemoryCycles,
+		RefillCycles:   refill,
 		InternalCycles: exec.InternalCycles,
 		TotalCycles:    total,
 		PipelineFlush:  exec.PipelineFlush,
