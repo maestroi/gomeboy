@@ -131,15 +131,24 @@ func (b *Bus) romWait(addr uint32) (nonSequential, sequential uint32) {
 	}
 }
 
-func (b *Bus) afterAccess(addr, width uint32, access Access, mapped bool) {
+func (b *Bus) afterAccess(addr, width uint32, access Access, mapped bool, cycles uint32) {
 	if !b.PrefetchEnabled() {
 		return
 	}
+
+	region := addr >> 24
+	gamePakBus := region >= 0x08 && region <= 0x0f
 	if isROM(addr) {
 		if access.Instruction && mapped {
-			// A real fetch which missed the buffer restarts prefetch after the
-			// fetched halfword(s).
-			if !b.prefetch.lastConsumeHit {
+			if b.prefetch.lastConsumeHit {
+				// The CPU is reading from the internal prefetch queue, so the
+				// external cartridge bus is free to keep filling concurrently.
+				if !access.DMA {
+					b.prefetch.advance(cycles, b.romWait)
+				}
+			} else {
+				// A real cartridge fetch occupies the bus, then starts a new
+				// sequential fill stream immediately after the fetched data.
 				next := (addr &^ 1) + 2
 				if width == 4 {
 					next += 2
@@ -147,36 +156,22 @@ func (b *Bus) afterAccess(addr, width uint32, access Access, mapped bool) {
 				b.prefetch.reset(next)
 			}
 		} else {
-			// Game Pak data accesses occupy the cartridge bus and invalidate
-			// the simple sequential opcode stream.
+			// Game Pak data accesses occupy the same external bus and break the
+			// opcode-prefetch stream.
 			b.prefetch.reset(0)
 		}
+	} else if !gamePakBus && !access.DMA {
+		// Internal-memory/I/O/video accesses leave the Game Pak bus idle.
+		// Prefetch therefore progresses in parallel with those CPU bus cycles.
+		b.prefetch.advance(cycles, b.romWait)
 	}
 	b.prefetch.lastConsumeHit = false
 }
 
-// Idle gives the Game Pak prefetcher CPU-internal idle cycles. A future CPU
-// step loop should call this for internal cycles while executing from ROM.
+// Idle gives the Game Pak prefetcher CPU-internal idle cycles.
 func (b *Bus) Idle(cycles uint32) {
-	if !b.PrefetchEnabled() || b.prefetch.nextFill == 0 || cycles == 0 {
+	if !b.PrefetchEnabled() {
 		return
 	}
-
-	b.prefetch.credit += cycles
-	for b.prefetch.count < 8 {
-		addr := b.prefetch.nextFill
-		_, seqWait := b.romWait(addr)
-		cost := uint32(1 + seqWait)
-		// Crossing a 128KB Game Pak boundary forces non-sequential timing.
-		if addr&0x1ffff == 0 {
-			nonSeqWait, _ := b.romWait(addr)
-			cost = 1 + nonSeqWait
-		}
-		if b.prefetch.credit < cost {
-			break
-		}
-		b.prefetch.credit -= cost
-		b.prefetch.count++
-		b.prefetch.nextFill += 2
-	}
+	b.prefetch.advance(cycles, b.romWait)
 }
