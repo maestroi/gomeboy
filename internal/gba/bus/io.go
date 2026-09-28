@@ -58,7 +58,7 @@ func (io *IO) Read8(offset uint32) (byte, bool) {
 		}
 		return byte(value), true
 	}
-	return 0, false
+	return io.data[offset], true
 }
 
 func (io *IO) Write8(offset uint32, value byte) {
@@ -91,7 +91,7 @@ func (io *IO) Read16(offset uint32) (uint16, bool) {
 	if read := io.read16[offset]; read != nil {
 		return read(), true
 	}
-	return 0, false
+	return binary.LittleEndian.Uint16(io.data[offset : offset+2]), true
 }
 
 func (io *IO) Write16(offset uint32, value uint16) {
