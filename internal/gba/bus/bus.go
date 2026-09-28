@@ -194,7 +194,8 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		return value, cycles
 	}
 	if isSave(addr) && b.save != nil {
-		value := b.save.Read8(addr - SaveStart)
+		physical := addr + uint32(access.Misalignment&1)
+		value := b.save.Read8(physical - SaveStart)
 		out := uint16(value) * 0x0101
 		b.openBus = uint32(out) | uint32(out)<<16
 		b.afterAccess(addr, 2, access, true)
