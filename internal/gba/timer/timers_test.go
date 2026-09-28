@@ -84,8 +84,8 @@ func TestTimerStartLoadsReloadAndStoppedTimerFreezes(t *testing.T) {
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
 
 	timers.Advance(5)
-	if got := timers.Counter(0); got != 0xfff5 {
-		t.Fatalf("running counter = %04x, want fff5", got)
+	if got := timers.Counter(0); got != 0xfff3 {
+		t.Fatalf("running counter = %04x, want fff3 after two-cycle startup", got)
 	}
 
 	// Reload writes while running do not change the live counter.
@@ -111,7 +111,7 @@ func TestTimerReloadByteWritesMergeAgainstReloadNotCounter(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0x1234, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
-	timers.Advance(5) // counter=1239, reload still 1234
+	timers.Advance(5) // two startup cycles + three ticks => counter=1237
 
 	b.Write8(timerLow(0), 0xaa, bus.Access{})
 	if got := timers.Reload(0); got != 0x12aa {
@@ -121,7 +121,7 @@ func TestTimerReloadByteWritesMergeAgainstReloadNotCounter(t *testing.T) {
 	if got := timers.Reload(0); got != 0xbbaa {
 		t.Fatalf("high-byte reload = %04x, want bbaa", got)
 	}
-	if got := timers.Counter(0); got != 0x1239 {
+	if got := timers.Counter(0); got != 0x1237 {
 		t.Fatalf("reload byte writes changed live counter = %04x", got)
 	}
 }
@@ -157,8 +157,12 @@ func TestDeferredTimerWritesCommitAfterElapsedAccess(t *testing.T) {
 		t.Fatalf("deferred reload did not commit: %04x", got)
 	}
 	timers.Advance(1)
+	if got := timers.Counter(0); got != 0xffff {
+		t.Fatalf("second startup cycle advanced counter: %04x", got)
+	}
+	timers.Advance(1)
 	if got := timers.Counter(0); got != 0x0000 {
-		t.Fatalf("next tick did not overflow into new reload: %04x", got)
+		t.Fatalf("first active tick did not overflow into new reload: %04x", got)
 	}
 }
 
@@ -172,6 +176,28 @@ func TestTimer32BitWriteUsesNewReloadOnStart(t *testing.T) {
 	}
 	if got := timers.Counter(0); got != 0xff00 {
 		t.Fatalf("32-bit start counter = %04x, want ff00", got)
+	}
+}
+
+func TestTimerEnableHasTwoCycleStartupLatency(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0xfffd, bus.Access{})
+	b.Write16(timerHigh(0), controlEnable, bus.Access{})
+
+	if got := timers.CyclesUntilEvent(); got != 5 {
+		t.Fatalf("cycles until first overflow = %d, want 5 (2 startup + 3 ticks)", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 0xfffd {
+		t.Fatalf("counter after first startup cycle = %04x, want fffd", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 0xfffd {
+		t.Fatalf("counter after second startup cycle = %04x, want fffd", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 0xfffe {
+		t.Fatalf("counter after first active tick = %04x, want fffe", got)
 	}
 }
 
@@ -193,6 +219,10 @@ func TestTimerPrescalers(t *testing.T) {
 			b.Write16(timerLow(0), 0, bus.Access{})
 			b.Write16(timerHigh(0), controlEnable|tc.selectv, bus.Access{})
 
+			timers.Advance(2)
+			if got := timers.Counter(0); got != 0 {
+				t.Fatalf("counter during startup = %04x, want 0000", got)
+			}
 			if tc.divisor > 1 {
 				timers.Advance(tc.divisor - 1)
 				if got := timers.Counter(0); got != 0 {
@@ -225,9 +255,9 @@ func TestTimerOverflowReloadsAndCanBatchMultipleOverflows(t *testing.T) {
 	b.Write16(timerLow(0), 0xfffc, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
 
-	timers.Advance(10)
-	// Period is four cycles: overflow at cycles 4 and 8, then two ticks after
-	// the second reload.
+	timers.Advance(12)
+	// Two startup cycles, then period four: overflow at active cycles 4 and 8,
+	// followed by two ticks after the second reload.
 	if got := timers.Counter(0); got != 0xfffe {
 		t.Fatalf("counter after batched overflows = %04x, want fffe", got)
 	}
@@ -248,7 +278,7 @@ func TestTimerCascadeCountsPreviousOverflows(t *testing.T) {
 	b.Write16(timerLow(1), 0xfffd, bus.Access{})
 	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
 
-	timers.Advance(12) // six TM0 overflows -> two TM1 overflows
+	timers.Advance(14) // two startup cycles + twelve active cycles => six TM0 overflows -> two TM1 overflows
 	if got := timers.Counter(0); got != 0xfffe {
 		t.Fatalf("TM0 counter = %04x, want fffe", got)
 	}
@@ -269,7 +299,7 @@ func TestTimerCascadeChainsAcrossAllFourTimers(t *testing.T) {
 		b.Write16(timerHigh(i), control, bus.Access{})
 	}
 
-	timers.Advance(1)
+	timers.Advance(3)
 	for i := 0; i < 4; i++ {
 		if got := timers.Counter(i); got != 0xffff {
 			t.Fatalf("TM%d counter=%04x, want ffff after cascaded overflow/reload", i, got)
@@ -285,11 +315,11 @@ func TestCascadeModeIgnoresPrescaler(t *testing.T) {
 	b.Write16(timerLow(1), 0x1000, bus.Access{})
 	b.Write16(timerHigh(1), controlEnable|controlCountUp|3, bus.Access{})
 
-	timers.Advance(1)
+	timers.Advance(2)
 	if got := timers.Counter(1); got != 0x1000 {
-		t.Fatalf("cascade timer advanced without parent overflow: %04x", got)
+		t.Fatalf("cascade timer advanced during parent startup: %04x", got)
 	}
-	timers.Advance(1)
+	timers.Advance(2)
 	if got := timers.Counter(1); got != 0x1001 {
 		t.Fatalf("cascade timer did not increment on parent overflow: %04x", got)
 	}
@@ -300,7 +330,7 @@ func TestTimerOverflowRequestsInterrupt(t *testing.T) {
 
 	b.Write16(timerLow(2), 0xffff, bus.Access{})
 	b.Write16(timerHigh(2), controlEnable|controlIRQ, bus.Access{})
-	timers.Advance(1)
+	timers.Advance(3)
 
 	if got := irq.IF(); got != uint16(gbairq.Timer2) {
 		t.Fatalf("IF after TM2 overflow = %04x, want Timer2", got)
@@ -315,7 +345,7 @@ func TestCascadedTimerOverflowRequestsOwnInterrupt(t *testing.T) {
 	b.Write16(timerLow(1), 0xffff, bus.Access{})
 	b.Write16(timerHigh(1), controlEnable|controlCountUp|controlIRQ, bus.Access{})
 
-	timers.Advance(1)
+	timers.Advance(3)
 	if got := irq.IF(); got != uint16(gbairq.Timer1) {
 		t.Fatalf("IF after cascaded TM1 overflow = %04x, want Timer1", got)
 	}
@@ -325,7 +355,7 @@ func TestDisabledTimerIRQBitDoesNotRequestInterrupt(t *testing.T) {
 	timers, b, irq := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xffff, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
-	timers.Advance(1)
+	timers.Advance(3)
 	if got := irq.IF(); got != 0 {
 		t.Fatalf("IF = %04x, want no timer IRQ", got)
 	}
