@@ -8,9 +8,10 @@ import (
 // ExecutionResult describes CPU-internal timing/control-flow effects of an
 // instruction. Bus fetch/refill timing is deliberately not included.
 type ExecutionResult struct {
-	InternalCycles uint8
-	MemoryCycles   uint32
-	PipelineFlush  bool
+	InternalCycles       uint8
+	MemoryCycles         uint32
+	PipelineFlush        bool
+	BreakSequentialFetch bool
 }
 
 // Exception identifies an ARM exception vector.

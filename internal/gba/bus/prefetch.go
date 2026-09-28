@@ -51,6 +51,40 @@ func (p *prefetchState) consume(addr, width uint32, partialWordTailCycles uint32
 }
 
 
+func (p *prefetchState) finishPending(addr, width uint32, wait func(uint32) (uint32, uint32)) (uint32, bool) {
+	aligned := addr &^ 1
+	if p.nextFill == 0 || p.count != 0 || aligned != p.startAddress || p.nextFill != aligned {
+		return 0, false
+	}
+
+	_, seqWait := wait(aligned)
+	halfCost := uint32(1 + seqWait)
+	remaining := halfCost
+	if p.credit < halfCost {
+		remaining -= p.credit
+	} else {
+		remaining = 0
+	}
+
+	// The CPU takes ownership of the in-flight sequential cartridge access.
+	// Any accumulated partial progress is consumed rather than discarded.
+	cycles := remaining
+	if width == 4 {
+		cycles += halfCost
+	}
+	if cycles == 0 {
+		cycles = 1
+	}
+
+	p.startAddress = aligned + width
+	p.nextFill = p.startAddress
+	p.count = 0
+	p.credit = 0
+	p.lastConsumeHit = false
+	p.lastConsumePartial = true
+	return cycles, true
+}
+
 func (p *prefetchState) advance(cycles uint32, wait func(uint32) (uint32, uint32)) {
 	if p.nextFill == 0 || cycles == 0 {
 		return

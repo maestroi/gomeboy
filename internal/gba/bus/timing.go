@@ -97,6 +97,9 @@ func (b *Bus) accessCycles(addr uint32, width uint32, access Access) uint32 {
 			if cycles, ok := b.prefetch.consume(addr, width, partialTail); ok {
 				return cycles
 			}
+			if cycles, ok := b.prefetch.finishPending(addr, width, b.romWait); ok {
+				return cycles
+			}
 		}
 		return b.gamePakROMCycles(addr, width, access.Sequential)
 	case 0x0e, 0x0f:

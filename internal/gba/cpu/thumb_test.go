@@ -155,13 +155,29 @@ func TestThumbALUAndMultiplyTiming(t *testing.T) {
 		t.Fatalf("small MUL internal cycles = %d, want 1", result.InternalCycles)
 	}
 
+	// Thumb MUL timing depends on the old Rdn value, not Rm. Keep Rm small
+	// while making Rdn require all four early-termination iterations.
+	c.WriteRegister(0, 0x12345678)
+	c.WriteRegister(1, 2)
+	result, err = c.ExecuteThumb(0x4348)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ReadRegister(0); got != 0x2468acf0 {
+		t.Fatalf("large MUL result = %08x, want 2468acf0", got)
+	}
+	if result.InternalCycles != 4 {
+		t.Fatalf("large Rdn MUL internal cycles = %d, want 4", result.InternalCycles)
+	}
+
+	c.WriteRegister(0, 3)
 	c.WriteRegister(1, 0x12345678)
 	result, err = c.ExecuteThumb(0x4348)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.InternalCycles != 4 {
-		t.Fatalf("large MUL internal cycles = %d, want 4", result.InternalCycles)
+	if result.InternalCycles != 1 {
+		t.Fatalf("large Rm MUL internal cycles = %d, want 1 from small Rdn", result.InternalCycles)
 	}
 }
 
