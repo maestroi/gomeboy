@@ -7,6 +7,7 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	"github.com/maestroi/gomeboy/internal/gba/cartridge"
+	"github.com/maestroi/gomeboy/internal/gba/cpu"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
@@ -301,22 +302,49 @@ func TestHLEArcTan(t *testing.T) {
 	}
 }
 
-func TestHLEIntrWaitAdvancesToTimerIRQAndAcknowledgesIt(t *testing.T) {
-	m := system.New(nil, nil)
+func TestHLEIntrWaitRunsRegisteredTimerIRQHandler(t *testing.T) {
+	m := system.New(suiteBIOS(), nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSupervisor) | cpu.FlagIRQDisable); err != nil {
+		t.Fatal(err)
+	}
+	m.CPU.SetPC(0x08)
+
+	// Minimal ARM user IRQ handler. The BIOS wrapper enters with r0=IOStart.
+	// Disable TM0, acknowledge Timer0 IF, then return to the BIOS wrapper.
+	handler := uint32(bus.IWRAMStart + 0x100)
+	instructions := []uint32{
+		0xe1a02000, // MOV  r2,r0
+		0xe2800c01, // ADD  r0,r0,#0x100
+		0xe3a01000, // MOV  r1,#0
+		0xe5801000, // STR  r1,[r0]      ; TM0CNT_L/H = 0
+		0xe2822c02, // ADD  r2,r2,#0x200
+		0xe3a01008, // MOV  r1,#8
+		0xe5c21002, // STRB r1,[r2,#2]   ; acknowledge IF.Timer0
+		0xe12fff1e, // BX   lr
+	}
+	for i, instruction := range instructions {
+		m.Bus.Write32(handler+uint32(i*4), instruction, bus.Access{})
+	}
+	m.Bus.Write32(0x03007ffc, handler, bus.Access{})
+
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
 	m.Bus.Write16(bus.IOStart+0x100, 0xfffc, bus.Access{})
 	m.Bus.Write16(bus.IOStart+0x102, 0x00c0, bus.Access{}) // enable + IRQ, /1
 	m.CPU.WriteRegister(0, 1)
 	m.CPU.WriteRegister(1, uint32(gbairq.Timer0))
 
-	start := m.Cycle()
 	if err := hleIntrWait(m); err != nil {
 		t.Fatal(err)
 	}
-	if got := m.Cycle() - start; got != 4 {
-		t.Fatalf("IntrWait advanced %d cycles, want 4", got)
+	if got := m.Timers.Control(0); got != 0 {
+		t.Fatalf("IntrWait returned before Timer0 handler disabled timer: %#04x", got)
 	}
 	if got := m.IRQ.IF() & uint16(gbairq.Timer0); got != 0 {
-		t.Fatalf("IntrWait left Timer0 IF set: %#04x", got)
+		t.Fatalf("IntrWait returned before Timer0 IF acknowledge: %#04x", got)
+	}
+	if got := m.CPU.CPSR().Mode(); got != cpu.ModeSupervisor || m.CPU.PC() != 0x08 {
+		t.Fatalf("IntrWait IRQ return state mode=%v pc=%#08x", got, m.CPU.PC())
 	}
 }
 

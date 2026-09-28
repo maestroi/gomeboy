@@ -189,7 +189,7 @@ v0-r76 baseline is:
 | Memory | 1552 | 0 | 1552 |
 | I/O reads | 123 | 0 | 123 |
 | Timing | 990 | 930 | 1920 |
-| Timer count-up | 285 | 651 | 936 |
+| Timer count-up | 375 | 561 | 936 |
 | Timer IRQ | 18 | 72 | 90 |
 | DMA | 1220 | 36 | 1256 |
 
