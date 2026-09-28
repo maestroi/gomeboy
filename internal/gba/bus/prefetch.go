@@ -68,14 +68,17 @@ func (p *prefetchState) finishPending(addr, width uint32, wait func(uint32) (uin
 	_, seqWait := wait(aligned)
 	halfCost := uint32(1 + seqWait)
 	remaining := halfCost
-	if p.credit < halfCost {
-		remaining -= p.credit
-	} else {
-		remaining = 0
+	if width == 4 {
+		// ARM can take over the in-flight first halfword and preserve its
+		// partial progress. Thumb only benefits once the halfword has fully
+		// entered the prefetch queue.
+		if p.credit < halfCost {
+			remaining -= p.credit
+		} else {
+			remaining = 0
+		}
 	}
 
-	// The CPU takes ownership of the in-flight sequential cartridge access.
-	// Any accumulated partial progress is consumed rather than discarded.
 	cycles := remaining
 	if width == 4 {
 		cycles += halfCost
