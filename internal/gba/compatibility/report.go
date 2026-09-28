@@ -16,11 +16,13 @@ func (r Report) Markdown() string {
 	fmt.Fprintf(&b, "- Results: %d passed, %d failed, %d timed out, %d total\n\n",
 		r.Summary.Passed, r.Summary.Failed, r.Summary.TimedOut, r.Summary.Total)
 	b.WriteString("Compatibility stages show how far each ROM gets; they are not hardware-accuracy percentages.\n\n")
-	b.WriteString("| ROM/test | ROM SHA-256 | Status | Highest stage | Target stage | Frames | Steps | Detail |\n")
-	b.WriteString("| --- | --- | --- | --- | --- | ---: | ---: | --- |\n")
+	b.WriteString("| ROM/test | Source | Source revision | ROM SHA-256 | Status | Highest stage | Target stage | Frames | Steps | Detail |\n")
+	b.WriteString("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |\n")
 	for _, result := range r.Results {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %d | %d | %s |\n",
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %d | %d | %s |\n",
 			markdownText(result.Test),
+			markdownText(result.Source),
+			markdownText(result.SourceRevision),
 			markdownText(result.ROMSHA256),
 			result.Status,
 			result.HighestStage,
