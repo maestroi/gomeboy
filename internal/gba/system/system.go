@@ -651,14 +651,6 @@ func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access
 	return cycles
 }
 
-func (t *timedMemory) AccessCycles(addr uint32, width uint32, access gbamemory.Access) uint32 {
-	return t.m.Bus.AccessCycles(addr, width, access)
-}
-
-func (t *timedMemory) SpendCycles(cycles uint32) {
-	t.consume(cycles)
-}
-
 func (t *timedMemory) Idle(cycles uint32) {
 	t.m.Bus.Idle(cycles)
 	t.consume(cycles)
