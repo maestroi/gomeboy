@@ -153,6 +153,70 @@ func TestDataTransferMakesNextFetchNonSequential(t *testing.T) {
 	}
 }
 
+func TestTakenBranchChargesPipelineRefill(t *testing.T) {
+	t.Run("ARM IWRAM", func(t *testing.T) {
+		b := newExecutionBus(nil)
+		b.Write32(bus.IWRAMStart, 0xea000000, bus.Access{})   // B +0 -> PC+8
+		b.Write32(bus.IWRAMStart+8, 0xe1a00000, bus.Access{}) // MOV r0,r0
+
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		c.SetPC(bus.IWRAMStart)
+
+		branch, err := c.Step(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if branch.RefillCycles != 2 || branch.InternalCycles != 0 || branch.TotalCycles != 3 {
+			t.Fatalf("ARM IWRAM branch timing = %+v, want fetch=1 refill=2 internal=0 total=3", branch)
+		}
+	})
+
+	t.Run("ARM ROM", func(t *testing.T) {
+		rom := make([]byte, 0x20)
+		putARM(rom, 0x00, 0xea000000) // B +0 -> PC+8
+		putARM(rom, 0x08, 0xe1a00000)
+
+		b := newExecutionBus(rom)
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		c.SetPC(bus.ROM0Start)
+
+		branch, err := c.Step(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if branch.RefillCycles != 12 {
+			t.Fatalf("ARM ROM branch refill = %d cycles, want two sequential word fetches = 12", branch.RefillCycles)
+		}
+	})
+
+	t.Run("Thumb IWRAM", func(t *testing.T) {
+		b := newExecutionBus(nil)
+		b.Write16(bus.IWRAMStart, 0xe000, bus.Access{})   // B +0 -> PC+4
+		b.Write16(bus.IWRAMStart+4, 0x46c0, bus.Access{}) // NOP
+
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		c.SetThumb(true)
+		c.SetPC(bus.IWRAMStart)
+
+		branch, err := c.Step(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if branch.RefillCycles != 2 || branch.InternalCycles != 0 || branch.TotalCycles != 3 {
+			t.Fatalf("Thumb IWRAM branch timing = %+v, want fetch=1 refill=2 internal=0 total=3", branch)
+		}
+	})
+}
+
 func TestStepPipelineFlushMakesNextFetchNonSequential(t *testing.T) {
 	rom := make([]byte, 0x20)
 	putARM(rom, 0x00, 0xea000000) // B +0 -> current PC +8
