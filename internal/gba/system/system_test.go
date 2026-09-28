@@ -311,6 +311,42 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	}
 }
 
+func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
+	m := New(nil, nil)
+	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+
+	code := uint32(bus.IWRAMStart + 0x1a40)
+	m.Bus.Write32(code+0, 0xe5813000, bus.Access{}) // STR  r3,[r1]
+	m.Bus.Write32(code+4, 0xe1c120b0, bus.Access{}) // STRH r2,[r1]
+	m.Bus.Write32(code+8, 0xe1d100b0, bus.Access{}) // LDRH r0,[r1]
+	m.CPU.SetPC(code)
+	m.CPU.WriteRegister(1, bus.IOStart+0x100)
+	m.CPU.WriteRegister(2, 0)
+	m.CPU.WriteRegister(3, uint32(1<<7)<<16|0xfff7)
+
+	if _, err := m.Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Step(); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Timers.Counter(0); got != 0xfff9 {
+		t.Fatalf("Timer0 before sampled load = %04x, want fff9", got)
+	}
+	if _, err := m.Step(); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.CPU.ReadRegister(0); got != 0xfff9 {
+		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fff9", got)
+	}
+
+	// The existing FFFF case above covers the complementary edge: when the
+	// fetch itself overflows, the read must observe the reload rather than the
+	// pre-fetch snapshot.
+}
+
 func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
 	m := New(nil, nil)
 
