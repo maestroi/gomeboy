@@ -528,6 +528,12 @@ func hleCPUSet(m *system.Machine, fast bool) {
 	access := bus.Access{}
 
 	if word {
+		if src < bus.SaveStart {
+			src &^= 3
+		}
+		if dst < bus.SaveStart {
+			dst &^= 3
+		}
 		var fillValue uint32
 		if fill {
 			fillValue, _ = m.Bus.Read32(src, access)
