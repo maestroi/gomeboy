@@ -453,6 +453,25 @@ func TestMultiplyEarlyTerminationBoundaries(t *testing.T) {
 	}
 }
 
+func TestUnsignedLongMultiplyEarlyTerminationBoundaries(t *testing.T) {
+	cases := []struct {
+		value uint32
+		want  uint8
+	}{
+		{0x000000ff, 1},
+		{0x0000ffff, 2},
+		{0x00ffffff, 3},
+		{0x01000000, 4},
+		{0xffffff00, 4},
+		{0xffffffff, 4},
+	}
+	for _, tc := range cases {
+		if got := multiplyUnsignedInternalCycles(tc.value); got != tc.want {
+			t.Errorf("multiplyUnsignedInternalCycles(%08x) = %d, want %d", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestConditionCodes(t *testing.T) {
 	psr := PSR(ModeSystem) | FlagNegative | FlagZero | FlagCarry
 	cases := map[uint8]bool{
