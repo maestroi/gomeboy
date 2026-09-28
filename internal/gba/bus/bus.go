@@ -78,6 +78,7 @@ type Bus struct {
 	wait         WaitControl
 	prefetch     prefetchState
 	openBus      uint32
+	cpuOpenBus   uint32
 	biosPrefetch uint32
 	cpuInBIOS    bool
 
@@ -135,12 +136,24 @@ func (b *Bus) PaletteRAM() []byte { return b.palette }
 func (b *Bus) VRAM() []byte      { return b.vram }
 func (b *Bus) OAM() []byte       { return b.oam }
 
-// OpenBus returns the current 32-bit bus latch.
+// OpenBus returns the current physical 32-bit bus latch.
 func (b *Bus) OpenBus() uint32 { return b.openBus }
 
-// SetOpenBus allows the CPU/fetch pipeline to provide a more accurate latch
-// value when implementing instruction-derived open-bus behavior.
-func (b *Bus) SetOpenBus(value uint32) { b.openBus = value }
+// CPUOpenBus returns the CPU-visible instruction-pipeline/open-bus value used
+// when a CPU data read targets an unmapped or write-only location.
+func (b *Bus) CPUOpenBus() uint32 { return b.cpuOpenBus }
+
+// SetOpenBus seeds both physical and CPU-visible latches. It is primarily used
+// by focused bus tests and debugger-style integrations.
+func (b *Bus) SetOpenBus(value uint32) {
+	b.openBus = value
+	b.cpuOpenBus = value
+}
+
+// SetCPUOpenBus updates only the CPU-visible pipeline latch. Instruction fetch
+// adapters use this without pretending that speculative prefetch replaced the
+// physical bus transaction that actually occurred.
+func (b *Bus) SetCPUOpenBus(value uint32) { b.cpuOpenBus = value }
 
 // SetBIOSPrefetch updates the protected BIOS read latch. BIOS HLE adapters use
 // this when they emulate a BIOS call without executing the real instruction
@@ -165,7 +178,11 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 		if b.isOutOfBoundsROM(addr) {
 			value = outOfBoundsROMByte(addr)
 		} else {
-			value = byte(b.openBus >> ((addr & 3) * 8))
+			latch := b.cpuOpenBus
+			if access.DMA {
+				latch = b.openBus
+			}
+			value = byte(latch >> ((addr & 3) * 8))
 		}
 	}
 	b.openBus = uint32(value) * 0x01010101
@@ -216,7 +233,11 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		if b.isOutOfBoundsROM(aligned) {
 			value = uint16((aligned >> 1) & 0xffff)
 		} else {
-			value = uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+			latch := b.cpuOpenBus
+			if access.DMA {
+				latch = b.openBus
+			}
+			value = uint16(bits.RotateLeft32(latch, -int((addr&3)*8)))
 		}
 	}
 	if addr&1 != 0 {
@@ -266,7 +287,10 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 			high := ((aligned + 2) >> 1) & 0xffff
 			value = low | high<<16
 		} else {
-			value = b.openBus
+			value = b.cpuOpenBus
+			if access.DMA {
+				value = b.openBus
+			}
 		}
 	}
 	value = bits.RotateLeft32(value, -int((addr&3)*8))
