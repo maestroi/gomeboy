@@ -47,10 +47,14 @@ func (b *Bus) accessCycles(addr uint32, width uint32, access Access) uint32 {
 			return 6
 		}
 		return 3
-	case 0x04, 0x05, 0x06, 0x07:
+	case 0x04, 0x05, 0x06:
 		if width == 4 {
 			return 2
 		}
+		return 1
+	case 0x07:
+		// OAM is a 32-bit bus. Supported 16/32-bit accesses complete in
+		// one cycle.
 		return 1
 	case 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d:
 		if access.Instruction && b.PrefetchEnabled() {
