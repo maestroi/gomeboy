@@ -65,8 +65,11 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 			return StepResult{}, err
 		}
 		return StepResult{
-			InternalCycles: 1,
-			TotalCycles:    1,
+			// Exception entry has two fixed pipeline-refill cycles in addition
+			// to the existing boundary cycle. The vector fetch itself happens on
+			// the following Step in this core.
+			InternalCycles: 3,
+			TotalCycles:    3,
 			PipelineFlush:  true,
 			ExceptionTaken: true,
 			Exception:      kind,
