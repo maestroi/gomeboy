@@ -460,13 +460,49 @@ func hleIntrWait(m *system.Machine) error {
 		m.Bus.Write16(bus.IOStart+0x202, mask, bus.Access{})
 	}
 
-	const maxWaitCycles uint64 = 2 * 16_777_216
+	// IntrWait runs with IRQs enabled while the BIOS sleeps. A requested IRQ is
+	// not merely an IF edge: the normal BIOS IRQ forwarder runs the application's
+	// registered handler before IntrWait returns. This matters to the timer suite,
+	// whose handler disables TM0 and updates irqCounter.
+	if err := m.CPU.SetCPSR(m.CPU.CPSR() &^ cpu.FlagIRQDisable); err != nil {
+		return fmt.Errorf("mGBA-suite BIOS IntrWait enable IRQ: %w", err)
+	}
+
+	const (
+		maxWaitCycles uint64 = 2 * 16_777_216
+		maxIRQSteps          = 4096
+	)
 	start := m.Cycle()
 	for m.Cycle()-start < maxWaitCycles {
-		if pending := m.IRQ.IF() & mask; pending != 0 {
-			m.Bus.Write16(bus.IOStart+0x202, pending, bus.Access{})
-			return nil
+		if m.CPU.IRQLine() {
+			requested := m.IRQ.IF()&mask != 0
+			entry, err := m.Step()
+			if err != nil {
+				return fmt.Errorf("mGBA-suite BIOS IntrWait IRQ entry: %w", err)
+			}
+			if !entry.CPU.ExceptionTaken || entry.CPU.Exception != cpu.ExceptionIRQ {
+				return fmt.Errorf("mGBA-suite BIOS IntrWait expected IRQ entry at pc=%#08x", m.CPU.PC())
+			}
+
+			returned := false
+			for i := 0; i < maxIRQSteps; i++ {
+				if m.CPU.CPSR().Mode() == cpu.ModeSupervisor && m.CPU.PC() == 0x08 {
+					returned = true
+					break
+				}
+				if _, err := m.Step(); err != nil {
+					return fmt.Errorf("mGBA-suite BIOS IntrWait IRQ handler: %w", err)
+				}
+			}
+			if !returned {
+				return fmt.Errorf("mGBA-suite BIOS IntrWait IRQ handler did not return")
+			}
+			if requested {
+				return nil
+			}
+			continue
 		}
+
 		step := m.Timers.CyclesUntilEvent()
 		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
 			step = untilPPU
