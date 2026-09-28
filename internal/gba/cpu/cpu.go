@@ -11,7 +11,6 @@ type ExecutionResult struct {
 	InternalCycles       uint8
 	MemoryCycles         uint32
 	PipelineFlush        bool
-	PipelineRefill       bool
 	BreakSequentialFetch bool
 }
 
