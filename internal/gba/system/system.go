@@ -566,19 +566,36 @@ type timedMemory struct {
 func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32) {
 	value, cycles := t.m.Bus.Read8(addr, access)
 	t.consume(cycles)
+	if isTimerCounterAddress(addr) {
+		value, _ = t.m.Bus.Read8(addr, access)
+	}
 	return value, cycles
 }
 
 func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint32) {
 	value, cycles := t.m.Bus.Read16(addr, access)
 	t.consume(cycles)
+	if isTimerCounterAddress(addr) {
+		value, _ = t.m.Bus.Read16(addr, access)
+	}
 	return value, cycles
 }
 
 func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint32) {
 	value, cycles := t.m.Bus.Read32(addr, access)
 	t.consume(cycles)
+	if isTimerCounterAddress(addr) {
+		value, _ = t.m.Bus.Read32(addr, access)
+	}
 	return value, cycles
+}
+
+func isTimerCounterAddress(addr uint32) bool {
+	if addr < bus.IOStart+0x100 || addr >= bus.IOStart+0x110 {
+		return false
+	}
+	// TM0-TM3 counters occupy the low halfword of each four-byte timer pair.
+	return (addr-(bus.IOStart+0x100))%4 < 2
 }
 
 func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) uint32 {
