@@ -189,7 +189,7 @@ func (d *DMA) registerWriteOnly32(io *bus.IO, offset uint32, get func() uint32, 
 }
 
 func (d *DMA) openBusHalfword(ioOffset uint32) uint16 {
-	value := d.bus.OpenBus()
+	value := d.bus.CPUOpenBus()
 	if ioOffset&2 != 0 {
 		return uint16(value >> 16)
 	}
