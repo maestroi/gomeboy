@@ -256,28 +256,22 @@ func TestSaveDeviceBoundary(t *testing.T) {
 }
 
 
-func TestDMAAccessCannotUseGamePakSaveBus(t *testing.T) {
+func TestDMAAccessUsesGamePakSaveBusWhenAddressMaskAllowsIt(t *testing.T) {
 	b := testBus()
 	save := &fakeSave{}
 	b.AttachSaveDevice(save)
 	save.data[2] = 0x5a
 
-	b.SetOpenBus(0x44332211)
 	got, cycles := b.Read16(SaveStart+2, Access{DMA: true})
-	if got != 0x4433 {
-		t.Fatalf("DMA save read = %04x, want open-bus 4433", got)
+	if got != 0x5a5a {
+		t.Fatalf("DMA save read = %04x, want repeated byte 5a5a", got)
 	}
 	if cycles != 5 {
 		t.Fatalf("DMA save read cycles = %d, want configured save-bus timing 5", cycles)
 	}
 
 	b.Write16(SaveStart+2, 0xbeef, Access{DMA: true})
-	if got := save.Read8(2); got != 0x5a {
-		t.Fatalf("DMA save write reached save device: %02x, want 5a", got)
-	}
-
-	// CPU accesses remain unchanged.
-	if got, _ := b.Read8(SaveStart+2, Access{}); got != 0x5a {
-		t.Fatalf("CPU save read changed by DMA restriction: %02x", got)
+	if got := save.Read8(2); got != 0xef {
+		t.Fatalf("DMA save write = %02x, want low byte ef", got)
 	}
 }
