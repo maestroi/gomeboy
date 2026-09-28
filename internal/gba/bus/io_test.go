@@ -2,6 +2,17 @@ package bus
 
 import "testing"
 
+func TestUnknownIOBackingRemainsAvailableForIncompleteRegisters(t *testing.T) {
+	io := NewIO()
+	io.Write16(0x120, 0xa55a)
+	if got, ok := io.Read16(0x120); !ok || got != 0xa55a {
+		t.Fatalf("incomplete I/O backing read = %04x ok=%v, want a55a/true", got, ok)
+	}
+	if got, ok := io.Read8(0x121); !ok || got != 0xa5 {
+		t.Fatalf("incomplete I/O backing byte = %02x ok=%v, want a5/true", got, ok)
+	}
+}
+
 func TestIORegisterCallbacks(t *testing.T) {
 	io := NewIO()
 	var value uint16 = 0x1234

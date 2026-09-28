@@ -35,14 +35,15 @@ func TestBGControlAndScrollRegisters(t *testing.T) {
 	p, b := newTestPPU(t, Hooks{})
 
 	b.Write16(bus.IOStart+0x008, 0xffff, bus.Access{})
-	if got, _ := b.Read16(bus.IOStart+0x008, bus.Access{}); got != 0xdfcf {
-		t.Fatalf("BG0CNT = %04x, want dfcf with unused bits cleared", got)
+	if got, _ := b.Read16(bus.IOStart+0x008, bus.Access{}); got != 0xdfff {
+		t.Fatalf("BG0CNT = %04x, want dfff with only bit 13 cleared", got)
 	}
 
-	// BG2/BG3 retain bit 13 because it is the affine overflow control.
-	b.Write16(bus.IOStart+0x00c, 1<<13, bus.Access{})
-	if got, _ := b.Read16(bus.IOStart+0x00c, bus.Access{}); got != 1<<13 {
-		t.Fatalf("BG2CNT bit13 = %04x, want 2000", got)
+	// BG2/BG3 retain bit 13 because it is the affine overflow control and
+	// all 16 bits of their control register read back.
+	b.Write16(bus.IOStart+0x00c, 0xffff, bus.Access{})
+	if got, _ := b.Read16(bus.IOStart+0x00c, bus.Access{}); got != 0xffff {
+		t.Fatalf("BG2CNT = %04x, want ffff", got)
 	}
 
 	b.Write16(bus.IOStart+0x010, 0xffff, bus.Access{})

@@ -52,7 +52,7 @@ func TestDMAWriteOnlyRegistersReadOpenBus(t *testing.T) {
 	b := bus.New(nil, nil)
 	_ = New(b, nil, Hooks{})
 
-	for _, offset := range []uint32{0x0b0, 0x0b2, 0x0b4, 0x0b6, 0x0b8} {
+	for _, offset := range []uint32{0x0b0, 0x0b2, 0x0b4, 0x0b6} {
 		b.SetOpenBus(0x44332211)
 		got, _ := b.Read16(bus.IOStart+offset, bus.Access{})
 		want := uint16(0x2211)
@@ -61,6 +61,13 @@ func TestDMAWriteOnlyRegistersReadOpenBus(t *testing.T) {
 		}
 		if got != want {
 			t.Fatalf("read %03x = %04x, want open-bus %04x", offset, got, want)
+		}
+	}
+
+	for index := 0; index < 4; index++ {
+		b.Write16(dmaBase(index)+8, 0xffff, bus.Access{})
+		if got, _ := b.Read16(dmaBase(index)+8, bus.Access{}); got != 0 {
+			t.Fatalf("DMA%d count read = %04x, want 0000", index, got)
 		}
 	}
 }

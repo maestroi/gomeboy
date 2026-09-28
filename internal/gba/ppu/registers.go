@@ -22,10 +22,11 @@ func (p *PPU) installRegisters() {
 		hofsOffset := uint32(0x010 + bg*4)
 		vofsOffset := hofsOffset + 2
 
-		controlMask := uint16(0xffcf)
+		controlMask := uint16(0xffff)
 		if bg < 2 {
 			// BG0/BG1 bit 13 is unused on GBA. BG2/BG3 use it as the
-			// affine display-area overflow bit.
+			// affine display-area overflow bit. Bits 4-5 are valid character
+			// base selection bits and must remain readable.
 			controlMask &^= 1 << 13
 		}
 		io.Register16(controlOffset,
@@ -146,7 +147,7 @@ func (p *PPU) writeDISPSTAT(value uint16) {
 }
 
 func (p *PPU) openBusHalfword(ioOffset uint32) uint16 {
-	value := p.bus.OpenBus()
+	value := p.bus.CPUOpenBus()
 	if ioOffset&2 != 0 {
 		return uint16(value >> 16)
 	}

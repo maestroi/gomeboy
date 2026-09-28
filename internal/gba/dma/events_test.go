@@ -7,6 +7,27 @@ import (
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
 )
 
+func installTestFIFORegisters(b *bus.Bus) {
+	registerWord := func(address uint32) {
+		offset := address - bus.IOStart
+		var value uint32
+		for half := 0; half < 2; half++ {
+			half := half
+			halfOffset := offset + uint32(half*2)
+			shift := uint(half * 16)
+			b.IO().Register16(halfOffset,
+				func() uint16 { return uint16(value >> shift) },
+				func(part uint16) {
+					mask := uint32(0xffff) << shift
+					value = value&^mask | uint32(part)<<shift
+				},
+			)
+		}
+	}
+	registerWord(fifoAAddress)
+	registerWord(fifoBAddress)
+}
+
 func TestVBlankDMAOneShotClearsEnable(t *testing.T) {
 	b := bus.New(nil, nil)
 	d := New(b, nil, Hooks{})
@@ -301,6 +322,7 @@ func TestBlankingEventsDoNotTriggerSpecialDMA(t *testing.T) {
 
 func TestDirectSoundFIFOForcesFourWordBurst(t *testing.T) {
 	b := bus.New(nil, nil)
+	installTestFIFORegisters(b)
 	d := New(b, nil, Hooks{})
 
 	source := uint32(bus.IWRAMStart + 0xc00)
@@ -340,6 +362,7 @@ func TestDirectSoundFIFOForcesFourWordBurst(t *testing.T) {
 
 func TestDirectSoundFIFOSelectsMatchingFIFOAndChannel(t *testing.T) {
 	b := bus.New(nil, nil)
+	installTestFIFORegisters(b)
 	d := New(b, nil, Hooks{})
 
 	sourceA := uint32(bus.IWRAMStart + 0xd00)
@@ -378,6 +401,7 @@ func TestDirectSoundFIFOSelectsMatchingFIFOAndChannel(t *testing.T) {
 
 func TestDirectSoundFIFOWithoutRepeatDisablesAfterBurst(t *testing.T) {
 	b := bus.New(nil, nil)
+	installTestFIFORegisters(b)
 	d := New(b, nil, Hooks{})
 
 	source := uint32(bus.IWRAMStart + 0xf00)
@@ -407,6 +431,7 @@ func TestDirectSoundFIFOWithoutRepeatDisablesAfterBurst(t *testing.T) {
 
 func TestDirectSoundFIFORejectsOtherSpecialDMAChannelsAndDestinations(t *testing.T) {
 	b := bus.New(nil, nil)
+	installTestFIFORegisters(b)
 	d := New(b, nil, Hooks{})
 
 	source := uint32(bus.IWRAMStart + 0x1000)

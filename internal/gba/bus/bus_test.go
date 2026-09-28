@@ -139,9 +139,11 @@ func TestBIOSAndIOAreNotGenerallyMirrored(t *testing.T) {
 		t.Fatalf("read after BIOS = %02x, want open bus dd", got)
 	}
 
+	var ioValue uint16
+	b.IO().Register16(0x20, func() uint16 { return ioValue }, func(value uint16) { ioValue = value })
 	b.IO().Write16(0x20, 0x1234)
 	if got, _ := b.Read16(IOStart+0x20, Access{}); got != 0x1234 {
-		t.Fatalf("I/O register = %04x, want 1234", got)
+		t.Fatalf("registered I/O value = %04x, want 1234", got)
 	}
 	b.SetOpenBus(0x55667788)
 	if got, _ := b.Read16(IOStart+IOSize+0x20, Access{}); got != 0x7788 {

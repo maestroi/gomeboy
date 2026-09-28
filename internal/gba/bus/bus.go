@@ -78,7 +78,9 @@ type Bus struct {
 	wait         WaitControl
 	prefetch     prefetchState
 	openBus      uint32
-	biosPrefetch uint32
+	cpuOpenBus      uint32
+	cpuOpenBusValid bool
+	biosPrefetch    uint32
 	cpuInBIOS    bool
 
 	// Byte writes to OBJ VRAM are ignored. Tile modes start OBJ VRAM at
@@ -135,12 +137,33 @@ func (b *Bus) PaletteRAM() []byte { return b.palette }
 func (b *Bus) VRAM() []byte      { return b.vram }
 func (b *Bus) OAM() []byte       { return b.oam }
 
-// OpenBus returns the current 32-bit bus latch.
+// OpenBus returns the current physical 32-bit bus latch.
 func (b *Bus) OpenBus() uint32 { return b.openBus }
 
-// SetOpenBus allows the CPU/fetch pipeline to provide a more accurate latch
-// value when implementing instruction-derived open-bus behavior.
-func (b *Bus) SetOpenBus(value uint32) { b.openBus = value }
+// CPUOpenBus returns the CPU-visible instruction-pipeline/open-bus value used
+// when a CPU data read targets an unmapped or write-only location.
+func (b *Bus) CPUOpenBus() uint32 {
+	if b.cpuOpenBusValid {
+		return b.cpuOpenBus
+	}
+	return b.openBus
+}
+
+// SetOpenBus seeds both physical and CPU-visible latches. It is primarily used
+// by focused bus tests and debugger-style integrations.
+func (b *Bus) SetOpenBus(value uint32) {
+	b.openBus = value
+	b.cpuOpenBus = value
+	b.cpuOpenBusValid = true
+}
+
+// SetCPUOpenBus updates only the CPU-visible pipeline latch. Instruction fetch
+// adapters use this without pretending that speculative prefetch replaced the
+// physical bus transaction that actually occurred.
+func (b *Bus) SetCPUOpenBus(value uint32) {
+	b.cpuOpenBus = value
+	b.cpuOpenBusValid = true
+}
 
 // SetBIOSPrefetch updates the protected BIOS read latch. BIOS HLE adapters use
 // this when they emulate a BIOS call without executing the real instruction
@@ -165,7 +188,11 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 		if b.isOutOfBoundsROM(addr) {
 			value = outOfBoundsROMByte(addr)
 		} else {
-			value = byte(b.openBus >> ((addr & 3) * 8))
+			latch := b.CPUOpenBus()
+			if access.DMA {
+				latch = b.openBus
+			}
+			value = byte(latch >> ((addr & 3) * 8))
 		}
 	}
 	b.openBus = uint32(value) * 0x01010101
@@ -216,7 +243,11 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		if b.isOutOfBoundsROM(aligned) {
 			value = uint16((aligned >> 1) & 0xffff)
 		} else {
-			value = uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+			latch := b.CPUOpenBus()
+			if access.DMA {
+				latch = b.openBus
+			}
+			value = uint16(bits.RotateLeft32(latch, -int((addr&3)*8)))
 		}
 	}
 	if addr&1 != 0 {
@@ -266,7 +297,10 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 			high := ((aligned + 2) >> 1) & 0xffff
 			value = low | high<<16
 		} else {
-			value = b.openBus
+			value = b.CPUOpenBus()
+			if access.DMA {
+				value = b.openBus
+			}
 		}
 	}
 	value = bits.RotateLeft32(value, -int((addr&3)*8))
@@ -331,6 +365,18 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	b.openBus = value
 	b.afterAccess(addr, 4, access, true)
 	return cycles
+}
+
+// Peek16 reads an aligned mapped halfword without timing or open-bus latch
+// updates. It is used by the CPU-facing adapter for Thumb pipeline state.
+func (b *Bus) Peek16(addr uint32) uint16 {
+	aligned := addr &^ 1
+	lo, ok0 := b.readByte(aligned)
+	hi, ok1 := b.readByte(aligned + 1)
+	if !ok0 || !ok1 {
+		return uint16(bits.RotateLeft32(b.openBus, -int((aligned&3)*8)))
+	}
+	return uint16(lo) | uint16(hi)<<8
 }
 
 // Peek32 reads an aligned mapped word without timing or open-bus latch updates.

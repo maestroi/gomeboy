@@ -143,7 +143,7 @@ func (d *DMA) install(io *bus.IO) {
 		)
 
 		io.Register16WithByteWrite(base+8,
-			func() uint16 { return d.openBusHalfword(base + 8) },
+			func() uint16 { return 0 },
 			func(value uint16) { d.ch[index].countInitial = value & countMask(index) },
 			func(byteOffset uint32, value byte) {
 				current := d.ch[index].countInitial
@@ -189,7 +189,7 @@ func (d *DMA) registerWriteOnly32(io *bus.IO, offset uint32, get func() uint32, 
 }
 
 func (d *DMA) openBusHalfword(ioOffset uint32) uint16 {
-	value := d.bus.OpenBus()
+	value := d.bus.CPUOpenBus()
 	if ioOffset&2 != 0 {
 		return uint16(value >> 16)
 	}
