@@ -249,6 +249,12 @@ func TestSaveDeviceBoundary(t *testing.T) {
 		t.Fatalf("save word = %08x cycles=%d, want 9a9a9a9a/5", got32, cycles32)
 	}
 
+	save.data[4] = 0x47
+	save.data[5] = 0x61
+	if got, _ := b.Read16(SaveStart+4, Access{Misalignment: 1}); got != 0x6161 {
+		t.Fatalf("misaligned CPU save halfword bus value = %04x, want 6161", got)
+	}
+
 	b.Write32(SaveStart+2, 0x44332211, Access{})
 	if got := save.Read8(2); got != 0x33 {
 		t.Fatalf("save word write selected byte = %02x, want 33", got)
