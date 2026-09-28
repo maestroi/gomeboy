@@ -1,6 +1,7 @@
 package system
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
@@ -208,61 +209,59 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	}
 }
 
-func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
-	m := New(nil, nil)
-	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
-		t.Fatal(err)
+func TestCPUTimerIRQPrefixMatchesHardwareReloadSequence(t *testing.T) {
+	cases := []struct {
+		reload uint16
+		want   uint16
+	}{
+		{0xffff, 0x0000},
+		{0xfffe, 0x0000},
+		{0xfffd, 0xffff},
+		{0xfffc, 0xfffe},
+		{0xfffb, 0xfffd},
+		{0xfffa, 0xfffc},
+		{0xfff9, 0xfffb},
+		{0xfff8, 0xfffa},
+		{0xfff7, 0xfff9},
 	}
 
-	// Match the critical prefix used by mGBA-suite's Timer IRQ tests:
-	//
-	//   str  r3, [r1]   ; reload + enable/IRQ
-	//   strh r2, [r1]   ; update reload latch while running
-	//   ldrh r0, [r1]   ; sample the live counter
-	//
-	// Timer writes become visible only once the issuing ARM instruction
-	// completes. That leaves the live counter at FFFF through the STRH, so the
-	// following instruction fetch overflows into the newly written 0000 reload
-	// and the LDRH observes exactly 0000.
-	code := uint32(bus.IWRAMStart + 0x1a00)
-	m.Bus.Write32(code+0, 0xe5813000, bus.Access{}) // STR  r3,[r1]
-	m.Bus.Write32(code+4, 0xe1c120b0, bus.Access{}) // STRH r2,[r1]
-	m.Bus.Write32(code+8, 0xe1d100b0, bus.Access{}) // LDRH r0,[r1]
-	m.CPU.SetPC(code)
-	m.CPU.WriteRegister(1, bus.IOStart+0x100)
-	m.CPU.WriteRegister(2, 0x00c00000)
-	m.CPU.WriteRegister(3, 0x00c0ffff)
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%04x", tc.reload), func(t *testing.T) {
+			m := New(nil, nil)
+			if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+				t.Fatal(err)
+			}
 
-	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
-	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+			// Match mGBA-suite timer-irq.c exactly:
+			//   str  r3,[r1]   ; reload + enable/IRQ
+			//   strh r2,[r1]   ; change reload latch to 0 while running
+			//   ldrh r0,[r1]   ; immediate live-counter sample
+			code := uint32(bus.IWRAMStart + 0x1a00)
+			m.Bus.Write32(code+0, 0xe5813000, bus.Access{})
+			m.Bus.Write32(code+4, 0xe1c120b0, bus.Access{})
+			m.Bus.Write32(code+8, 0xe1d100b0, bus.Access{})
+			m.CPU.SetPC(code)
+			m.CPU.WriteRegister(1, bus.IOStart+0x100)
+			m.CPU.WriteRegister(2, 0x00c00000)
+			m.CPU.WriteRegister(3, uint32(0x00c0)<<16|uint32(tc.reload))
 
-	first, err := m.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.CPU.TotalCycles != 3 || m.Timers.Counter(0) != 0xffff {
-		t.Fatalf("timer start instruction cycles/counter = %d/%04x, want 3/ffff",
-			first.CPU.TotalCycles, m.Timers.Counter(0))
-	}
+			m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.Timer0), bus.Access{})
+			m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
 
-	second, err := m.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.CPU.TotalCycles != 2 || m.Timers.Reload(0) != 0 || m.Timers.Counter(0) != 0xffff {
-		t.Fatalf("reload instruction cycles/reload/counter = %d/%04x/%04x, want 2/0000/ffff",
-			second.CPU.TotalCycles, m.Timers.Reload(0), m.Timers.Counter(0))
-	}
-
-	third, err := m.Step()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if third.CPU.ExceptionTaken {
-		t.Fatalf("timer IRQ arrived before sampled LDRH: %+v", third.CPU)
-	}
-	if got := m.CPU.ReadRegister(0); got != 0 {
-		t.Fatalf("Timer0 immediate sample = %04x, want 0000", got)
+			for i := 0; i < 3; i++ {
+				step, err := m.Step()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if step.CPU.ExceptionTaken {
+					t.Fatalf("IRQ arrived before immediate sample at instruction %d", i)
+				}
+			}
+			if got := uint16(m.CPU.ReadRegister(0)); got != tc.want {
+				t.Fatalf("Timer0 immediate sample for reload %04x = %04x, want %04x",
+					tc.reload, got, tc.want)
+			}
+		})
 	}
 }
 
