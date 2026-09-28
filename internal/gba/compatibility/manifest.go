@@ -19,14 +19,17 @@ type Manifest struct {
 
 // ManifestTest describes one ROM and the compatibility milestone it must reach.
 type ManifestTest struct {
-	Name        string              `json:"name"`
-	ROM         string              `json:"rom"`
-	ROMSHA256   string              `json:"rom_sha256"`
-	BIOS        string              `json:"bios,omitempty"`
-	Boot        ManifestBoot        `json:"boot"`
-	Limits      conformance.Limits  `json:"limits"`
-	TargetStage Stage               `json:"target_stage"`
-	Checkpoint  *ManifestCheckpoint `json:"checkpoint,omitempty"`
+	Name           string              `json:"name"`
+	ROM            string              `json:"rom"`
+	ROMSHA256      string              `json:"rom_sha256"`
+	Source         string              `json:"source,omitempty"`
+	SourceRevision string              `json:"source_revision,omitempty"`
+	BIOS           string              `json:"bios,omitempty"`
+	Boot           ManifestBoot        `json:"boot"`
+	Limits         conformance.Limits  `json:"limits"`
+	TargetStage    Stage               `json:"target_stage"`
+	Checkpoint     *ManifestCheckpoint `json:"checkpoint,omitempty"`
+	Inputs         []ManifestInput     `json:"inputs,omitempty"`
 }
 
 // ManifestBoot keeps BIOS-backed reset and BIOS-less direct boot explicit.
@@ -41,6 +44,14 @@ type ManifestBoot struct {
 type ManifestRegister struct {
 	Register int                `json:"register"`
 	Value    conformance.Uint32 `json:"value"`
+}
+
+// ManifestInput schedules one deterministic keypad transition at a rendered
+// frame boundary relative to the start of the compatibility run.
+type ManifestInput struct {
+	Frame   uint64 `json:"frame"`
+	Button  string `json:"button"`
+	Pressed bool   `json:"pressed"`
 }
 
 // ManifestCheckpoint is the JSON representation of a deterministic checkpoint.
@@ -101,6 +112,8 @@ func LoadManifest(path string) (Manifest, []Case, error) {
 			Name:             test.Name,
 			ROM:              rom,
 			ROMSHA256:        test.ROMSHA256,
+			Source:           test.Source,
+			SourceRevision:   test.SourceRevision,
 			BIOS:             bios,
 			Boot:             test.Boot.Mode,
 			EntryPoint:       uint32(test.Boot.EntryPoint),
@@ -109,6 +122,7 @@ func LoadManifest(path string) (Manifest, []Case, error) {
 			Limits:           test.Limits,
 			TargetStage:      test.TargetStage,
 			Checkpoint:       convertCheckpoint(test.Checkpoint),
+			Inputs:           convertInputs(test.Inputs),
 		})
 	}
 	return manifest, cases, nil
@@ -144,4 +158,16 @@ func convertCheckpoint(in *ManifestCheckpoint) *Checkpoint {
 		Value:    uint32(in.Value),
 		Mask:     uint32(in.Mask),
 	}
+}
+
+func convertInputs(in []ManifestInput) []InputEvent {
+	out := make([]InputEvent, 0, len(in))
+	for _, event := range in {
+		out = append(out, InputEvent{
+			Frame:   event.Frame,
+			Button:  event.Button,
+			Pressed: event.Pressed,
+		})
+	}
+	return out
 }
