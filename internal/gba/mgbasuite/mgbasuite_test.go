@@ -21,6 +21,29 @@ func TestParseResults(t *testing.T) {
 	}
 }
 
+
+func TestResultCollectorRetainsMemoryTestContext(t *testing.T) {
+	save := cartridge.NewSRAM()
+	log := "Memory test: BIOS load\nU8: Got 0x00 vs 0x04: FAIL\nMemory test: OAM load\n32: Got 1 vs 2: FAIL\n"
+	for index := range []byte(log) {
+		save.Write8(uint32(index), []byte(log)[index])
+	}
+	collector := resultCollector{}
+	collector.poll(save)
+	want := []string{
+		"BIOS load: U8: Got 0x00 vs 0x04: FAIL",
+		"OAM load: 32: Got 1 vs 2: FAIL",
+	}
+	if len(collector.failures) != len(want) {
+		t.Fatalf("failures = %v, want %v", collector.failures, want)
+	}
+	for index := range want {
+		if collector.failures[index] != want[index] {
+			t.Fatalf("failure %d = %q, want %q", index, collector.failures[index], want[index])
+		}
+	}
+}
+
 func TestClassifyBaselineTransitions(t *testing.T) {
 	category := Category{
 		ID: "io", Name: "I/O", Enabled: true, ExpectedTotal: 10,
