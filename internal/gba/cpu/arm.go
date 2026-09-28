@@ -354,7 +354,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 		}
 		c.WriteRegister(rd, uint32(value))
 		c.advancePC()
-		return ExecutionResult{InternalCycles: 1}, nil
+		return ExecutionResult{}, nil
 	}
 
 	immediate := instruction&(1<<25) != 0
@@ -363,7 +363,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 	mask := psrWriteMask(fieldMask)
 	if mask == 0 {
 		c.advancePC()
-		return ExecutionResult{InternalCycles: 1}, nil
+		return ExecutionResult{}, nil
 	}
 
 	var source uint32
@@ -392,7 +392,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 			return ExecutionResult{}, err
 		}
 		c.advancePC()
-		return ExecutionResult{InternalCycles: 1}, nil
+		return ExecutionResult{}, nil
 	}
 
 	// User mode may only update the flags field.
@@ -413,7 +413,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 		return ExecutionResult{}, err
 	}
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1}, nil
+	return ExecutionResult{}, nil
 }
 
 func psrWriteMask(fields uint8) uint32 {
