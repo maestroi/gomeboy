@@ -33,12 +33,20 @@ func (p *prefetchState) consume(addr, width uint32, partialWordTailCycles uint32
 	if p.count < halfwords {
 		// ARM instruction fetches are 32-bit on a 16-bit Game Pak bus. If one
 		// halfword is already queued, hardware uses it and only fetches the
-		// missing sequential tail from the cartridge.
+		// missing sequential tail from the cartridge. Preserve any cycles
+		// already spent on that in-flight tail rather than restarting it.
+		tailCycles := partialWordTailCycles
+		if p.credit < tailCycles {
+			tailCycles -= p.credit
+		} else {
+			tailCycles = 0
+		}
+		p.credit = 0
 		p.startAddress += 2
 		p.count--
 		p.lastConsumeHit = true
 		p.lastConsumePartial = true
-		return 1 + partialWordTailCycles, true
+		return 1 + tailCycles, true
 	}
 
 	p.startAddress += uint32(halfwords) * 2
@@ -60,14 +68,17 @@ func (p *prefetchState) finishPending(addr, width uint32, wait func(uint32) (uin
 	_, seqWait := wait(aligned)
 	halfCost := uint32(1 + seqWait)
 	remaining := halfCost
-	if p.credit < halfCost {
-		remaining -= p.credit
-	} else {
-		remaining = 0
+	if width == 4 {
+		// ARM can take over the in-flight first halfword and preserve its
+		// partial progress. Thumb only benefits once the halfword has fully
+		// entered the prefetch queue.
+		if p.credit < halfCost {
+			remaining -= p.credit
+		} else {
+			remaining = 0
+		}
 	}
 
-	// The CPU takes ownership of the in-flight sequential cartridge access.
-	// Any accumulated partial progress is consumed rather than discarded.
 	cycles := remaining
 	if width == 4 {
 		cycles += halfCost
