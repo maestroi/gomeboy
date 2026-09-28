@@ -65,11 +65,17 @@ type Machine struct {
 	irqScheduled bool
 	haltWakeSeq  uint64
 
-	halted         bool
-	stopped        bool
-	stopPending    bool
+	halted          bool
+	stopped         bool
+	stopPending     bool
 	stopWakePending bool
-	stopRequested  bool
+	stopRequested   bool
+
+	// Realtime frame execution may defer peripheral updates across CPU-only
+	// intervals that cannot reach a hardware event. Master time advances
+	// immediately; PPU/audio catch up before any observable data access/event.
+	deferHardware bool
+	hardwareDebt  uint32
 }
 
 // New creates a wired GBA timing domain around owned BIOS/ROM bus storage and
@@ -224,6 +230,64 @@ func (m *Machine) Step() (StepResult, error) {
 	}, err
 }
 
+// RunFrame advances until the PPU completes one frame, or until STOP leaves the
+// machine waiting for an asynchronous wake source. Unlike Step, it deliberately
+// avoids collecting per-instruction timing/debug fields that realtime frontends
+// do not consume.
+func (m *Machine) RunFrame() error {
+	startFrame := m.PPU.FrameCount()
+	m.deferHardware = true
+	defer func() {
+		m.flushHardwareDebt()
+		m.deferHardware = false
+	}()
+
+	for m.PPU.FrameCount() == startFrame {
+		if m.stopped && !m.stopWakePending {
+			return nil
+		}
+		if err := m.stepFast(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// stepFast executes the same architectural boundary as Step without materializing
+// the detailed StepResult. Keep changes here paired with Step so debugger and
+// realtime execution retain identical event ordering.
+func (m *Machine) stepFast() error {
+	wasStopped := m.stopped
+	wasHalted := m.halted
+
+	if wasStopped {
+		if m.stopWakePending {
+			m.stopWakePending = false
+			m.stopped = false
+			m.haltWakeSeq++
+			if m.IRQ.EnabledPending() {
+				m.scheduleIRQEvent()
+			}
+		}
+		return nil
+	}
+
+	m.serviceDueEvents()
+	if wasHalted {
+		if m.halted {
+			m.advanceHaltedEvent()
+		}
+		return nil
+	}
+
+	m.memory.cpuCycles = 0
+	result, err := m.CPU.Step(&m.memory)
+	if missing := result.TotalCycles - min(result.TotalCycles, m.memory.cpuCycles); missing != 0 {
+		m.advanceCPU(missing)
+	}
+	return err
+}
+
 // Advance advances the system while the CPU itself performs no bus work. DMA
 // requests that become due still seize the bus and extend elapsed master time.
 func (m *Machine) Advance(cycles uint32) {
@@ -334,6 +398,7 @@ func (m *Machine) serviceDueEvents() {
 }
 
 func (m *Machine) advanceHaltedEvent() {
+	m.flushHardwareDebt()
 	// PPU always supplies a finite deadline. Timers and a deferred DMA start
 	// may provide an earlier one.
 	step := uint64(m.PPU.CyclesUntilEvent())
@@ -440,9 +505,41 @@ func (m *Machine) activateDueDMA() {
 // does not consume remaining CPU work: a transfer pauses that work, advances
 // the rest of the machine, then the CPU phase resumes.
 func (m *Machine) advanceCPU(cycles uint32) {
-	if m.stopped {
+	if m.stopped || cycles == 0 {
 		return
 	}
+
+	// Realtime frame execution can account short CPU-only intervals with a
+	// couple of integer operations. Staying strictly before the next PPU edge
+	// guarantees that no hook, DMA request, or IRQ can become due here.
+	if m.deferHardware &&
+		!m.halted &&
+		!m.irqScheduled &&
+		!m.Timers.Active() &&
+		m.dmaScheduled == 0 &&
+		!m.DMA.Active() &&
+		m.memory.requestAfterAccess == 0 &&
+		!m.stopPending {
+		untilPPU := uint64(m.PPU.CyclesUntilEvent())
+		deferred := uint64(m.hardwareDebt)
+		if deferred+uint64(cycles) < untilPPU {
+			m.cycles += uint64(cycles)
+			m.hardwareDebt += cycles
+			return
+		}
+	}
+
+	m.flushHardwareDebt()
+
+	// Ordinary CPU fetch/data/idle phases have no deferred DMA or IRQ work.
+	// Let the hardware timeline consume the whole CPU-owned phase directly,
+	// then service anything a PPU/timer edge scheduled during that phase.
+	if !m.irqScheduled && m.dmaScheduled == 0 && !m.DMA.Active() {
+		m.advanceHardware(cycles)
+		m.serviceDueEvents()
+		return
+	}
+
 	remaining := uint64(cycles)
 	for remaining > 0 {
 		m.serviceDueEvents()
@@ -555,6 +652,19 @@ func (m *Machine) advanceHardware(cycles uint32) {
 	}
 }
 
+func (m *Machine) flushHardwareDebt() {
+	if m.hardwareDebt == 0 {
+		return
+	}
+	debt := m.hardwareDebt
+	m.hardwareDebt = 0
+	// m.cycles already includes the deferred interval. The debt is guaranteed
+	// not to cross a PPU event, so catching peripherals up cannot emit hooks at
+	// an incorrect master timestamp.
+	m.Audio.Advance(debt)
+	m.PPU.Advance(debt)
+}
+
 // timedMemory is the CPU-facing bus adapter. It advances master time at each
 // actual ARM7 bus/idle phase instead of waiting until the instruction returns.
 type timedMemory struct {
@@ -566,24 +676,34 @@ type timedMemory struct {
 }
 
 func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32) {
+	if !access.Instruction {
+		t.m.flushHardwareDebt()
+	}
 	value, cycles := t.m.Bus.Read8(addr, access)
 	t.consume(cycles)
 	return value, cycles
 }
 
 func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint32) {
+	if !access.Instruction {
+		t.m.flushHardwareDebt()
+	}
 	value, cycles := t.m.Bus.Read16(addr, access)
 	t.consume(cycles)
 	return value, cycles
 }
 
 func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint32) {
+	if !access.Instruction {
+		t.m.flushHardwareDebt()
+	}
 	value, cycles := t.m.Bus.Read32(addr, access)
 	t.consume(cycles)
 	return value, cycles
 }
 
 func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) uint32 {
+	t.m.flushHardwareDebt()
 	t.inBusCall = true
 	if t.inInstruction {
 		t.m.Timers.BeginWriteAccess()
@@ -596,6 +716,7 @@ func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) u
 }
 
 func (t *timedMemory) Write16(addr uint32, value uint16, access gbamemory.Access) uint32 {
+	t.m.flushHardwareDebt()
 	t.inBusCall = true
 	if t.inInstruction {
 		t.m.Timers.BeginWriteAccess()
@@ -608,6 +729,7 @@ func (t *timedMemory) Write16(addr uint32, value uint16, access gbamemory.Access
 }
 
 func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access) uint32 {
+	t.m.flushHardwareDebt()
 	t.inBusCall = true
 	if t.inInstruction {
 		t.m.Timers.BeginWriteAccess()
@@ -620,7 +742,9 @@ func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access
 }
 
 func (t *timedMemory) Idle(cycles uint32) {
-	t.m.Bus.Idle(cycles)
+	if t.m.Bus.PrefetchEnabled() {
+		t.m.Bus.Idle(cycles)
+	}
 	t.consume(cycles)
 }
 

@@ -187,7 +187,13 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 	aligned := addr &^ 1
 	var value uint16
 	var mapped bool
-	if isIO(aligned) {
+	if isROM(aligned) {
+		offset := aligned & (ROMWindowSize - 1)
+		mapped = uint64(offset)+2 <= uint64(len(b.rom))
+		if mapped {
+			value = binary.LittleEndian.Uint16(b.rom[offset : offset+2])
+		}
+	} else if isIO(aligned) {
 		value, mapped = b.io.Read16(aligned - IOStart)
 	} else {
 		lo, ok0 := b.readByte(aligned)
@@ -226,7 +232,13 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	aligned := addr &^ 3
 	var value uint32
 	var mapped bool
-	if isIO(aligned) {
+	if isROM(aligned) {
+		offset := aligned & (ROMWindowSize - 1)
+		mapped = uint64(offset)+4 <= uint64(len(b.rom))
+		if mapped {
+			value = binary.LittleEndian.Uint32(b.rom[offset : offset+4])
+		}
+	} else if isIO(aligned) {
 		value, mapped = b.io.Read32(aligned - IOStart)
 	} else {
 		var raw [4]byte

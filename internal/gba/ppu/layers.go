@@ -25,6 +25,17 @@ func (p *PPU) renderLine(y int) {
 
 	mode := p.dispcnt & 0x7
 	p.prepareOBJLine(y, mode)
+
+	// The common gameplay case has no active windows and no color effect that
+	// can change the result. In that case only the top visible layer matters;
+	// avoid building and insertion-sorting a six-entry layer stack for every
+	// pixel.
+	if p.topOnlyComposition() {
+		p.renderLineTopOnly(mode, y)
+		p.objLineValid = false
+		return
+	}
+
 	for x := 0; x < ScreenWidth; x++ {
 		windowMask := p.windowMaskAt(mode, x, y)
 		stack, count := p.visibleLayerStack(mode, x, y, windowMask)
@@ -39,6 +50,116 @@ func (p *PPU) renderLine(y int) {
 		p.setPixel(x, y, p.applyColorEffect(top, second, hasSecond, windowMask))
 	}
 	p.objLineValid = false
+}
+
+func (p *PPU) topOnlyComposition() bool {
+	if p.dispcnt&(dispWIN0Enable|dispWIN1Enable|dispOBJWINEnable) != 0 {
+		return false
+	}
+
+	// Semi-transparent OBJ pixels can force alpha blending whenever a second
+	// target is enabled, even when BLDCNT's ordinary effect mode is none.
+	if p.bldcnt&0x3f00 != 0 {
+		return false
+	}
+
+	switch (p.bldcnt >> 6) & 0x3 {
+	case effectNone, effectAlpha:
+		return true
+	case effectBrighten, effectDarken:
+		return p.brightnessY() == 0
+	default:
+		return false
+	}
+}
+
+func (p *PPU) renderLineTopOnly(mode uint16, y int) {
+	backdrop := layerPixel{
+		color:    p.paletteColor(0),
+		layer:    layerBackdrop,
+		priority: 4,
+	}
+
+	var kinds [4]bgKind
+	var textCfg [4]textBGConfig
+	for bg := 0; bg < 4; bg++ {
+		if p.dispcnt&(1<<(8+bg)) == 0 {
+			continue
+		}
+		kinds[bg] = bgKindForMode(mode, bg)
+		if kinds[bg] == bgText {
+			textCfg[bg] = decodeTextBG(p.bgcnt[bg])
+		}
+	}
+
+	for x := 0; x < ScreenWidth; x++ {
+		top := backdrop
+
+		switch mode {
+		case 0, 1, 2:
+			for bg := 0; bg < 4; bg++ {
+				kind := kinds[bg]
+				if kind == bgUnavailable {
+					continue
+				}
+
+				sampleX, sampleY := p.bgMosaicCoordinates(bg, x, y)
+				var color [3]byte
+				var opaque bool
+				switch kind {
+				case bgText:
+					color, opaque = p.textBGPixel(bg, textCfg[bg], sampleX, sampleY)
+				case bgAffine:
+					color, opaque = p.affineBGPixelAt(bg, sampleX, y-sampleY)
+				}
+				if !opaque {
+					continue
+				}
+
+				candidate := layerPixel{
+					color:    color,
+					layer:    uint8(bg),
+					priority: uint8(p.bgcnt[bg] & 0x3),
+					index:    bg,
+				}
+				if layerAbove(candidate, top) {
+					top = candidate
+				}
+			}
+
+		case 3, 4, 5:
+			if p.dispcnt&dispBG2Enable != 0 {
+				sampleX, sampleY := p.bgMosaicCoordinates(2, x, y)
+				if color, opaque := p.bitmapBGPixelAt(mode, sampleX, y-sampleY); opaque {
+					candidate := layerPixel{
+						color:    color,
+						layer:    layerBG2,
+						priority: uint8(p.bgcnt[2] & 0x3),
+						index:    2,
+					}
+					if layerAbove(candidate, top) {
+						top = candidate
+					}
+				}
+			}
+		}
+
+		if p.dispcnt&dispOBJEnable != 0 {
+			if obj := p.objLine[x]; obj.opaque {
+				candidate := layerPixel{
+					color:    obj.color,
+					layer:    layerOBJ,
+					priority: obj.priority,
+					index:    obj.oamIndex,
+				}
+				if layerAbove(candidate, top) {
+					top = candidate
+				}
+			}
+		}
+
+		p.setPixel(x, y, top.color)
+	}
 }
 
 func (p *PPU) visibleLayerStack(mode uint16, x, y int, windowMask uint8) ([6]layerPixel, int) {
