@@ -204,6 +204,7 @@ func (m *Machine) Step() (StepResult, error) {
 	}
 
 	m.memory.cpuCycles = 0
+	m.memory.captureTimerReadSnapshot()
 	m.memory.inInstruction = true
 	result, err := m.CPU.Step(&m.memory)
 	m.memory.inInstruction = false
@@ -563,6 +564,7 @@ type timedMemory struct {
 	inBusCall          bool
 	inInstruction      bool
 	requestAfterAccess uint8
+	timerReadSnapshot  [4]uint16
 }
 
 func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32) {
@@ -573,6 +575,11 @@ func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32)
 
 func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint32) {
 	value, cycles := t.m.Bus.Read16(addr, access)
+	if !access.Instruction {
+		if timer, ok := timerCounterIndex(addr); ok {
+			value = t.timerReadSnapshot[timer]
+		}
+	}
 	if access.Instruction {
 		// Thumb open bus is driven by the instruction pipeline rather than the
 		// halfword currently being executed. prefetch0 is PC+2 and prefetch1
@@ -604,6 +611,11 @@ func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint
 
 func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint32) {
 	value, cycles := t.m.Bus.Read32(addr, access)
+	if !access.Instruction {
+		if timer, ok := timerCounterIndex(addr); ok {
+			value = value&0xffff0000 | uint32(t.timerReadSnapshot[timer])
+		}
+	}
 	if access.Instruction {
 		// ARM7 open bus exposes the second prefetched ARM instruction while
 		// the current opcode executes. At an ARM fetch at PC, that is PC+8.
@@ -613,6 +625,19 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 	}
 	t.consume(cycles)
 	return value, cycles
+}
+
+func (t *timedMemory) captureTimerReadSnapshot() {
+	for index := 0; index < len(t.timerReadSnapshot); index++ {
+		t.timerReadSnapshot[index] = t.m.Timers.Counter(index)
+	}
+}
+
+func timerCounterIndex(addr uint32) (int, bool) {
+	if addr < bus.IOStart+0x100 || addr > bus.IOStart+0x10c || (addr-(bus.IOStart+0x100))%4 != 0 {
+		return 0, false
+	}
+	return int((addr - (bus.IOStart + 0x100)) / 4), true
 }
 
 func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) uint32 {
