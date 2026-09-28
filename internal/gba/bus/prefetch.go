@@ -34,3 +34,26 @@ func (p *prefetchState) consume(addr, width uint32) (uint32, bool) {
 	// cycle itself.
 	return uint32(halfwords), true
 }
+
+
+func (p *prefetchState) advance(cycles uint32, wait func(uint32) (uint32, uint32)) {
+	if p.nextFill == 0 || cycles == 0 {
+		return
+	}
+	p.credit += cycles
+	for p.count < 8 {
+		addr := p.nextFill
+		nonSeqWait, seqWait := wait(addr)
+		cost := uint32(1 + seqWait)
+		// Crossing a 128 KiB Game Pak boundary forces a non-sequential fill.
+		if addr&0x1ffff == 0 {
+			cost = 1 + nonSeqWait
+		}
+		if p.credit < cost {
+			break
+		}
+		p.credit -= cost
+		p.count++
+		p.nextFill += 2
+	}
+}
