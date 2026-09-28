@@ -65,8 +65,8 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 			return StepResult{}, err
 		}
 		return StepResult{
-			InternalCycles: 3,
-			TotalCycles:    3,
+			InternalCycles: 2,
+			TotalCycles:    2,
 			PipelineFlush:  true,
 			ExceptionTaken: true,
 			Exception:      kind,
