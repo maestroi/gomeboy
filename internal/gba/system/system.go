@@ -612,7 +612,22 @@ func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access
 	}
 	cycles := t.m.Bus.Write32(addr, value, access)
 	t.inBusCall = false
-	t.consume(cycles)
+
+	// TMxCNT_L/TMxCNT_H share one aligned 32-bit I/O word on a 16-bit bus.
+	// The low and high halfwords occupy separate bus beats. Commit the queued
+	// timer register writes at the boundary between those beats so enabling a
+	// timer is visible during the second cycle of the word store rather than
+	// only after the entire ARM instruction has completed.
+	aligned := addr &^ 3
+	if t.inInstruction && cycles == 2 &&
+		aligned >= bus.IOStart+0x100 && aligned <= bus.IOStart+0x10c &&
+		(aligned-(bus.IOStart+0x100))%4 == 0 {
+		t.consume(1)
+		t.m.Timers.EndWriteAccess()
+		t.consume(1)
+	} else {
+		t.consume(cycles)
+	}
 	t.flushDeferredDMARequest()
 	return cycles
 }
