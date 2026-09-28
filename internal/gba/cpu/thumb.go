@@ -324,10 +324,10 @@ func (c *CPU) executeThumbALU(instruction uint16) (ExecutionResult, error) {
 
 	cycles := uint8(1)
 	if op == 0xd {
-		// ARM7TDMI MUL timing depends on the high bytes of the multiplier.
-		// Expose a conservative internal-cycle estimate now; bus timing is
-		// added by the future GBA memory layer.
-		cycles = multiplyInternalCycles(right)
+		// Thumb MUL Rdn,Rm is implemented by the ARM7TDMI multiplier with the
+		// old Rdn value on the early-termination input. Timing therefore depends
+		// on the destination operand before it is overwritten, not on Rm.
+		cycles = multiplyInternalCycles(left)
 	}
 	return ExecutionResult{InternalCycles: cycles}, nil
 }
