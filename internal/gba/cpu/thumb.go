@@ -225,7 +225,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		}
 		offset <<= 1
 		c.SetPC(uint32(int32(c.VisiblePC()) + offset))
-		return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
+		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 	}
 
 	// Format 19: long branch with link, first half.
