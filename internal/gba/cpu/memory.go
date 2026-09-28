@@ -103,7 +103,7 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 	// A data bus phase interrupts the sequential opcode-fetch stream. The next
 	// instruction fetch is therefore non-sequential even without a control-flow
 	// flush; Game Pak prefetch may still satisfy that fetch independently.
-	c.fetchSequential = !exec.PipelineFlush && exec.MemoryCycles == 0
+	c.fetchSequential = !exec.PipelineFlush && exec.MemoryCycles == 0 && !exec.BreakSequentialFetch
 	total := fetch + exec.MemoryCycles + uint32(exec.InternalCycles)
 	return StepResult{
 		FetchCycles:    fetch,
