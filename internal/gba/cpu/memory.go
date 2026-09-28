@@ -26,6 +26,7 @@ func loadUnsignedHalfword(mem Memory, addr uint32, access gbamemory.Access) (uin
 	// the zero-extended 16-bit value right by 8 when the effective address is
 	// odd. The 16-bit Memory boundary cannot represent that 32-bit rotated
 	// result directly, so model the CPU-side rotation here.
+	access.Misalignment = uint8(addr & 1)
 	raw, cycles := mem.Read16(addr&^1, access)
 	value := uint32(raw)
 	if addr&1 != 0 {
