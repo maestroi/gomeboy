@@ -90,7 +90,11 @@ func (b *Bus) accessCycles(addr uint32, width uint32, access Access) uint32 {
 		return 1
 	case 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d:
 		if access.Instruction && b.PrefetchEnabled() {
-			if cycles, ok := b.prefetch.consume(addr, width); ok {
+			partialTail := uint32(0)
+			if width == 4 {
+				partialTail = b.gamePakROMCycles((addr&^3)+2, 2, true)
+			}
+			if cycles, ok := b.prefetch.consume(addr, width, partialTail); ok {
 				return cycles
 			}
 		}
@@ -140,15 +144,16 @@ func (b *Bus) afterAccess(addr, width uint32, access Access, mapped bool, cycles
 	gamePakBus := region >= 0x08 && region <= 0x0f
 	if isROM(addr) {
 		if access.Instruction && mapped {
-			if b.prefetch.lastConsumeHit {
-				// The CPU is reading from the internal prefetch queue, so the
-				// external cartridge bus is free to keep filling concurrently.
+			if b.prefetch.lastConsumeHit && !b.prefetch.lastConsumePartial {
+				// The CPU is reading entirely from the internal prefetch queue,
+				// so the external cartridge bus is free to keep filling.
 				if !access.DMA {
 					b.prefetch.advance(cycles, b.romWait)
 				}
 			} else {
-				// A real cartridge fetch occupies the bus, then starts a new
-				// sequential fill stream immediately after the fetched data.
+				// A miss, or the cartridge tail of a partially buffered ARM
+				// word, occupies the external bus and restarts filling after
+				// the complete CPU fetch.
 				next := (addr &^ 1) + 2
 				if width == 4 {
 					next += 2
