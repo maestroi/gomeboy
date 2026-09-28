@@ -13,6 +13,47 @@ func testBus() *Bus {
 	return New(bios, rom)
 }
 
+
+func TestProtectedBIOSReadsUsePrefetchLatchOutsideBIOS(t *testing.T) {
+	bios := make([]byte, BIOSSize)
+	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
+	b := New(bios, make([]byte, 4))
+	b.SetBIOSPrefetch(0xe3a02004)
+
+	if got, _ := b.Read8(BIOSStart, Access{}); got != 0x04 {
+		t.Fatalf("protected BIOS byte = %02x, want 04", got)
+	}
+	if got, _ := b.Read16(BIOSStart, Access{}); got != 0x2004 {
+		t.Fatalf("protected BIOS halfword = %04x, want 2004", got)
+	}
+	if got, _ := b.Read32(BIOSStart, Access{}); got != 0xe3a02004 {
+		t.Fatalf("protected BIOS word = %08x, want e3a02004", got)
+	}
+}
+
+func TestBIOSReadsRemainDirectWhileExecutingBIOS(t *testing.T) {
+	bios := make([]byte, BIOSSize)
+	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
+	bios[8], bios[9], bios[10], bios[11] = 0x78, 0x56, 0x34, 0x12
+	rom := []byte{0, 0, 0, 0}
+	b := New(bios, rom)
+
+	if got, _ := b.Read32(BIOSStart, Access{Instruction: true}); got != 0x44332211 {
+		t.Fatalf("BIOS instruction fetch = %08x, want 44332211", got)
+	}
+	if got, _ := b.Read32(BIOSStart, Access{}); got != 0x44332211 {
+		t.Fatalf("BIOS data read while in BIOS = %08x, want 44332211", got)
+	}
+	if got := b.BIOSPrefetch(); got != 0x12345678 {
+		t.Fatalf("BIOS prefetch latch = %08x, want 12345678", got)
+	}
+
+	b.Read32(ROM0Start, Access{Instruction: true})
+	if got, _ := b.Read32(BIOSStart, Access{}); got != 0x12345678 {
+		t.Fatalf("protected BIOS after leaving BIOS = %08x, want 12345678", got)
+	}
+}
+
 func TestMemoryMapAndMirrors(t *testing.T) {
 	b := testBus()
 
