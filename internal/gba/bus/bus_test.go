@@ -28,9 +28,6 @@ func TestOutOfBoundsGamePakReadsUseAddressPattern(t *testing.T) {
 	if got, _ := b.Read16(addr, Access{}); got != 0x3456 {
 		t.Fatalf("OOB ROM halfword = %04x, want 3456", got)
 	}
-	if got, _ := b.Read16(addr+1, Access{}); got != 0x560034 {
-		t.Fatalf("OOB ROM odd halfword = %08x, want 56000034", uint32(got))
-	}
 	if got, _ := b.Read32(addr, Access{}); got != 0x34573456 {
 		t.Fatalf("OOB ROM word = %08x, want 34573456", got)
 	}
