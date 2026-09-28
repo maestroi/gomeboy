@@ -75,9 +75,16 @@ go run ./cmd/gba-compat \
 ```
 
 Compatibility manifests must pin `rom_sha256` and declare a `steps` limit so
-HALT/STOP or other non-advancing states cannot hang automation. `direct` boot
-may also declare an initial `cpsr` and r0-r14 values for software that expects
-post-BIOS CPU state.
+HALT/STOP or other non-advancing states cannot hang automation. Each case may
+also record a fixture `source` and `source_revision`, which are emitted into
+JSON/Markdown beside the ROM hash. `direct` boot may declare an initial
+`cpsr` and r0-r14 values for software that expects post-BIOS CPU state.
+
+Deterministic keypad timelines can be declared with `inputs`, for example an
+A-button press at rendered frame 1 and release at frame 2. A
+`bounded_stability` case may also declare a checkpoint; in that form the run
+only passes when the checkpoint was reached before the declared stability
+budget expires.
 
 For local-only commercial ROM checks, keep the ROM, BIOS, and manifest outside
 the repository and use absolute paths in the manifest. The loader accepts those
@@ -85,8 +92,9 @@ paths directly, so commercial ROMs and Nintendo BIOS images never need to
 become repository dependencies.
 
 The JSON and generated Markdown matrix report the highest stage reached, target
-stage, ROM hash, cycles/frames/steps, and deterministic failure detail. These
-compatibility stages are not hardware-accuracy percentages.
+stage, fixture source/revision, ROM hash, cycles/frames/steps, and deterministic
+failure detail. These compatibility stages are not hardware-accuracy
+percentages.
 
 
 ## @rkanoid compatibility fixture
@@ -114,6 +122,32 @@ intentionally spends roughly 1,900 emulated frames in its splash/fade path
 before the menu. Realtime host performance is tracked separately from
 compatibility; a correct compatibility result does not imply the emulator is
 already sustaining the GBA's ~59.7 Hz realtime rate.
+
+
+## Project multi-hardware compatibility fixture
+
+The third compatibility case is a tiny project-owned MIT-licensed ARM ROM built
+from auditable source in
+`tests/gba/compatibility/multihw-fixture/main.go`. Build and verify it with:
+
+```sh
+bash tests/gba/compatibility/build-multihw.sh
+```
+
+The generated ROM is pinned at SHA-256
+`38569646cc84e7731fa461c5f23281cc1fe210df63deb3e3f17bcae8929e6198`.
+It deliberately waits for an A-button event from the compatibility input
+timeline, configures Direct Sound A, writes a FIFO sample, starts Timer0,
+performs an SRAM write/read round-trip through the normal `SRAM_V` cartridge
+detection path, and only then writes the `COMP` checkpoint to EWRAM. CI keeps
+the ROM running to four rendered frames after requiring that checkpoint, so the
+case covers input, audio/timer state, save hardware, CPU/bus execution, PPU
+progress, and bounded stability in one independent corpus entry.
+
+Together with the project ARM/PPU smoke and the pinned @rkanoid rebuild, the
+checked-in matrix now contains three redistributable ROMs with meaningfully
+different hardware paths. Local commercial-ROM manifests remain optional and
+external to the repository.
 
 
 # mGBA hardware conformance

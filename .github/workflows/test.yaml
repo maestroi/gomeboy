@@ -50,6 +50,8 @@ jobs:
         run: go test ./internal/gba/...
       - name: fetch pinned @rkanoid compatibility ROM
         run: bash tests/gba/compatibility/fetch-rkanoid.sh
+      - name: build project multi-hardware compatibility ROM
+        run: bash tests/gba/compatibility/build-multihw.sh
       - name: run GBA conformance smoke
         run: go run ./cmd/gba-conformance -manifest tests/gba/conformance/smoke.json -output gba-conformance.json -commit "$GITHUB_SHA"
       - name: fetch pinned mGBA hardware suite
