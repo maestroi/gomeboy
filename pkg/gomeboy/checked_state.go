@@ -97,7 +97,7 @@ func (e *Emulator) LoadStateChecked(data []byte) error {
 	if model := e.Model(); env.Model != model {
 		return fmt.Errorf("gomeboy: LoadStateChecked: hardware model mismatch: state %s, emulator %s", env.Model, model)
 	}
-	return e.gb.LoadState(env.Payload)
+	return e.LoadState(env.Payload)
 }
 
 func decodeCheckedState(data []byte) (checkedStateEnvelope, error) {

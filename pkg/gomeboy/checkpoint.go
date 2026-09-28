@@ -50,5 +50,9 @@ func (e *Emulator) RestoreCheckpoint(src *Checkpoint) error {
 	if src.coreID != e.core.CoreID() {
 		return fmt.Errorf("gomeboy: checkpoint core %q does not match emulator core %q", src.coreID, e.core.CoreID())
 	}
-	return e.core.RestoreCheckpoint(src.state)
+	if err := e.core.RestoreCheckpoint(src.state); err != nil {
+		return err
+	}
+	e.markExecutionDiscontinuity()
+	return nil
 }
