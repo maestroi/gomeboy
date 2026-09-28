@@ -80,7 +80,15 @@ func (c *CPU) executeARMSingleTransfer(instruction uint32, mem Memory) (Executio
 	}
 
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
+	internalCycles := uint8(0)
+	if load || isTimerRegisterAddress(address) {
+		internalCycles = 1
+	}
+	return ExecutionResult{InternalCycles: internalCycles, MemoryCycles: cycles}, nil
+}
+
+func isTimerRegisterAddress(addr uint32) bool {
+	return addr >= 0x04000100 && addr < 0x04000110
 }
 
 func (c *CPU) armTransferOffset(instruction uint32) (uint32, error) {
@@ -178,5 +186,9 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 	}
 
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
+	internalCycles := uint8(0)
+	if load || isTimerRegisterAddress(address) {
+		internalCycles = 1
+	}
+	return ExecutionResult{InternalCycles: internalCycles, MemoryCycles: cycles}, nil
 }
