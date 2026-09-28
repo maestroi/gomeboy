@@ -188,3 +188,34 @@ func TestDMADoesNotAdvanceCPUOpcodePrefetch(t *testing.T) {
 		t.Fatalf("fetch after DMA-only internal accesses = %d cycles, want ordinary sequential 3", cycles)
 	}
 }
+
+
+func TestPartialARMWordPrefetchUsesBufferedFirstHalfword(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+
+	b.Read32(ROM0Start, Access{Instruction: true})
+	// Queue exactly one halfword of the next ARM instruction.
+	b.Idle(3)
+
+	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 4 {
+		t.Fatalf("partially prefetched ARM word = %d cycles, want 4 (1 buffered + 3 sequential)", cycles)
+	}
+
+	// The direct cartridge tail restarts filling after the completed word.
+	b.Idle(6)
+	if _, cycles := b.Read32(ROM0Start+8, Access{Sequential: true, Instruction: true}); cycles != 2 {
+		t.Fatalf("ARM word after restarted fill = %d cycles, want fully prefetched 2", cycles)
+	}
+}
+
+func TestPartialARMWordPrefetchHonorsFastSecondAccess(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT((1 << 14) | (1 << 4))
+
+	b.Read32(ROM0Start, Access{Instruction: true})
+	b.Idle(2)
+	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 3 {
+		t.Fatalf("fast partially prefetched ARM word = %d cycles, want 3", cycles)
+	}
+}
