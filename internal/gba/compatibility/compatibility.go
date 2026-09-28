@@ -7,10 +7,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	"github.com/maestroi/gomeboy/internal/gba/conformance"
 	"github.com/maestroi/gomeboy/internal/gba/cpu"
+	"github.com/maestroi/gomeboy/internal/gba/keypad"
 	"github.com/maestroi/gomeboy/internal/gba/system"
 )
 
@@ -42,6 +44,14 @@ type RegisterValue struct {
 	Value    uint32
 }
 
+// InputEvent is one deterministic keypad transition scheduled at a rendered
+// frame boundary relative to the start of the compatibility run.
+type InputEvent struct {
+	Frame   uint64
+	Button  string
+	Pressed bool
+}
+
 // Checkpoint is one deterministic state predicate used for a compatibility
 // milestone. A checkpoint is intentionally emulator-visible rather than
 // game-specific core logic.
@@ -59,6 +69,8 @@ type Case struct {
 	Name             string
 	ROM              []byte
 	ROMSHA256        string
+	Source           string
+	SourceRevision   string
 	BIOS             []byte
 	Boot             conformance.BootMode
 	EntryPoint       uint32
@@ -67,6 +79,7 @@ type Case struct {
 	Limits           conformance.Limits
 	TargetStage      Stage
 	Checkpoint       *Checkpoint
+	Inputs           []InputEvent
 }
 
 // Result is the stable machine-readable compatibility result for one ROM.
@@ -83,6 +96,8 @@ type Result struct {
 	GomeBoyCommit string `json:"gomeboy_commit"`
 	SuiteRevision string `json:"suite_revision"`
 	ROMSHA256     string `json:"rom_sha256"`
+	Source        string `json:"source,omitempty"`
+	SourceRevision string `json:"source_revision,omitempty"`
 }
 
 // Summary contains compatibility run outcome counts.
@@ -126,6 +141,8 @@ func (r Runner) Run(tc Case) Result {
 		GomeBoyCommit: r.GomeBoyCommit,
 		SuiteRevision: r.SuiteRevision,
 		ROMSHA256:     sha256Hex(tc.ROM),
+		Source:        tc.Source,
+		SourceRevision: tc.SourceRevision,
 	}
 
 	if err := validateCase(tc); err != nil {
@@ -151,7 +168,14 @@ func (r Runner) Run(tc Case) Result {
 
 	startCycle := m.Cycle()
 	startFrame := m.PPU.FrameCount()
+	nextInput := 0
 	for {
+		for nextInput < len(tc.Inputs) && tc.Inputs[nextInput].Frame <= result.Frames {
+			button, _ := parseButton(tc.Inputs[nextInput].Button)
+			m.Keypad.Set(button, tc.Inputs[nextInput].Pressed)
+			nextInput++
+		}
+
 		_, err := m.Step()
 		result.Steps++
 		result.Cycles = m.Cycle() - startCycle
@@ -185,6 +209,11 @@ func (r Runner) Run(tc Case) Result {
 
 		if limitReached(tc.Limits, result) {
 			if tc.TargetStage == StageStable {
+				if tc.Checkpoint != nil && !reached(result.HighestStage, StageCheckpoint) {
+					result.Status = StatusTimeout
+					result.Detail = fmt.Sprintf("execution budget exhausted at %s before required checkpoint for bounded stability", result.HighestStage)
+					return result
+				}
 				result.HighestStage = StageStable
 				result.Status = StatusPass
 				return result
@@ -293,6 +322,16 @@ func validateCase(tc Case) error {
 	if tc.TargetStage == StageCheckpoint && tc.Checkpoint == nil {
 		return fmt.Errorf("compatibility: %s targets checkpoint but declares no checkpoint", tc.Name)
 	}
+	var previousFrame uint64
+	for index, event := range tc.Inputs {
+		if _, ok := parseButton(event.Button); !ok {
+			return fmt.Errorf("compatibility: %s input %d has unknown button %q", tc.Name, index, event.Button)
+		}
+		if index > 0 && event.Frame < previousFrame {
+			return fmt.Errorf("compatibility: %s inputs must be ordered by frame", tc.Name)
+		}
+		previousFrame = event.Frame
+	}
 	return nil
 }
 
@@ -374,4 +413,31 @@ func (c Checkpoint) matches(m *system.Machine) (bool, error) {
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+func parseButton(name string) (keypad.Button, bool) {
+	switch strings.ToLower(name) {
+	case "a":
+		return keypad.ButtonA, true
+	case "b":
+		return keypad.ButtonB, true
+	case "select":
+		return keypad.ButtonSelect, true
+	case "start":
+		return keypad.ButtonStart, true
+	case "right":
+		return keypad.ButtonRight, true
+	case "left":
+		return keypad.ButtonLeft, true
+	case "up":
+		return keypad.ButtonUp, true
+	case "down":
+		return keypad.ButtonDown, true
+	case "r":
+		return keypad.ButtonR, true
+	case "l":
+		return keypad.ButtonL, true
+	default:
+		return 0, false
+	}
 }
