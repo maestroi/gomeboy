@@ -168,7 +168,11 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 	}
 	value, mapped := b.readByte(addr)
 	if !mapped {
-		value = byte(b.openBus >> ((addr & 3) * 8))
+		if b.isOutOfBoundsROM(addr) {
+			value = outOfBoundsROMByte(addr)
+		} else {
+			value = byte(b.openBus >> ((addr & 3) * 8))
+		}
 	}
 	b.openBus = uint32(value) * 0x01010101
 	b.afterAccess(addr, 1, access, mapped)
@@ -223,7 +227,11 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		value = uint16(lo) | uint16(hi)<<8
 	}
 	if !mapped {
-		value = uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+		if b.isOutOfBoundsROM(aligned) {
+			value = uint16((aligned >> 1) & 0xffff)
+		} else {
+			value = uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+		}
 	}
 	if addr&1 != 0 {
 		value = value>>8 | value<<8
@@ -273,7 +281,13 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 		value = binary.LittleEndian.Uint32(raw[:])
 	}
 	if !mapped {
-		value = b.openBus
+		if b.isOutOfBoundsROM(aligned) {
+			low := (aligned >> 1) & 0xffff
+			high := ((aligned + 2) >> 1) & 0xffff
+			value = low | high<<16
+		} else {
+			value = b.openBus
+		}
 	}
 	value = bits.RotateLeft32(value, -int((addr&3)*8))
 	b.openBus = value
@@ -364,6 +378,28 @@ func (b *Bus) Peek8(addr uint32) byte {
 	return value
 }
 
+
+
+func (b *Bus) isOutOfBoundsROM(addr uint32) bool {
+	if !isROM(addr) || b.isEEPROMAddress(addr) {
+		return false
+	}
+	if b.gamePak != nil {
+		if _, handled := b.gamePak.Read8(addr); handled {
+			return false
+		}
+	}
+	offset := addr & (ROMWindowSize - 1)
+	return offset >= uint32(len(b.rom))
+}
+
+func outOfBoundsROMByte(addr uint32) byte {
+	halfword := (addr >> 1) & 0xffff
+	if addr&1 != 0 {
+		return byte(halfword >> 8)
+	}
+	return byte(halfword)
+}
 
 func (b *Bus) protectedBIOSRead(addr, width uint32, access Access) (uint32, bool) {
 	if addr >= BIOSSize || access.Instruction || access.DMA || b.cpuInBIOS {
