@@ -13,8 +13,8 @@
       "enabled": true,
       "step_limit": 50000000,
       "baseline": {
-        "passed": 1304,
-        "failed": 248,
+        "passed": 1552,
+        "failed": 0,
         "total": 1552
       }
     },
@@ -78,8 +78,8 @@
       "enabled": true,
       "step_limit": 50000000,
       "baseline": {
-        "passed": 996,
-        "failed": 260,
+        "passed": 1220,
+        "failed": 36,
         "total": 1256
       }
     }
