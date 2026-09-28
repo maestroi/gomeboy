@@ -219,3 +219,37 @@ func TestPartialARMWordPrefetchHonorsFastSecondAccess(t *testing.T) {
 		t.Fatalf("fast partially prefetched ARM word = %d cycles, want 3", cycles)
 	}
 }
+
+
+func TestOpcodeFetchFinishesPartiallyFilledPrefetchHalfword(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+
+	// Start the sequential stream after an ordinary ARM fetch. Default WS0
+	// sequential timing is three cycles per halfword.
+	b.Read32(ROM0Start, Access{Instruction: true})
+
+	// Two internal cycles leave the first halfword of the next ARM opcode
+	// one cycle short of completion.
+	b.Read16(IWRAMStart, Access{})
+	b.Read16(IWRAMStart+2, Access{})
+
+	// A post-data fetch is architecturally non-sequential, but with prefetch
+	// enabled it takes over the already in-flight sequential cartridge access:
+	// one remaining cycle for the first halfword plus three for the second.
+	if _, cycles := b.Read32(ROM0Start+4, Access{Instruction: true}); cycles != 4 {
+		t.Fatalf("fetch completing in-flight prefetch = %d cycles, want 4", cycles)
+	}
+}
+
+func TestOpcodeFetchWithoutPrefetchProgressStillUsesNormalTiming(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+	b.Read32(ROM0Start, Access{Instruction: true})
+
+	// No internal/free-bus cycles elapsed, so there is no in-flight progress
+	// to hand off. Sequential fetch timing remains the normal six cycles.
+	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 6 {
+		t.Fatalf("fetch without prefetch progress = %d cycles, want 6", cycles)
+	}
+}
