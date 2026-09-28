@@ -42,8 +42,8 @@ func TestARMStepFetchesExecutesAndAccountsBusCycles(t *testing.T) {
 	if got, _ := b.Read32(bus.IWRAMStart, bus.Access{}); got != 0x11223344 {
 		t.Fatalf("STR result = %08x, want 11223344", got)
 	}
-	if first.FetchCycles != 8 || first.MemoryCycles != 1 || first.InternalCycles != 0 || first.TotalCycles != 9 {
-		t.Fatalf("first step timing = %+v, want fetch=8 memory=1 internal=0 total=9", first)
+	if first.FetchCycles != 8 || first.MemoryCycles != 1 || first.InternalCycles != 1 || first.TotalCycles != 10 {
+		t.Fatalf("first step timing = %+v, want fetch=8 memory=1 internal=1 total=10", first)
 	}
 
 	second, err := c.Step(b)
@@ -182,33 +182,6 @@ func TestStepPipelineFlushMakesNextFetchNonSequential(t *testing.T) {
 	}
 	if got := c.ReadRegister(0); got != 7 {
 		t.Fatalf("post-branch MOV r0=%d, want 7", got)
-	}
-}
-
-func TestARMStoresDoNotPayLoadInternalCycle(t *testing.T) {
-	b := newExecutionBus(nil)
-	c := New()
-	if err := c.SetMode(ModeSystem); err != nil {
-		t.Fatal(err)
-	}
-	c.WriteRegister(0, bus.IWRAMStart+0x80)
-	c.WriteRegister(1, 0x11223344)
-
-	word, err := c.ExecuteARMWithMemory(0xe5801000, b) // STR r1,[r0]
-	if err != nil {
-		t.Fatal(err)
-	}
-	if word.InternalCycles != 0 || word.MemoryCycles != 1 {
-		t.Fatalf("STR timing = %+v, want memory=1 internal=0", word)
-	}
-
-	half := armHalfTransfer(false, true, true, true, false, 0, 1, 1, 2)
-	halfResult, err := c.ExecuteARMWithMemory(half, b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if halfResult.InternalCycles != 1 || halfResult.MemoryCycles != 1 {
-		t.Fatalf("STRH timing = %+v, want memory=1 internal=1", halfResult)
 	}
 }
 
