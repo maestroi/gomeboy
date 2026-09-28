@@ -138,3 +138,53 @@ func TestGamePakDataAccessBreaksPrefetchStream(t *testing.T) {
 		t.Fatalf("fetch after data access = %d cycles, want ordinary sequential 3", cycles)
 	}
 }
+
+
+func TestPrefetchFillsDuringInternalBusAccesses(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+
+	if _, cycles := b.Read16(ROM0Start, Access{Instruction: true}); cycles != 5 {
+		t.Fatalf("initial ROM fetch = %d cycles, want 5", cycles)
+	}
+	// Default WS0 sequential fill needs three cycles. IWRAM accesses use the
+	// internal bus, so the Game Pak prefetcher progresses in parallel.
+	for i := 0; i < 3; i++ {
+		b.Read16(IWRAMStart+uint32(i*2), Access{})
+	}
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 1 {
+		t.Fatalf("fetch after internal-bus work = %d cycles, want prefetched 1", cycles)
+	}
+}
+
+func TestPrefetchContinuesWhileServingBufferedInstructions(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+	b.Read16(ROM0Start, Access{Instruction: true})
+
+	// Seed three buffered halfwords. Their one-cycle CPU consumption leaves
+	// the cartridge bus free, so those three cycles are enough to fetch the
+	// next sequential halfword by the time the queue empties.
+	b.Idle(9)
+	for offset := uint32(2); offset <= 6; offset += 2 {
+		if _, cycles := b.Read16(ROM0Start+offset, Access{Sequential: true, Instruction: true}); cycles != 1 {
+			t.Fatalf("prefetched fetch +%d = %d cycles, want 1", offset, cycles)
+		}
+	}
+	if _, cycles := b.Read16(ROM0Start+8, Access{Sequential: true, Instruction: true}); cycles != 1 {
+		t.Fatalf("refilled fetch = %d cycles, want 1", cycles)
+	}
+}
+
+func TestDMADoesNotAdvanceCPUOpcodePrefetch(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+	b.Read16(ROM0Start, Access{Instruction: true})
+
+	for i := 0; i < 3; i++ {
+		b.Read16(IWRAMStart+uint32(i*2), Access{DMA: true})
+	}
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 3 {
+		t.Fatalf("fetch after DMA-only internal accesses = %d cycles, want ordinary sequential 3", cycles)
+	}
+}
