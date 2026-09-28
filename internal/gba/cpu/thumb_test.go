@@ -123,6 +123,22 @@ func TestThumbLongBranchWithLink(t *testing.T) {
 	}
 }
 
+func TestThumbNOPOverlapsOpcodeFetch(t *testing.T) {
+	c := newThumbCPU(t)
+	c.SetPC(0x100)
+
+	result, err := c.ExecuteThumb(0x46c0) // MOV r8,r8
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.InternalCycles != 0 {
+		t.Fatalf("Thumb NOP internal cycles = %d, want 0", result.InternalCycles)
+	}
+	if c.PC() != 0x102 {
+		t.Fatalf("Thumb NOP PC = %08x, want 00000102", c.PC())
+	}
+}
+
 func TestThumbALUAndMultiplyTiming(t *testing.T) {
 	c := newThumbCPU(t)
 	c.WriteRegister(0, 3)
