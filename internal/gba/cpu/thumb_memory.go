@@ -56,7 +56,11 @@ func (c *CPU) executeThumbRegisterTransfer(instruction uint16, mem Memory) (Exec
 	}
 
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
+	internal := uint8(1)
+	if op <= 2 {
+		internal = 0
+	}
+	return ExecutionResult{InternalCycles: internal, MemoryCycles: cycles}, nil
 }
 
 func (c *CPU) executeThumbImmediateTransfer(instruction uint16, mem Memory) (ExecutionResult, error) {
@@ -89,7 +93,11 @@ func (c *CPU) executeThumbImmediateTransfer(instruction uint16, mem Memory) (Exe
 	}
 
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
+	internal := uint8(0)
+	if load {
+		internal = 1
+	}
+	return ExecutionResult{InternalCycles: internal, MemoryCycles: cycles}, nil
 }
 
 func (c *CPU) executeThumbHalfwordImmediate(instruction uint16, mem Memory) (ExecutionResult, error) {
@@ -109,7 +117,11 @@ func (c *CPU) executeThumbHalfwordImmediate(instruction uint16, mem Memory) (Exe
 		cycles = mem.Write16(address, uint16(c.ReadRegister(rd)), access)
 	}
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
+	internal := uint8(0)
+	if load {
+		internal = 1
+	}
+	return ExecutionResult{InternalCycles: internal, MemoryCycles: cycles}, nil
 }
 
 func (c *CPU) executeThumbSPRelativeTransfer(instruction uint16, mem Memory) (ExecutionResult, error) {
@@ -127,7 +139,11 @@ func (c *CPU) executeThumbSPRelativeTransfer(instruction uint16, mem Memory) (Ex
 		cycles = mem.Write32(address, c.ReadRegister(rd), access)
 	}
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
+	internal := uint8(0)
+	if load {
+		internal = 1
+	}
+	return ExecutionResult{InternalCycles: internal, MemoryCycles: cycles}, nil
 }
 
 func (c *CPU) executeThumbLoadAddress(instruction uint16) (ExecutionResult, error) {
