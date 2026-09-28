@@ -64,3 +64,64 @@ func TestFrameCountSurvivesSaveState(t *testing.T) {
 		t.Fatalf("FrameCount after LoadState = %d, want 20", got)
 	}
 }
+
+
+func TestExecutionEpochMarksLifecycleDiscontinuities(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+
+	epoch := e.ExecutionEpoch()
+	if epoch == 0 {
+		t.Fatal("fresh loaded emulator ExecutionEpoch = 0, want non-zero")
+	}
+
+	e.StepFrames(3)
+	if got := e.ExecutionEpoch(); got != epoch {
+		t.Fatalf("ExecutionEpoch changed during ordinary stepping: got %d want %d", got, epoch)
+	}
+
+	state, err := e.SaveState()
+	if err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	e.StepFrames(2)
+	if err := e.LoadState(state); err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	epoch++
+	if got := e.ExecutionEpoch(); got != epoch {
+		t.Fatalf("ExecutionEpoch after LoadState = %d, want %d", got, epoch)
+	}
+
+	var cp Checkpoint
+	e.CheckpointInto(&cp)
+	e.StepFrame()
+	if err := e.RestoreCheckpoint(&cp); err != nil {
+		t.Fatalf("RestoreCheckpoint: %v", err)
+	}
+	epoch++
+	if got := e.ExecutionEpoch(); got != epoch {
+		t.Fatalf("ExecutionEpoch after RestoreCheckpoint = %d, want %d", got, epoch)
+	}
+
+	if err := e.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	epoch++
+	if got := e.ExecutionEpoch(); got != epoch {
+		t.Fatalf("ExecutionEpoch after Reset = %d, want %d", got, epoch)
+	}
+}
+
+func TestExecutionEpochChangesOnlyAfterSuccessfulRestore(t *testing.T) {
+	e := newTestEmulator(t)
+	defer e.Close()
+
+	before := e.ExecutionEpoch()
+	if err := e.LoadState([]byte("not a state")); err == nil {
+		t.Fatal("invalid LoadState unexpectedly succeeded")
+	}
+	if got := e.ExecutionEpoch(); got != before {
+		t.Fatalf("ExecutionEpoch changed after failed LoadState: got %d want %d", got, before)
+	}
+}
