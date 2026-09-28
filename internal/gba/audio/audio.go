@@ -119,6 +119,12 @@ func New(b *bus.Bus, hooks Hooks) *Audio {
 }
 
 func (a *Audio) install(io *bus.IO) {
+	// These unused PSG/control halfwords are readable as zero rather than
+	// behaving like ordinary unmapped I/O/open bus.
+	for _, offset := range [...]uint32{0x066, 0x06e, 0x076, 0x07a, 0x07e, 0x086, 0x08a} {
+		io.Register16(offset, func() uint16 { return 0 }, nil)
+	}
+
 	io.Register16(soundControlHighOffset,
 		func() uint16 { return a.controlHigh },
 		a.writeControlHigh,
