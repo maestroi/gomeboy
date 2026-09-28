@@ -573,6 +573,31 @@ func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32)
 
 func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint32) {
 	value, cycles := t.m.Bus.Read16(addr, access)
+	if access.Instruction {
+		// Thumb open bus is driven by the instruction pipeline rather than the
+		// halfword currently being executed. prefetch0 is PC+2 and prefetch1
+		// is PC+4 relative to this fetch; most regions expose prefetch1 in
+		// both halfwords, while BIOS/OAM/IWRAM preserve pipeline ordering.
+		prefetch0 := t.m.Bus.Peek16(addr + 2)
+		prefetch1 := t.m.Bus.Peek16(addr + 4)
+		visiblePC := addr + 4
+		var open uint32
+		switch visiblePC >> 24 {
+		case 0x00, 0x07: // BIOS / OAM
+			open = uint32(prefetch0) | uint32(prefetch1)<<16
+		case 0x03: // IWRAM
+			if visiblePC&2 != 0 {
+				open = uint32(prefetch0) | uint32(prefetch1)<<16
+			} else {
+				open = uint32(prefetch1) | uint32(prefetch0)<<16
+			}
+		default:
+			open = uint32(prefetch1) | uint32(prefetch1)<<16
+		}
+		// Do this before hardware advances so DMA can still replace the
+		// physical-bus value if it starts during the fetch.
+		t.m.Bus.SetOpenBus(open)
+	}
 	t.consume(cycles)
 	return value, cycles
 }
