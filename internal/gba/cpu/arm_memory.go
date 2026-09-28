@@ -182,9 +182,5 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 	}
 
 	c.advancePC()
-	internal := uint8(0)
-	if load {
-		internal = 1
-	}
-	return ExecutionResult{InternalCycles: internal, MemoryCycles: cycles}, nil
+	return ExecutionResult{InternalCycles: 1, MemoryCycles: cycles}, nil
 }
