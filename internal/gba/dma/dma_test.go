@@ -93,8 +93,8 @@ func TestDMAInaccessibleSourceUsesPerChannelDataLatch(t *testing.T) {
 	d := New(b, nil, Hooks{})
 
 	for index := 0; index < 4; index++ {
-		primeSource := uint32(bus.EWRAMStart + 0x1000 + index*0x20)
-		primeDest := uint32(bus.IWRAMStart + 0x1000 + index*0x20)
+		primeSource := bus.EWRAMStart + 0x1000 + uint32(index)*0x20
+		primeDest := bus.IWRAMStart + 0x1000 + uint32(index)*0x20
 		resultDest := primeDest + 8
 		b.Write32(primeSource, 0xfeedface, bus.Access{})
 
