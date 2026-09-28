@@ -78,8 +78,9 @@ type Bus struct {
 	wait         WaitControl
 	prefetch     prefetchState
 	openBus      uint32
-	cpuOpenBus   uint32
-	biosPrefetch uint32
+	cpuOpenBus      uint32
+	cpuOpenBusValid bool
+	biosPrefetch    uint32
 	cpuInBIOS    bool
 
 	// Byte writes to OBJ VRAM are ignored. Tile modes start OBJ VRAM at
@@ -141,19 +142,28 @@ func (b *Bus) OpenBus() uint32 { return b.openBus }
 
 // CPUOpenBus returns the CPU-visible instruction-pipeline/open-bus value used
 // when a CPU data read targets an unmapped or write-only location.
-func (b *Bus) CPUOpenBus() uint32 { return b.cpuOpenBus }
+func (b *Bus) CPUOpenBus() uint32 {
+	if b.cpuOpenBusValid {
+		return b.cpuOpenBus
+	}
+	return b.openBus
+}
 
 // SetOpenBus seeds both physical and CPU-visible latches. It is primarily used
 // by focused bus tests and debugger-style integrations.
 func (b *Bus) SetOpenBus(value uint32) {
 	b.openBus = value
 	b.cpuOpenBus = value
+	b.cpuOpenBusValid = true
 }
 
 // SetCPUOpenBus updates only the CPU-visible pipeline latch. Instruction fetch
 // adapters use this without pretending that speculative prefetch replaced the
 // physical bus transaction that actually occurred.
-func (b *Bus) SetCPUOpenBus(value uint32) { b.cpuOpenBus = value }
+func (b *Bus) SetCPUOpenBus(value uint32) {
+	b.cpuOpenBus = value
+	b.cpuOpenBusValid = true
+}
 
 // SetBIOSPrefetch updates the protected BIOS read latch. BIOS HLE adapters use
 // this when they emulate a BIOS call without executing the real instruction
@@ -178,7 +188,7 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 		if b.isOutOfBoundsROM(addr) {
 			value = outOfBoundsROMByte(addr)
 		} else {
-			latch := b.cpuOpenBus
+			latch := b.CPUOpenBus()
 			if access.DMA {
 				latch = b.openBus
 			}
@@ -233,7 +243,7 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		if b.isOutOfBoundsROM(aligned) {
 			value = uint16((aligned >> 1) & 0xffff)
 		} else {
-			latch := b.cpuOpenBus
+			latch := b.CPUOpenBus()
 			if access.DMA {
 				latch = b.openBus
 			}
@@ -287,7 +297,7 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 			high := ((aligned + 2) >> 1) & 0xffff
 			value = low | high<<16
 		} else {
-			value = b.cpuOpenBus
+			value = b.CPUOpenBus()
 			if access.DMA {
 				value = b.openBus
 			}
