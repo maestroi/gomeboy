@@ -154,7 +154,7 @@ func (a *Audio) install(io *bus.IO) {
 }
 
 func (a *Audio) openBusHalfword(ioOffset uint32) uint16 {
-	value := a.bus.OpenBus()
+	value := a.bus.CPUOpenBus()
 	if ioOffset&2 != 0 {
 		return uint16(value >> 16)
 	}
