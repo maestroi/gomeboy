@@ -40,10 +40,11 @@ type Hooks struct {
 }
 
 type state struct {
-	reload  uint16
-	counter uint16
-	control uint16
-	phase   uint32
+	reload            uint16
+	counter           uint16
+	control           uint16
+	phase             uint32
+	lastTickOverflow  bool
 }
 
 type pendingWriteKind uint8
@@ -267,9 +268,11 @@ func (t *Timers) Advance(cycles uint32) {
 		}
 
 		if ticks == 0 {
+			s.lastTickOverflow = false
 			continue
 		}
 
+		s.lastTickOverflow = finalTickOverflows(s.counter, s.reload, ticks)
 		overflows[index] = t.advanceCounter(index, ticks)
 		if overflows[index] == 0 {
 			continue
@@ -282,6 +285,19 @@ func (t *Timers) Advance(cycles uint32) {
 			t.irq.Request(irqSources[index])
 		}
 	}
+}
+
+func finalTickOverflows(counter, reload uint16, ticks uint64) bool {
+	if ticks == 0 {
+		return false
+	}
+	untilOverflow := uint64(0x10000 - uint32(counter))
+	if ticks < untilOverflow {
+		return false
+	}
+	remaining := ticks - untilOverflow
+	period := uint64(0x10000 - uint32(reload))
+	return remaining%period == 0
 }
 
 func (t *Timers) advanceCounter(index int, ticks uint64) uint32 {
@@ -316,6 +332,21 @@ func (t *Timers) Active() bool { return t.active != 0 }
 
 // Counter returns the current live/frozen counter for tests/debugging.
 func (t *Timers) Counter(index int) uint16 { return t.timer[index].counter }
+
+// CounterForCPURead returns the timer value visible to a CPU data read at the
+// current bus edge. An ordinary timer increment on that same edge is observed
+// after the read sample, while an overflow/reload edge is already visible.
+func (t *Timers) CounterForCPURead(index int) uint16 {
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
+		return s.counter
+	}
+	divisor := prescalers[s.control&controlPrescalerMask]
+	if divisor == 0 || s.phase != 0 || s.lastTickOverflow {
+		return s.counter
+	}
+	return s.counter - 1
+}
 
 // Reload returns the programmed reload latch.
 func (t *Timers) Reload(index int) uint16 { return t.timer[index].reload }
