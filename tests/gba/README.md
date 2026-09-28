@@ -186,12 +186,12 @@ v0-r76 baseline is:
 
 | Category | Passed | Failed | Total |
 | --- | ---: | ---: | ---: |
-| Memory | 1304 | 248 | 1552 |
-| I/O reads | 29 | 94 | 123 |
-| Timing | 312 | 1608 | 1920 |
+| Memory | 1552 | 0 | 1552 |
+| I/O reads | 123 | 0 | 123 |
+| Timing | 359 | 1561 | 1920 |
 | Timer count-up | 285 | 651 | 936 |
 | Timer IRQ | 18 | 72 | 90 |
-| DMA | 996 | 260 | 1256 |
+| DMA | 1220 | 36 | 1256 |
 
 The checked-in baseline has xfail-style behavior:
 
