@@ -17,6 +17,7 @@ func TestDefaultMemoryTiming(t *testing.T) {
 		{"EWRAM word", EWRAMStart, 4, Access{}, 6},
 		{"IO word", IOStart, 4, Access{}, 2},
 		{"VRAM word", VRAMStart, 4, Access{}, 2},
+		{"OAM word", OAMStart, 4, Access{}, 1},
 		{"WS0 nonseq half", ROM0Start, 2, Access{}, 5},
 		{"WS0 seq half", ROM0Start + 2, 2, Access{Sequential: true}, 3},
 		{"WS0 nonseq word", ROM0Start, 4, Access{}, 8},
