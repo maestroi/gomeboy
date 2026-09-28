@@ -147,7 +147,7 @@ func (p *PPU) writeDISPSTAT(value uint16) {
 }
 
 func (p *PPU) openBusHalfword(ioOffset uint32) uint16 {
-	value := p.bus.OpenBus()
+	value := p.bus.CPUOpenBus()
 	if ioOffset&2 != 0 {
 		return uint16(value >> 16)
 	}
