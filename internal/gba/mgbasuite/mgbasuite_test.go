@@ -121,6 +121,24 @@ func TestHLECPUSetCopiesAndFillsThroughGBABus(t *testing.T) {
 	}
 }
 
+
+func TestHLECPUSetRejectsProtectedBIOSSource(t *testing.T) {
+	bios := make([]byte, bus.BIOSSize)
+	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
+	m := system.New(bios, nil)
+	dst := uint32(bus.IWRAMStart + 0x180)
+	m.Bus.Write32(dst, 0xa5a5a5a5, bus.Access{})
+
+	m.CPU.WriteRegister(0, bus.BIOSStart)
+	m.CPU.WriteRegister(1, dst)
+	m.CPU.WriteRegister(2, (1<<26)|1)
+	hleCPUSet(m, false)
+
+	if got, _ := m.Bus.Read32(dst, bus.Access{}); got != 0xa5a5a5a5 {
+		t.Fatalf("CpuSet BIOS source changed destination to %08x", got)
+	}
+}
+
 func TestMenuDriverPulsesDownThenStartsCategory(t *testing.T) {
 	m := system.New(nil, nil)
 	d := newMenuDriver(m, 2)
