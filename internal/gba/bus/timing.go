@@ -36,6 +36,13 @@ func (b *Bus) installSystemRegisters() {
 	)
 }
 
+// AccessCycles returns the duration of a bus transaction without performing
+// the transaction or mutating bus/open-bus state. DMA uses this for source
+// regions that are physically inaccessible but still consume bus time.
+func (b *Bus) AccessCycles(addr uint32, width uint32, access Access) uint32 {
+	return b.accessCycles(addr, width, access)
+}
+
 func (b *Bus) accessCycles(addr uint32, width uint32, access Access) uint32 {
 	switch addr >> 24 {
 	case 0x00, 0x03:

@@ -427,6 +427,10 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 		return number, true, err
 	}
 	m.CPU.SetPC(lr)
+	// The real BIOS leaves this instruction in the protected BIOS read latch
+	// when returning from its SWI dispatcher. The suite relies on that value
+	// for BIOS data-read tests even though this harness HLEs the service body.
+	m.Bus.SetBIOSPrefetch(0xe3a02004)
 	return number, true, nil
 }
 
@@ -512,6 +516,11 @@ func hleDiv(m *system.Machine, arm bool) error {
 func hleCPUSet(m *system.Machine, fast bool) {
 	src := m.CPU.ReadRegister(0)
 	dst := m.CPU.ReadRegister(1)
+	// Nintendo's BIOS rejects CpuSet/CpuFastSet sources below EWRAM rather
+	// than copying protected BIOS/unmapped data.
+	if src < bus.EWRAMStart {
+		return
+	}
 	control := m.CPU.ReadRegister(2)
 	count := control & 0x000fffff
 	fill := control&(1<<24) != 0
@@ -519,8 +528,12 @@ func hleCPUSet(m *system.Machine, fast bool) {
 	access := bus.Access{}
 
 	if word {
-		src &^= 3
-		dst &^= 3
+		if src < bus.SaveStart {
+			src &^= 3
+		}
+		if dst < bus.SaveStart {
+			dst &^= 3
+		}
 		var fillValue uint32
 		if fill {
 			fillValue, _ = m.Bus.Read32(src, access)
@@ -548,7 +561,9 @@ func hleCPUSet(m *system.Machine, fast bool) {
 				// The BIOS copy path uses LDRH at the caller's address. On
 				// ARM7TDMI an odd LDRH is an aligned halfword read followed by
 				// a 32-bit ROR #8; STRH then stores its low halfword.
-				raw, _ := m.Bus.Read16(src&^1, access)
+				halfAccess := access
+				halfAccess.Misalignment = uint8(src & 1)
+				raw, _ := m.Bus.Read16(src&^1, halfAccess)
 				loaded := uint32(raw)
 				if src&1 != 0 {
 					loaded = bits.RotateLeft32(loaded, -8)
@@ -568,6 +583,7 @@ func hleCPUSet(m *system.Machine, fast bool) {
 type resultCollector struct {
 	offset   uint32
 	pending  string
+	testName string
 	failed   int
 	failures []string
 }
@@ -594,8 +610,15 @@ func (c *resultCollector) poll(save bus.SaveDevice) {
 	c.pending = lines[len(lines)-1]
 	for _, line := range lines[:len(lines)-1] {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Memory test: ") {
+			c.testName = strings.TrimPrefix(line, "Memory test: ")
+			continue
+		}
 		if strings.HasSuffix(line, "FAIL") {
 			c.failed++
+			if c.testName != "" {
+				line = c.testName + ": " + line
+			}
 			c.failures = append(c.failures, line)
 		}
 	}

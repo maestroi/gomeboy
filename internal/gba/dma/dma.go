@@ -85,6 +85,7 @@ type channel struct {
 
 	lastCycles uint32
 	lastUnits  uint32
+	dataLatch  uint32
 
 	// disableAfterRun marks a final event-driven transfer (currently the last
 	// DMA3 video-capture scanline) that must clear Enable even with Repeat set.
@@ -489,6 +490,27 @@ func (d *DMA) startTransfer(index int) {
 	c.transferCycles = 0
 }
 
+
+func (d *DMA) readSource(index int, source, width uint32, access bus.Access) (uint32, uint32) {
+	c := &d.ch[index]
+	if source < bus.EWRAMStart {
+		cycles := d.bus.AccessCycles(source, width, access)
+		if width == 2 {
+			return c.dataLatch & 0xffff, cycles
+		}
+		return c.dataLatch, cycles
+	}
+
+	if width == 4 {
+		value, cycles := d.bus.Read32(source, access)
+		c.dataLatch = value
+		return value, cycles
+	}
+	value, cycles := d.bus.Read16(source, access)
+	c.dataLatch = uint32(value) | uint32(value)<<16
+	return uint32(value), cycles
+}
+
 // ServiceUnit transfers one unit from the highest-priority active channel.
 // Completion side effects are deferred to FinishUnit so scheduler integrations
 // can advance the unit's elapsed bus/internal cycles before raising DMA IRQs.
@@ -511,13 +533,12 @@ func (d *DMA) ServiceUnit() UnitResult {
 	dest := c.destCurrent
 
 	var cycles uint32
+	value, readCycles := d.readSource(index, source, c.transferWidth, access)
 	if c.transferWidth == 4 {
-		value, readCycles := d.bus.Read32(source, access)
 		writeCycles := d.bus.Write32(dest, value, access)
 		cycles = readCycles + writeCycles
 	} else {
-		value, readCycles := d.bus.Read16(source, access)
-		writeCycles := d.bus.Write16(dest, value, access)
+		writeCycles := d.bus.Write16(dest, uint16(value), access)
 		cycles = readCycles + writeCycles
 	}
 
@@ -650,13 +671,12 @@ func (d *DMA) run(index int) uint32 {
 
 	for unit := uint32(0); unit < units; unit++ {
 		access := bus.Access{Sequential: unit != 0, DMA: true}
+		value, readCycles := d.readSource(index, source, width, access)
 		if width == 4 {
-			value, readCycles := d.bus.Read32(source, access)
 			writeCycles := d.bus.Write32(dest, value, access)
 			cycles += readCycles + writeCycles
 		} else {
-			value, readCycles := d.bus.Read16(source, access)
-			writeCycles := d.bus.Write16(dest, value, access)
+			writeCycles := d.bus.Write16(dest, uint16(value), access)
 			cycles += readCycles + writeCycles
 		}
 

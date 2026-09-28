@@ -75,9 +75,11 @@ type Bus struct {
 	eeprom  EEPROMDevice
 	gamePak GamePakDevice
 
-	wait     WaitControl
-	prefetch prefetchState
-	openBus  uint32
+	wait         WaitControl
+	prefetch     prefetchState
+	openBus      uint32
+	biosPrefetch uint32
+	cpuInBIOS    bool
 
 	// Byte writes to OBJ VRAM are ignored. Tile modes start OBJ VRAM at
 	// 0x10000; bitmap modes move it to 0x14000.
@@ -140,18 +142,31 @@ func (b *Bus) OpenBus() uint32 { return b.openBus }
 // value when implementing instruction-derived open-bus behavior.
 func (b *Bus) SetOpenBus(value uint32) { b.openBus = value }
 
+// SetBIOSPrefetch updates the protected BIOS read latch. BIOS HLE adapters use
+// this when they emulate a BIOS call without executing the real instruction
+// stream; real BIOS instruction fetches maintain the latch automatically.
+func (b *Bus) SetBIOSPrefetch(value uint32) { b.biosPrefetch = value }
+
+// BIOSPrefetch returns the current protected BIOS read latch.
+func (b *Bus) BIOSPrefetch() uint32 { return b.biosPrefetch }
+
 // Read8 performs an 8-bit bus read and returns the access duration in cycles.
 func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 	cycles := b.accessCycles(addr, 1, access)
-	if access.DMA && isSave(addr) {
-		value := byte(b.openBus >> ((addr & 3) * 8))
-		b.openBus = uint32(value) * 0x01010101
-		b.afterAccess(addr, 1, access, false)
-		return value, cycles
+	b.noteInstructionFetch(addr, 1, access)
+	if value, ok := b.protectedBIOSRead(addr, 1, access); ok {
+		out := byte(value)
+		b.openBus = uint32(out) * 0x01010101
+		b.afterAccess(addr, 1, access, true)
+		return out, cycles
 	}
 	value, mapped := b.readByte(addr)
 	if !mapped {
-		value = byte(b.openBus >> ((addr & 3) * 8))
+		if b.isOutOfBoundsROM(addr) {
+			value = outOfBoundsROMByte(addr)
+		} else {
+			value = byte(b.openBus >> ((addr & 3) * 8))
+		}
 	}
 	b.openBus = uint32(value) * 0x01010101
 	b.afterAccess(addr, 1, access, mapped)
@@ -162,23 +177,25 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 // halfword and rotate it by 8 bits.
 func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 	cycles := b.accessCycles(addr, 2, access)
+	b.noteInstructionFetch(addr, 2, access)
+	if raw, ok := b.protectedBIOSRead(addr, 2, access); ok {
+		value := uint16(raw)
+		if addr&1 != 0 {
+			value = value>>8 | value<<8
+		}
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, true)
+		return value, cycles
+	}
 	if b.isEEPROMAddress(addr) {
 		value := uint16(b.eeprom.ReadBit() & 1)
 		b.openBus = uint32(value) | uint32(value)<<16
 		b.afterAccess(addr, 2, access, true)
 		return value, cycles
 	}
-	if access.DMA && isSave(addr) {
-		value := uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
-		if addr&1 != 0 {
-			value = value>>8 | value<<8
-		}
-		b.openBus = uint32(value) | uint32(value)<<16
-		b.afterAccess(addr, 2, access, false)
-		return value, cycles
-	}
 	if isSave(addr) && b.save != nil {
-		value := b.save.Read8(addr - SaveStart)
+		physical := addr + uint32(access.Misalignment&1)
+		value := b.save.Read8(physical - SaveStart)
 		out := uint16(value) * 0x0101
 		b.openBus = uint32(out) | uint32(out)<<16
 		b.afterAccess(addr, 2, access, true)
@@ -196,7 +213,11 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		value = uint16(lo) | uint16(hi)<<8
 	}
 	if !mapped {
-		value = uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+		if b.isOutOfBoundsROM(aligned) {
+			value = uint16((aligned >> 1) & 0xffff)
+		} else {
+			value = uint16(bits.RotateLeft32(b.openBus, -int((addr&3)*8)))
+		}
 	}
 	if addr&1 != 0 {
 		value = value>>8 | value<<8
@@ -210,10 +231,11 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 // word right by 8/16/24 bits.
 func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	cycles := b.accessCycles(addr, 4, access)
-	if access.DMA && isSave(addr) {
-		value := bits.RotateLeft32(b.openBus, -int((addr&3)*8))
+	b.noteInstructionFetch(addr, 4, access)
+	if raw, ok := b.protectedBIOSRead(addr, 4, access); ok {
+		value := bits.RotateLeft32(raw, -int((addr&3)*8))
 		b.openBus = value
-		b.afterAccess(addr, 4, access, false)
+		b.afterAccess(addr, 4, access, true)
 		return value, cycles
 	}
 	if isSave(addr) && b.save != nil {
@@ -239,7 +261,13 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 		value = binary.LittleEndian.Uint32(raw[:])
 	}
 	if !mapped {
-		value = b.openBus
+		if b.isOutOfBoundsROM(aligned) {
+			low := (aligned >> 1) & 0xffff
+			high := ((aligned + 2) >> 1) & 0xffff
+			value = low | high<<16
+		} else {
+			value = b.openBus
+		}
 	}
 	value = bits.RotateLeft32(value, -int((addr&3)*8))
 	b.openBus = value
@@ -250,11 +278,6 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 // Write8 performs an 8-bit write and returns the access duration in cycles.
 func (b *Bus) Write8(addr uint32, value byte, access Access) uint32 {
 	cycles := b.accessCycles(addr, 1, access)
-	if access.DMA && isSave(addr) {
-		b.openBus = uint32(value) * 0x01010101
-		b.afterAccess(addr, 1, access, false)
-		return cycles
-	}
 	b.writeByte(addr, value)
 	b.openBus = uint32(value) * 0x01010101
 	b.afterAccess(addr, 1, access, true)
@@ -268,11 +291,6 @@ func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 		b.eeprom.WriteBit(byte(value))
 		b.openBus = uint32(value) | uint32(value)<<16
 		b.afterAccess(addr, 2, access, true)
-		return cycles
-	}
-	if access.DMA && isSave(addr) {
-		b.openBus = uint32(value) | uint32(value)<<16
-		b.afterAccess(addr, 2, access, false)
 		return cycles
 	}
 	if isSave(addr) && b.save != nil {
@@ -296,11 +314,6 @@ func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 // Write32 aligns the address down to a word boundary.
 func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	cycles := b.accessCycles(addr, 4, access)
-	if access.DMA && isSave(addr) {
-		b.openBus = value
-		b.afterAccess(addr, 4, access, false)
-		return cycles
-	}
 	if isSave(addr) && b.save != nil {
 		b.save.Write8(addr-SaveStart, byte(value>>((addr&3)*8)))
 		b.openBus = value
@@ -320,6 +333,22 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	return cycles
 }
 
+// Peek32 reads an aligned mapped word without timing or open-bus latch updates.
+// It is used by the CPU-facing adapter to model the ARM instruction prefetch
+// value that appears on open bus.
+func (b *Bus) Peek32(addr uint32) uint32 {
+	aligned := addr &^ 3
+	var raw [4]byte
+	for index := range raw {
+		value, mapped := b.readByte(aligned + uint32(index))
+		if !mapped {
+			return b.openBus
+		}
+		raw[index] = value
+	}
+	return binary.LittleEndian.Uint32(raw[:])
+}
+
 // Peek8 reads mapped memory without timing, open-bus latch updates, or I/O
 // write side effects. It is intended for debugger/inspection tooling.
 func (b *Bus) Peek8(addr uint32) byte {
@@ -328,6 +357,69 @@ func (b *Bus) Peek8(addr uint32) byte {
 		return byte(b.openBus >> ((addr & 3) * 8))
 	}
 	return value
+}
+
+
+
+func (b *Bus) isOutOfBoundsROM(addr uint32) bool {
+	if !isROM(addr) || b.isEEPROMAddress(addr) {
+		return false
+	}
+	if b.gamePak != nil {
+		if _, handled := b.gamePak.Read8(addr); handled {
+			return false
+		}
+	}
+	offset := addr & (ROMWindowSize - 1)
+	return offset >= uint32(len(b.rom))
+}
+
+func outOfBoundsROMByte(addr uint32) byte {
+	halfword := (addr >> 1) & 0xffff
+	if addr&1 != 0 {
+		return byte(halfword >> 8)
+	}
+	return byte(halfword)
+}
+
+func (b *Bus) protectedBIOSRead(addr, width uint32, access Access) (uint32, bool) {
+	if addr >= BIOSSize || access.Instruction || access.DMA || b.cpuInBIOS {
+		return 0, false
+	}
+	switch width {
+	case 1:
+		return (b.biosPrefetch >> ((addr & 3) * 8)) & 0xff, true
+	case 2:
+		return (b.biosPrefetch >> ((addr & 2) * 8)) & 0xffff, true
+	case 4:
+		return b.biosPrefetch, true
+	default:
+		return 0, false
+	}
+}
+
+func (b *Bus) noteInstructionFetch(addr, width uint32, access Access) {
+	if !access.Instruction {
+		return
+	}
+	if addr >= BIOSSize {
+		b.cpuInBIOS = false
+		return
+	}
+	b.cpuInBIOS = true
+
+	// The ARM7 BIOS protection latch reflects the instruction pipeline rather
+	// than the addressed BIOS byte. Our CPU does not materialize a two-entry
+	// fetch queue, so derive the second prefetched word from the current fetch.
+	var ahead uint32
+	if width == 2 {
+		ahead = ((addr &^ 1) + 4) &^ 3
+	} else {
+		ahead = (addr &^ 3) + 8
+	}
+	if ahead+4 <= uint32(len(b.bios)) {
+		b.biosPrefetch = binary.LittleEndian.Uint32(b.bios[ahead : ahead+4])
+	}
 }
 
 func (b *Bus) readByte(addr uint32) (byte, bool) {

@@ -13,13 +13,79 @@ func testBus() *Bus {
 	return New(bios, rom)
 }
 
+
+
+func TestOutOfBoundsGamePakReadsUseAddressPattern(t *testing.T) {
+	b := New(nil, make([]byte, 4))
+	const addr uint32 = 0x092468ac
+
+	if got, _ := b.Read8(addr, Access{}); got != 0x56 {
+		t.Fatalf("OOB ROM byte = %02x, want 56", got)
+	}
+	if got, _ := b.Read8(addr+1, Access{}); got != 0x34 {
+		t.Fatalf("OOB ROM odd byte = %02x, want 34", got)
+	}
+	if got, _ := b.Read16(addr, Access{}); got != 0x3456 {
+		t.Fatalf("OOB ROM halfword = %04x, want 3456", got)
+	}
+	if got, _ := b.Read32(addr, Access{}); got != 0x34573456 {
+		t.Fatalf("OOB ROM word = %08x, want 34573456", got)
+	}
+	for offset, want := range []uint32{0x34573456, 0x56345734, 0x34563457, 0x57345634} {
+		got, _ := b.Read32(addr+uint32(offset), Access{})
+		if got != want {
+			t.Fatalf("OOB ROM word +%d = %08x, want %08x", offset, got, want)
+		}
+	}
+}
+
+func TestProtectedBIOSReadsUsePrefetchLatchOutsideBIOS(t *testing.T) {
+	bios := make([]byte, BIOSSize)
+	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
+	b := New(bios, make([]byte, 4))
+	b.SetBIOSPrefetch(0xe3a02004)
+
+	if got, _ := b.Read8(BIOSStart, Access{}); got != 0x04 {
+		t.Fatalf("protected BIOS byte = %02x, want 04", got)
+	}
+	if got, _ := b.Read16(BIOSStart, Access{}); got != 0x2004 {
+		t.Fatalf("protected BIOS halfword = %04x, want 2004", got)
+	}
+	if got, _ := b.Read32(BIOSStart, Access{}); got != 0xe3a02004 {
+		t.Fatalf("protected BIOS word = %08x, want e3a02004", got)
+	}
+}
+
+func TestBIOSReadsRemainDirectWhileExecutingBIOS(t *testing.T) {
+	bios := make([]byte, BIOSSize)
+	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
+	bios[8], bios[9], bios[10], bios[11] = 0x78, 0x56, 0x34, 0x12
+	rom := []byte{0, 0, 0, 0}
+	b := New(bios, rom)
+
+	if got, _ := b.Read32(BIOSStart, Access{Instruction: true}); got != 0x44332211 {
+		t.Fatalf("BIOS instruction fetch = %08x, want 44332211", got)
+	}
+	if got, _ := b.Read32(BIOSStart, Access{}); got != 0x44332211 {
+		t.Fatalf("BIOS data read while in BIOS = %08x, want 44332211", got)
+	}
+	if got := b.BIOSPrefetch(); got != 0x12345678 {
+		t.Fatalf("BIOS prefetch latch = %08x, want 12345678", got)
+	}
+
+	b.Read32(ROM0Start, Access{Instruction: true})
+	if got, _ := b.Read32(BIOSStart, Access{}); got != 0x12345678 {
+		t.Fatalf("protected BIOS after leaving BIOS = %08x, want 12345678", got)
+	}
+}
+
 func TestMemoryMapAndMirrors(t *testing.T) {
 	b := testBus()
 
-	if got, _ := b.Read8(BIOSStart, Access{}); got != 0x12 {
+	if got := b.Peek8(BIOSStart); got != 0x12 {
 		t.Fatalf("BIOS[0] = %02x, want 12", got)
 	}
-	if got, _ := b.Read8(BIOSStart+BIOSSize-1, Access{}); got != 0x34 {
+	if got := b.Peek8(BIOSStart+BIOSSize-1); got != 0x34 {
 		t.Fatalf("BIOS[last] = %02x, want 34", got)
 	}
 
@@ -183,6 +249,12 @@ func TestSaveDeviceBoundary(t *testing.T) {
 		t.Fatalf("save word = %08x cycles=%d, want 9a9a9a9a/5", got32, cycles32)
 	}
 
+	save.data[4] = 0x47
+	save.data[5] = 0x61
+	if got, _ := b.Read16(SaveStart+4, Access{Misalignment: 1}); got != 0x6161 {
+		t.Fatalf("misaligned CPU save halfword bus value = %04x, want 6161", got)
+	}
+
 	b.Write32(SaveStart+2, 0x44332211, Access{})
 	if got := save.Read8(2); got != 0x33 {
 		t.Fatalf("save word write selected byte = %02x, want 33", got)
@@ -190,28 +262,22 @@ func TestSaveDeviceBoundary(t *testing.T) {
 }
 
 
-func TestDMAAccessCannotUseGamePakSaveBus(t *testing.T) {
+func TestDMAAccessUsesGamePakSaveBusWhenAddressMaskAllowsIt(t *testing.T) {
 	b := testBus()
 	save := &fakeSave{}
 	b.AttachSaveDevice(save)
 	save.data[2] = 0x5a
 
-	b.SetOpenBus(0x44332211)
 	got, cycles := b.Read16(SaveStart+2, Access{DMA: true})
-	if got != 0x4433 {
-		t.Fatalf("DMA save read = %04x, want open-bus 4433", got)
+	if got != 0x5a5a {
+		t.Fatalf("DMA save read = %04x, want repeated byte 5a5a", got)
 	}
 	if cycles != 5 {
 		t.Fatalf("DMA save read cycles = %d, want configured save-bus timing 5", cycles)
 	}
 
 	b.Write16(SaveStart+2, 0xbeef, Access{DMA: true})
-	if got := save.Read8(2); got != 0x5a {
-		t.Fatalf("DMA save write reached save device: %02x, want 5a", got)
-	}
-
-	// CPU accesses remain unchanged.
-	if got, _ := b.Read8(SaveStart+2, Access{}); got != 0x5a {
-		t.Fatalf("CPU save read changed by DMA restriction: %02x", got)
+	if got := save.Read8(2); got != 0xef {
+		t.Fatalf("DMA save write = %02x, want low byte ef", got)
 	}
 }

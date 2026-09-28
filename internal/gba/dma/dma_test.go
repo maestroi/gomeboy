@@ -85,6 +85,37 @@ func TestDMAByteWritesMergeAgainstProgrammedLatches(t *testing.T) {
 	}
 }
 
+
+func TestDMAInaccessibleSourceUsesPerChannelDataLatch(t *testing.T) {
+	bios := make([]byte, bus.BIOSSize)
+	binary.LittleEndian.PutUint32(bios, 0x44332211)
+	b := bus.New(bios, nil)
+	d := New(b, nil, Hooks{})
+
+	for index := 0; index < 4; index++ {
+		primeSource := bus.EWRAMStart + 0x1000 + uint32(index)*0x20
+		primeDest := bus.IWRAMStart + 0x1000 + uint32(index)*0x20
+		resultDest := primeDest + 8
+		b.Write32(primeSource, 0xfeedface, bus.Access{})
+
+		programDMA(b, index, primeSource, primeDest, 1, controlEnable|controlWord)
+		programDMA(b, index, bus.BIOSStart, resultDest, 1, controlEnable|controlWord)
+
+		if got, _ := b.Read32(resultDest, bus.Access{}); got != 0xfeedface {
+			t.Fatalf("DMA%d inaccessible word source = %08x, want feedface", index, got)
+		}
+
+		programDMA(b, index, bus.BIOSStart+1, resultDest+4, 1, controlEnable)
+		if got, _ := b.Read16(resultDest+4, bus.Access{}); got != 0xface {
+			t.Fatalf("DMA%d inaccessible halfword source = %04x, want face", index, got)
+		}
+
+		if d.ch[index].dataLatch != 0xfeedface {
+			t.Fatalf("DMA%d data latch = %08x, want feedface", index, d.ch[index].dataLatch)
+		}
+	}
+}
+
 func TestDMAImmediate16BitIncrementCopy(t *testing.T) {
 	b := bus.New(nil, nil)
 	d := New(b, nil, Hooks{})

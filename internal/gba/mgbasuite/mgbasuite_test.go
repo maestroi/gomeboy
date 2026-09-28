@@ -21,6 +21,29 @@ func TestParseResults(t *testing.T) {
 	}
 }
 
+
+func TestResultCollectorRetainsMemoryTestContext(t *testing.T) {
+	save := cartridge.NewSRAM()
+	log := "Memory test: BIOS load\nU8: Got 0x00 vs 0x04: FAIL\nMemory test: OAM load\n32: Got 1 vs 2: FAIL\n"
+	for index := range []byte(log) {
+		save.Write8(uint32(index), []byte(log)[index])
+	}
+	collector := resultCollector{}
+	collector.poll(save)
+	want := []string{
+		"BIOS load: U8: Got 0x00 vs 0x04: FAIL",
+		"OAM load: 32: Got 1 vs 2: FAIL",
+	}
+	if len(collector.failures) != len(want) {
+		t.Fatalf("failures = %v, want %v", collector.failures, want)
+	}
+	for index := range want {
+		if collector.failures[index] != want[index] {
+			t.Fatalf("failure %d = %q, want %q", index, collector.failures[index], want[index])
+		}
+	}
+}
+
 func TestClassifyBaselineTransitions(t *testing.T) {
 	category := Category{
 		ID: "io", Name: "I/O", Enabled: true, ExpectedTotal: 10,
@@ -95,6 +118,48 @@ func TestHLECPUSetCopiesAndFillsThroughGBABus(t *testing.T) {
 		if got, _ := m.Bus.Read32(dst+offset, bus.Access{}); got != 0xaabbccdd {
 			t.Fatalf("CpuSet fill +%d = %08x", offset, got)
 		}
+	}
+}
+
+
+func TestHLECPUSetPreservesSRAMSourceLane(t *testing.T) {
+	m := system.NewWithCartridgeConfig(nil, nil, cartridge.Config{SaveType: cartridge.SaveSRAM})
+	dst := uint32(bus.IWRAMStart + 0x1c0)
+	for index, value := range []byte{0x47, 0x61, 0x6d, 0x65} {
+		m.Bus.Write8(bus.SaveStart+uint32(index), value, bus.Access{})
+	}
+
+	m.CPU.WriteRegister(0, bus.SaveStart+1)
+	m.CPU.WriteRegister(1, dst)
+	m.CPU.WriteRegister(2, (1<<26)|1)
+	hleCPUSet(m, false)
+	if got, _ := m.Bus.Read32(dst, bus.Access{}); got != 0x61616161 {
+		t.Fatalf("unaligned SRAM CpuSet word = %08x, want 61616161", got)
+	}
+
+	m.CPU.WriteRegister(0, bus.SaveStart+1)
+	m.CPU.WriteRegister(1, dst+4)
+	m.CPU.WriteRegister(2, 1)
+	hleCPUSet(m, false)
+	if got, _ := m.Bus.Read16(dst+4, bus.Access{}); got != 0x0061 {
+		t.Fatalf("unaligned SRAM CpuSet halfword = %04x, want 0061", got)
+	}
+}
+
+func TestHLECPUSetRejectsProtectedBIOSSource(t *testing.T) {
+	bios := make([]byte, bus.BIOSSize)
+	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
+	m := system.New(bios, nil)
+	dst := uint32(bus.IWRAMStart + 0x180)
+	m.Bus.Write32(dst, 0xa5a5a5a5, bus.Access{})
+
+	m.CPU.WriteRegister(0, bus.BIOSStart)
+	m.CPU.WriteRegister(1, dst)
+	m.CPU.WriteRegister(2, (1<<26)|1)
+	hleCPUSet(m, false)
+
+	if got, _ := m.Bus.Read32(dst, bus.Access{}); got != 0xa5a5a5a5 {
+		t.Fatalf("CpuSet BIOS source changed destination to %08x", got)
 	}
 }
 

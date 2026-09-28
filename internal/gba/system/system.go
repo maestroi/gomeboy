@@ -579,6 +579,13 @@ func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint
 
 func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint32) {
 	value, cycles := t.m.Bus.Read32(addr, access)
+	if access.Instruction {
+		// ARM7 open bus exposes the second prefetched ARM instruction while
+		// the current opcode executes. At an ARM fetch at PC, that is PC+8.
+		// Set it before advancing hardware so a DMA transfer that occurs
+		// during the fetch can still take ownership of the physical bus.
+		t.m.Bus.SetOpenBus(t.m.Bus.Peek32(addr + 8))
+	}
 	t.consume(cycles)
 	return value, cycles
 }
