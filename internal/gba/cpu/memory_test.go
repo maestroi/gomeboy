@@ -153,6 +153,52 @@ func TestDataTransferMakesNextFetchNonSequential(t *testing.T) {
 	}
 }
 
+func TestTakenConditionalARMBranchChargesPipelineRefill(t *testing.T) {
+	b := newExecutionBus(nil)
+	code := uint32(bus.IWRAMStart + 0x180)
+	b.Write32(code, 0x1afffffe, bus.Access{}) // BNE to self
+
+	core := New()
+	if err := core.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	core.SetPC(code)
+
+	result, err := core.Step(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RefillCycles != 2 || result.TotalCycles != 3 {
+		t.Fatalf("taken BNE timing = %+v, want fetch=1 refill=2 total=3", result)
+	}
+	if got := core.PC(); got != code {
+		t.Fatalf("taken BNE target = %08x, want %08x", got, code)
+	}
+}
+
+func TestFailedConditionalARMBranchDoesNotRefill(t *testing.T) {
+	b := newExecutionBus(nil)
+	code := uint32(bus.IWRAMStart + 0x1c0)
+	b.Write32(code, 0x0afffffe, bus.Access{}) // BEQ to self, Z clear
+
+	core := New()
+	if err := core.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	core.SetPC(code)
+
+	result, err := core.Step(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RefillCycles != 0 || result.TotalCycles != 1 {
+		t.Fatalf("failed BEQ timing = %+v, want fetch-only one cycle", result)
+	}
+	if got := core.PC(); got != code+4 {
+		t.Fatalf("failed BEQ PC = %08x, want %08x", got, code+4)
+	}
+}
+
 func TestStepPipelineFlushMakesNextFetchNonSequential(t *testing.T) {
 	rom := make([]byte, 0x20)
 	putARM(rom, 0x00, 0xea000000) // B +0 -> current PC +8
