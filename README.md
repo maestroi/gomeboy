@@ -199,7 +199,7 @@ go run ./cmd/memprobe -rom game.gb
 go run ./cmd/gomeboy-link-broker -listen :8765
 ```
 
-See [docs/RECORDINGS.md](docs/RECORDINGS.md), [docs/STREAMING.md](docs/STREAMING.md), [docs/MEMPROBE.md](docs/MEMPROBE.md), and [docs/LINK_CABLE.md](docs/LINK_CABLE.md).
+See [docs/RECORDINGS.md](docs/RECORDINGS.md), [docs/STREAMING.md](docs/STREAMING.md), [docs/MEMPROBE.md](docs/MEMPROBE.md), [docs/EXTERNAL_RENDERERS.md](docs/EXTERNAL_RENDERERS.md), and [docs/LINK_CABLE.md](docs/LINK_CABLE.md).
 
 ---
 
@@ -242,6 +242,7 @@ emu.PeekInto(0xC000, observation[:])
 | `StepFrames(n)` | Batch multiple frames |
 | `StepInstruction()` | Execute one SM83 instruction or interrupt-service step |
 | `FrameCount()` / `Cycle()` | Read deterministic execution counters |
+| `ExecutionEpoch()` | Detect successful reset/load/restore timeline discontinuities |
 | `Reset()` | Return to boot state while preserving battery RAM |
 
 ### Network link cable
