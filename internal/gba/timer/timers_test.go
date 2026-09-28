@@ -162,6 +162,30 @@ func TestDeferredTimerWritesCommitAfterElapsedAccess(t *testing.T) {
 	}
 }
 
+func TestDeferredTimerDisableStopsAtWriteBusPhase(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0xff00, bus.Access{})
+	b.Write16(timerHigh(0), controlEnable, bus.Access{})
+	timers.Advance(3)
+	if got := timers.Counter(0); got != 0xff03 {
+		t.Fatalf("counter before disable = %04x, want ff03", got)
+	}
+
+	timers.BeginWriteAccess()
+	b.Write16(timerHigh(0), 0, bus.Access{})
+	if got := timers.Control(0); got != 0 {
+		t.Fatalf("timer disable was deferred past bus phase: control=%04x", got)
+	}
+
+	// The bus phase itself may still consume master cycles, but a timer whose
+	// enable bit has already fallen must no longer tick through them.
+	timers.Advance(4)
+	timers.EndWriteAccess()
+	if got := timers.Counter(0); got != 0xff03 {
+		t.Fatalf("timer advanced after disable bus phase: %04x, want ff03", got)
+	}
+}
+
 func TestTimer32BitWriteUsesNewReloadOnStart(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
