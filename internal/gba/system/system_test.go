@@ -38,8 +38,11 @@ func TestARMFetchExposesSecondPrefetchOnOpenBus(t *testing.T) {
 	if got, _ := m.memory.Read32(bus.ROM0Start, bus.Access{Instruction: true}); got != 0xe5903000 {
 		t.Fatalf("opcode fetch = %08x, want e5903000", got)
 	}
-	if got := m.Bus.OpenBus(); got != 0xe3a02007 {
-		t.Fatalf("ARM fetch open bus = %08x, want second prefetch e3a02007", got)
+	if got := m.Bus.OpenBus(); got != 0xe5903000 {
+		t.Fatalf("ARM physical bus = %08x, want fetched opcode e5903000", got)
+	}
+	if got := m.Bus.CPUOpenBus(); got != 0xe3a02007 {
+		t.Fatalf("ARM CPU open bus = %08x, want second prefetch e3a02007", got)
 	}
 	if got, _ := m.memory.Read32(0x01000000, bus.Access{}); got != 0xe3a02007 {
 		t.Fatalf("unmapped read = %08x, want prefetched e3a02007", got)
@@ -57,8 +60,11 @@ func TestThumbFetchExposesSecondPrefetchOnOpenBus(t *testing.T) {
 	if got, _ := m.memory.Read16(bus.ROM0Start, bus.Access{Instruction: true}); got != 0x881d {
 		t.Fatalf("Thumb opcode fetch = %04x, want 881d", got)
 	}
-	if got := m.Bus.OpenBus(); got != 0xdeaddead {
-		t.Fatalf("Thumb fetch open bus = %08x, want second prefetch deaddead", got)
+	if got := m.Bus.OpenBus(); got != 0x881d881d {
+		t.Fatalf("Thumb physical bus = %08x, want fetched opcode repeated", got)
+	}
+	if got := m.Bus.CPUOpenBus(); got != 0xdeaddead {
+		t.Fatalf("Thumb CPU open bus = %08x, want second prefetch deaddead", got)
 	}
 	if got, _ := m.memory.Read16(bus.IOStart+0x04e, bus.Access{}); got != 0xdead {
 		t.Fatalf("unmapped I/O read = %04x, want pipeline open bus dead", got)
