@@ -2,14 +2,14 @@ package bus
 
 import "testing"
 
-func TestUnknownIOReadIsUnmappedAfterWrite(t *testing.T) {
+func TestUnknownIOBackingRemainsAvailableForIncompleteRegisters(t *testing.T) {
 	io := NewIO()
-	io.Write16(0x4e, 0xffff)
-	if got, ok := io.Read16(0x4e); ok || got != 0 {
-		t.Fatalf("unknown I/O read = %04x ok=%v, want unmapped", got, ok)
+	io.Write16(0x120, 0xa55a)
+	if got, ok := io.Read16(0x120); !ok || got != 0xa55a {
+		t.Fatalf("incomplete I/O backing read = %04x ok=%v, want a55a/true", got, ok)
 	}
-	if got, ok := io.Read8(0x4f); ok || got != 0 {
-		t.Fatalf("unknown I/O byte read = %02x ok=%v, want unmapped", got, ok)
+	if got, ok := io.Read8(0x121); !ok || got != 0xa5 {
+		t.Fatalf("incomplete I/O backing byte = %02x ok=%v, want a5/true", got, ok)
 	}
 }
 
