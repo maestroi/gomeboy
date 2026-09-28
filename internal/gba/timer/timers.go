@@ -40,10 +40,11 @@ type Hooks struct {
 }
 
 type state struct {
-	reload  uint16
-	counter uint16
-	control uint16
-	phase   uint32
+	reload     uint16
+	counter    uint16
+	control    uint16
+	phase      uint32
+	startDelay uint32
 }
 
 type pendingWriteKind uint8
@@ -188,10 +189,19 @@ func (t *Timers) applyControl(index int, value uint16) {
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
+		// GBA timers do not begin incrementing on the same edge that enables
+		// them. Independently clocked timers have a two-master-cycle startup
+		// latency before the first prescaler input is observed.
+		if index == 0 || s.control&controlCountUp == 0 {
+			s.startDelay = 2
+		} else {
+			s.startDelay = 0
+		}
 		return
 	}
 	if oldEnabled && !newEnabled {
 		s.phase = 0
+		s.startDelay = 0
 		return
 	}
 
@@ -224,7 +234,7 @@ func (t *Timers) CyclesUntilEvent() uint32 {
 
 		divisor := uint64(prescalers[s.control&controlPrescalerMask])
 		ticks := uint64(0x10000 - uint32(s.counter))
-		cycles := ticks*divisor - uint64(s.phase)
+		cycles := uint64(s.startDelay) + ticks*divisor - uint64(s.phase)
 		if cycles < best {
 			best = cycles
 		}
@@ -252,8 +262,17 @@ func (t *Timers) Advance(cycles uint32) {
 		if index > 0 && s.control&controlCountUp != 0 {
 			ticks = uint64(overflows[index-1])
 		} else {
+			activeCycles := cycles
+			if s.startDelay != 0 {
+				if activeCycles <= s.startDelay {
+					s.startDelay -= activeCycles
+					continue
+				}
+				activeCycles -= s.startDelay
+				s.startDelay = 0
+			}
 			divisor := prescalers[s.control&controlPrescalerMask]
-			total := uint64(s.phase) + uint64(cycles)
+			total := uint64(s.phase) + uint64(activeCycles)
 			ticks = total / uint64(divisor)
 			s.phase = uint32(total % uint64(divisor))
 		}
