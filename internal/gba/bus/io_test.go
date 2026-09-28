@@ -2,6 +2,17 @@ package bus
 
 import "testing"
 
+func TestUnknownIOReadIsUnmappedAfterWrite(t *testing.T) {
+	io := NewIO()
+	io.Write16(0x4e, 0xffff)
+	if got, ok := io.Read16(0x4e); ok || got != 0 {
+		t.Fatalf("unknown I/O read = %04x ok=%v, want unmapped", got, ok)
+	}
+	if got, ok := io.Read8(0x4f); ok || got != 0 {
+		t.Fatalf("unknown I/O byte read = %02x ok=%v, want unmapped", got, ok)
+	}
+}
+
 func TestIORegisterCallbacks(t *testing.T) {
 	io := NewIO()
 	var value uint16 = 0x1234
