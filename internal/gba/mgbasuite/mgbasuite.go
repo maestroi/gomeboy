@@ -610,8 +610,19 @@ func (c *resultCollector) poll(save bus.SaveDevice) {
 	c.pending = lines[len(lines)-1]
 	for _, line := range lines[:len(lines)-1] {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Memory test: ") {
-			c.testName = strings.TrimPrefix(line, "Memory test: ")
+		for _, prefix := range []string{
+			"Memory test: ",
+			"Timing test: ",
+			"Timer count-up test: ",
+			"Timer IRQ test: ",
+		} {
+			if strings.HasPrefix(line, prefix) {
+				c.testName = strings.TrimPrefix(line, prefix)
+				line = ""
+				break
+			}
+		}
+		if line == "" {
 			continue
 		}
 		if strings.HasSuffix(line, "FAIL") {

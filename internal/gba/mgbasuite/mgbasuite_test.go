@@ -1,6 +1,7 @@
 package mgbasuite
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -316,5 +317,24 @@ func TestHLEIntrWaitAdvancesToTimerIRQAndAcknowledgesIt(t *testing.T) {
 	}
 	if got := m.IRQ.IF() & uint16(gbairq.Timer0); got != 0 {
 		t.Fatalf("IntrWait left Timer0 IF set: %#04x", got)
+	}
+}
+
+
+func TestResultCollectorKeepsTimingTestContext(t *testing.T) {
+	save := cartridge.NewSRAM()
+	log := "Timing test: nop / ldrh r2, [sp]\nARM/ROM P..: Got 6 vs 4: FAIL\nTimer IRQ test: FFFF\nGot 0004 != 0051: FAIL\n"
+	for index, value := range []byte(log) {
+		save.Write8(uint32(index), value)
+	}
+
+	collector := resultCollector{}
+	collector.poll(save)
+	want := []string{
+		"nop / ldrh r2, [sp]: ARM/ROM P..: Got 6 vs 4: FAIL",
+		"FFFF: Got 0004 != 0051: FAIL",
+	}
+	if !reflect.DeepEqual(collector.failures, want) {
+		t.Fatalf("failures = %#v, want %#v", collector.failures, want)
 	}
 }

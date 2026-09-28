@@ -180,7 +180,7 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 	if value, ok := b.protectedBIOSRead(addr, 1, access); ok {
 		out := byte(value)
 		b.openBus = uint32(out) * 0x01010101
-		b.afterAccess(addr, 1, access, true)
+		b.afterAccess(addr, 1, access, true, cycles)
 		return out, cycles
 	}
 	value, mapped := b.readByte(addr)
@@ -196,7 +196,7 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 		}
 	}
 	b.openBus = uint32(value) * 0x01010101
-	b.afterAccess(addr, 1, access, mapped)
+	b.afterAccess(addr, 1, access, mapped, cycles)
 	return value, cycles
 }
 
@@ -211,13 +211,13 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 			value = value>>8 | value<<8
 		}
 		b.openBus = uint32(value) | uint32(value)<<16
-		b.afterAccess(addr, 2, access, true)
+		b.afterAccess(addr, 2, access, true, cycles)
 		return value, cycles
 	}
 	if b.isEEPROMAddress(addr) {
 		value := uint16(b.eeprom.ReadBit() & 1)
 		b.openBus = uint32(value) | uint32(value)<<16
-		b.afterAccess(addr, 2, access, true)
+		b.afterAccess(addr, 2, access, true, cycles)
 		return value, cycles
 	}
 	if isSave(addr) && b.save != nil {
@@ -225,7 +225,7 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		value := b.save.Read8(physical - SaveStart)
 		out := uint16(value) * 0x0101
 		b.openBus = uint32(out) | uint32(out)<<16
-		b.afterAccess(addr, 2, access, true)
+		b.afterAccess(addr, 2, access, true, cycles)
 		return out, cycles
 	}
 	aligned := addr &^ 1
@@ -254,7 +254,7 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 		value = value>>8 | value<<8
 	}
 	b.openBus = uint32(value) | uint32(value)<<16
-	b.afterAccess(addr, 2, access, mapped)
+	b.afterAccess(addr, 2, access, mapped, cycles)
 	return value, cycles
 }
 
@@ -266,14 +266,14 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	if raw, ok := b.protectedBIOSRead(addr, 4, access); ok {
 		value := bits.RotateLeft32(raw, -int((addr&3)*8))
 		b.openBus = value
-		b.afterAccess(addr, 4, access, true)
+		b.afterAccess(addr, 4, access, true, cycles)
 		return value, cycles
 	}
 	if isSave(addr) && b.save != nil {
 		value := b.save.Read8(addr - SaveStart)
 		out := uint32(value) * 0x01010101
 		b.openBus = out
-		b.afterAccess(addr, 4, access, true)
+		b.afterAccess(addr, 4, access, true, cycles)
 		return out, cycles
 	}
 	aligned := addr &^ 3
@@ -305,7 +305,7 @@ func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	}
 	value = bits.RotateLeft32(value, -int((addr&3)*8))
 	b.openBus = value
-	b.afterAccess(addr, 4, access, mapped)
+	b.afterAccess(addr, 4, access, mapped, cycles)
 	return value, cycles
 }
 
@@ -314,7 +314,7 @@ func (b *Bus) Write8(addr uint32, value byte, access Access) uint32 {
 	cycles := b.accessCycles(addr, 1, access)
 	b.writeByte(addr, value)
 	b.openBus = uint32(value) * 0x01010101
-	b.afterAccess(addr, 1, access, true)
+	b.afterAccess(addr, 1, access, true, cycles)
 	return cycles
 }
 
@@ -324,13 +324,13 @@ func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 	if b.isEEPROMAddress(addr) {
 		b.eeprom.WriteBit(byte(value))
 		b.openBus = uint32(value) | uint32(value)<<16
-		b.afterAccess(addr, 2, access, true)
+		b.afterAccess(addr, 2, access, true, cycles)
 		return cycles
 	}
 	if isSave(addr) && b.save != nil {
 		b.save.Write8(addr-SaveStart, byte(value>>((addr&1)*8)))
 		b.openBus = uint32(value) | uint32(value)<<16
-		b.afterAccess(addr, 2, access, true)
+		b.afterAccess(addr, 2, access, true, cycles)
 		return cycles
 	}
 	aligned := addr &^ 1
@@ -341,7 +341,7 @@ func (b *Bus) Write16(addr uint32, value uint16, access Access) uint32 {
 		b.writeByteWide(aligned+1, byte(value>>8))
 	}
 	b.openBus = uint32(value) | uint32(value)<<16
-	b.afterAccess(addr, 2, access, true)
+	b.afterAccess(addr, 2, access, true, cycles)
 	return cycles
 }
 
@@ -351,7 +351,7 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	if isSave(addr) && b.save != nil {
 		b.save.Write8(addr-SaveStart, byte(value>>((addr&3)*8)))
 		b.openBus = value
-		b.afterAccess(addr, 4, access, true)
+		b.afterAccess(addr, 4, access, true, cycles)
 		return cycles
 	}
 	aligned := addr &^ 3
@@ -363,7 +363,7 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 		}
 	}
 	b.openBus = value
-	b.afterAccess(addr, 4, access, true)
+	b.afterAccess(addr, 4, access, true, cycles)
 	return cycles
 }
 
