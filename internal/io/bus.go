@@ -105,6 +105,27 @@ func NewBus(s *scheduler.Scheduler, rom []byte) *Bus {
 	return b
 }
 
+// writeWRAM stores a byte in work RAM and refreshes the echo address that
+// mirrors it. Hardware has a single cell for each C000-DDFF byte, readable at
+// both that address and E000-FDFF, so a store has to be visible at both.
+// DE00-DFFF has no echo.
+func (b *Bus) writeWRAM(addr uint16, value byte) {
+	b.data[addr] = value
+	switch {
+	case addr <= 0xDDFF:
+		b.data[addr+0x2000] = value
+	case addr >= 0xE000:
+		b.data[addr-0x2000] = value
+	}
+}
+
+// syncWRAMEcho refreshes the whole echo window from the work RAM it mirrors.
+// The two windows are kept in step by copying, so any path that changes work
+// RAM in bulk (a WRAM bank switch, a state restore) has to call this.
+func (b *Bus) syncWRAMEcho() {
+	copy(b.data[0xE000:0xFE00], b.data[0xC000:0xDE00])
+}
+
 func (b *Bus) Map(m types.Model) {
 	b.model = m
 	b.isGBC = m == types.CGBABC || m == types.CGB0
@@ -204,6 +225,7 @@ func (b *Bus) Map(m types.Model) {
 		b.ReserveAddress(types.SVBK, func(v byte) byte {
 			copy(b.wRAM[utils.ZeroAdjust(b.data[types.SVBK]&7)-1][:], b.data[0xD000:0xE000]) // bus -> wRAM
 			copy(b.data[0xD000:0xE000], b.wRAM[utils.ZeroAdjust(v&7)-1][:])                  // wRAM -> bus
+			b.syncWRAMEcho()                                                                 // D000-DDFF is echoed at F000-FDFF
 			return v | 0xF8
 		})
 		b.Set(types.SVBK, 0xF8)
@@ -410,10 +432,15 @@ func (b *Bus) Write(addr uint16, value byte) {
 				return
 			}
 			b.VRAM[b.data[types.VBK]&b.vRAMBankMask][addr&0x1fff] = value
-		// 0xC000-0xFDFF WRAM & mirror
+		// 0xC000-0xFDFF WRAM & echo. Hardware mirrors C000-DDFF at E000-FDFF
+		// and has no echo at DE00-DFFF, where it would land on OAM and IO.
+		// The previous addr&0xDDFF|0xE000 formula also cleared bit 9, so a
+		// write to EE00 updated CE00 but left EE00 stale and a read-back of
+		// EE00 returned the old byte. Boxxle copies a tile run into echo RAM
+		// and re-reads each address to confirm the store, so it spun on EE00
+		// forever and the game never left its blank transition screen.
 		case addr <= 0xFDFF:
-			b.data[addr&0xDFFF] = value
-			b.data[addr&0xDDFF|0xE000] = value
+			b.writeWRAM(addr, value)
 
 			return
 		// 0xFE00-0xFE9F OAM
