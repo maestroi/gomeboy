@@ -33,12 +33,20 @@ func (p *prefetchState) consume(addr, width uint32, partialWordTailCycles uint32
 	if p.count < halfwords {
 		// ARM instruction fetches are 32-bit on a 16-bit Game Pak bus. If one
 		// halfword is already queued, hardware uses it and only fetches the
-		// missing sequential tail from the cartridge.
+		// missing sequential tail from the cartridge. Preserve any cycles
+		// already spent on that in-flight tail rather than restarting it.
+		tailCycles := partialWordTailCycles
+		if p.credit < tailCycles {
+			tailCycles -= p.credit
+		} else {
+			tailCycles = 0
+		}
+		p.credit = 0
 		p.startAddress += 2
 		p.count--
 		p.lastConsumeHit = true
 		p.lastConsumePartial = true
-		return 1 + partialWordTailCycles, true
+		return 1 + tailCycles, true
 	}
 
 	p.startAddress += uint32(halfwords) * 2
