@@ -40,10 +40,11 @@ type Hooks struct {
 }
 
 type state struct {
-	reload  uint16
-	counter uint16
-	control uint16
-	phase   uint32
+	reload        uint16
+	counter       uint16
+	control       uint16
+	phase         uint32
+	overflowCount uint64
 }
 
 type pendingWriteKind uint8
@@ -274,6 +275,7 @@ func (t *Timers) Advance(cycles uint32) {
 		if overflows[index] == 0 {
 			continue
 		}
+		s.overflowCount += uint64(overflows[index])
 
 		if t.hooks.Overflow != nil {
 			t.hooks.Overflow(index, overflows[index])
@@ -319,6 +321,10 @@ func (t *Timers) Counter(index int) uint16 { return t.timer[index].counter }
 
 // Reload returns the programmed reload latch.
 func (t *Timers) Reload(index int) uint16 { return t.timer[index].reload }
+
+// OverflowCount returns the cumulative overflow edge count for timing-sensitive
+// CPU register reads and tests.
+func (t *Timers) OverflowCount(index int) uint64 { return t.timer[index].overflowCount }
 
 // Control returns the masked TMxCNT_H value.
 func (t *Timers) Control(index int) uint16 { return t.timer[index].control }
