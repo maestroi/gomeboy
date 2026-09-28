@@ -166,27 +166,29 @@ func TestARMRegisterShiftSpecialCases(t *testing.T) {
 }
 
 
-func TestARMPSRTransfersOverlapOpcodeFetch(t *testing.T) {
+func TestARMBranchesUsePipelineRefillTiming(t *testing.T) {
 	c := New()
 	if err := c.SetMode(ModeSystem); err != nil {
 		t.Fatal(err)
 	}
+	c.SetPC(0x100)
 
-	mrs, err := c.ExecuteARM(0xe10f0000) // MRS r0,CPSR
+	branch, err := c.ExecuteARM(0xea000000) // B +0
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mrs.InternalCycles != 0 {
-		t.Fatalf("MRS internal cycles = %d, want 0", mrs.InternalCycles)
+	if branch.InternalCycles != 0 || !branch.PipelineFlush {
+		t.Fatalf("B timing = %+v, want no internal cycle plus pipeline flush", branch)
 	}
 
-	c.WriteRegister(1, uint32(FlagNegative))
-	msr, err := c.ExecuteARM(0xe128f001) // MSR CPSR_f,r1
+	c.SetPC(0x200)
+	c.WriteRegister(0, 0x300)
+	bx, err := c.ExecuteARM(0xe12fff10) // BX r0
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msr.InternalCycles != 0 {
-		t.Fatalf("MSR internal cycles = %d, want 0", msr.InternalCycles)
+	if bx.InternalCycles != 0 || !bx.PipelineFlush {
+		t.Fatalf("BX timing = %+v, want no internal cycle plus pipeline flush", bx)
 	}
 }
 
