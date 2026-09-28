@@ -46,6 +46,25 @@ func TestARMFetchExposesSecondPrefetchOnOpenBus(t *testing.T) {
 	}
 }
 
+func TestThumbFetchExposesSecondPrefetchOnOpenBus(t *testing.T) {
+	rom := make([]byte, 8)
+	binary.LittleEndian.PutUint16(rom[0:], 0x881d) // representative Thumb LDRH
+	binary.LittleEndian.PutUint16(rom[2:], 0xe000) // branch
+	binary.LittleEndian.PutUint16(rom[4:], 0xdead)
+	binary.LittleEndian.PutUint16(rom[6:], 0xdead)
+	m := New(nil, rom)
+
+	if got, _ := m.memory.Read16(bus.ROM0Start, bus.Access{Instruction: true}); got != 0x881d {
+		t.Fatalf("Thumb opcode fetch = %04x, want 881d", got)
+	}
+	if got := m.Bus.OpenBus(); got != 0xdeaddead {
+		t.Fatalf("Thumb fetch open bus = %08x, want second prefetch deaddead", got)
+	}
+	if got, _ := m.memory.Read16(bus.IOStart+0x04e, bus.Access{}); got != 0xdead {
+		t.Fatalf("unmapped I/O read = %04x, want pipeline open bus dead", got)
+	}
+}
+
 func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
 	m := New(nil, nil)
 	code := uint32(bus.IWRAMStart + 0x100)
