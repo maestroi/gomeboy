@@ -126,6 +126,72 @@ func TestRunnerAwardsBoundedStabilityAtBudget(t *testing.T) {
 	}
 }
 
+
+func TestRunnerDrivesFrameInputAndRequiresStableCheckpoint(t *testing.T) {
+	const signature uint32 = 0x42
+	rom := armROM(
+		0xe59f0018, // ldr r0, [pc, #0x18] -> KEYINPUT
+		0xe1d010b0, // ldrh r1, [r0]
+		0xe3110001, // tst r1, #1
+		0x1afffffc, // bne wait
+		0xe59f000c, // ldr r0, [pc, #0x0c] -> EWRAM
+		0xe3a01042, // mov r1, #0x42
+		0xe5801000, // str r1, [r0]
+		0xeafffffe, // b .
+		bus.IOStart+0x130,
+		bus.EWRAMStart,
+	)
+	base := Case{
+		Name:        "input-stability",
+		ROM:         rom,
+		ROMSHA256:   sha256Hex(rom),
+		Boot:        conformance.BootDirect,
+		Limits:      conformance.Limits{Steps: 500000, Frames: 2},
+		TargetStage: StageStable,
+		Checkpoint: &Checkpoint{
+			Type:    "memory",
+			Address: bus.EWRAMStart,
+			Width:   4,
+			Value:   signature,
+		},
+	}
+	runner := Runner{Suite: "smoke", SuiteRevision: "1", GomeBoyCommit: "test"}
+
+	withoutInput := runner.Run(base)
+	if withoutInput.Status != StatusTimeout || withoutInput.HighestStage != StageFirstFrame {
+		t.Fatalf("without input = %+v, want timeout after first-frame progress", withoutInput)
+	}
+
+	withInput := base
+	withInput.Inputs = []InputEvent{
+		{Frame: 1, Button: "a", Pressed: true},
+		{Frame: 2, Button: "a", Pressed: false},
+	}
+	got := runner.Run(withInput)
+	if got.Status != StatusPass || got.HighestStage != StageStable {
+		t.Fatalf("with input = %+v, want bounded-stability pass", got)
+	}
+	if got.Frames != 2 {
+		t.Fatalf("frames = %d, want 2", got.Frames)
+	}
+}
+
+func TestRunnerRejectsUnknownInputButton(t *testing.T) {
+	rom := armROM(0xeafffffe)
+	result := (Runner{}).Run(Case{
+		Name:        "bad-input",
+		ROM:         rom,
+		ROMSHA256:   sha256Hex(rom),
+		Boot:        conformance.BootDirect,
+		Limits:      conformance.Limits{Steps: 1},
+		TargetStage: StageExecuted,
+		Inputs:      []InputEvent{{Button: "turbo", Pressed: true}},
+	})
+	if result.Status != StatusFail || !strings.Contains(result.Detail, "unknown button") {
+		t.Fatalf("result = %+v, want unknown-button failure", result)
+	}
+}
+
 func TestRunnerRejectsUnpinnedROM(t *testing.T) {
 	rom := armROM(0xeafffffe)
 	result := (Runner{}).Run(Case{
@@ -155,10 +221,12 @@ func TestMarkdownReportIncludesStagesAndAccuracyWarning(t *testing.T) {
 			Frames:       1,
 			Steps:        42,
 			ROMSHA256:    "deadbeef",
+			Source:       "example/project",
+			SourceRevision: "abc123",
 		}},
 	}
 	got := report.Markdown()
-	for _, want := range []string{"demo\\|rom", "first_frame", "not hardware-accuracy percentages"} {
+	for _, want := range []string{"demo\\|rom", "example/project", "abc123", "first_frame", "not hardware-accuracy percentages"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, got)
 		}
