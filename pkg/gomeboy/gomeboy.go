@@ -113,6 +113,11 @@ type Frame struct {
 type Emulator struct {
 	core emulationCore
 
+	// executionEpoch identifies the current continuous execution timeline for
+	// this Emulator instance. It changes after successful lifecycle operations
+	// that can replace execution state without ordinary stepping.
+	executionEpoch uint64
+
 	// gb is a transitional GB/GBC capability handle used by APIs that still
 	// expose system-specific debugger, serial, cartridge, and model details.
 	// Core-neutral lifecycle/frame/state/memory APIs must go through core.
@@ -298,6 +303,7 @@ func New(opts ...Option) (*Emulator, error) {
 			return nil, err
 		}
 		e.initialised = true
+		e.markExecutionDiscontinuity()
 	} else if cfg.romPath != "" {
 		if err := e.LoadROM(cfg.romPath); err != nil {
 			return nil, err
@@ -366,6 +372,7 @@ func (e *Emulator) LoadROM(path string) error {
 		return err
 	}
 	e.initialised = true
+	e.markExecutionDiscontinuity()
 	return nil
 }
 
@@ -389,6 +396,7 @@ func (e *Emulator) LoadROMBytes(rom []byte, name string) error {
 		return err
 	}
 	e.initialised = true
+	e.markExecutionDiscontinuity()
 	return nil
 }
 
@@ -436,6 +444,25 @@ func (e *Emulator) Cycle() uint64 {
 	return e.core.Cycle()
 }
 
+// ExecutionEpoch identifies the current continuous execution timeline within
+// this Emulator instance. The value is stable while execution advances through
+// StepFrame/StepFrames/StepInstruction and changes after a successful ROM load,
+// Reset, state/checkpoint restore, or QuickLoad.
+//
+// The epoch is deliberately process-local and is not serialized into save
+// states. Consumers such as external renderers should compare it only against
+// earlier observations from the same Emulator instance.
+func (e *Emulator) ExecutionEpoch() uint64 {
+	if e == nil {
+		return 0
+	}
+	return e.executionEpoch
+}
+
+func (e *Emulator) markExecutionDiscontinuity() {
+	e.executionEpoch++
+}
+
 // Read8 performs a CPU-accurate read of a single byte from the emulator's
 // 16-bit address space. The result can be affected by DMA conflicts and PPU
 // region locks, so it is not a pure observation of memory. Use Peek8 or
@@ -480,7 +507,11 @@ func (e *Emulator) Frame() Frame {
 // is already loaded (it is not re-read from disk). Battery-backed cartridge
 // RAM is preserved across the reset.
 func (e *Emulator) Reset() error {
-	return e.core.Reset()
+	if err := e.core.Reset(); err != nil {
+		return err
+	}
+	e.markExecutionDiscontinuity()
+	return nil
 }
 
 // SaveState serializes the emulator's complete execution state into a byte
@@ -493,7 +524,11 @@ func (e *Emulator) SaveState() ([]byte, error) {
 // LoadState restores the emulator to a state previously produced by
 // SaveState.
 func (e *Emulator) LoadState(data []byte) error {
-	return e.core.LoadState(data)
+	if err := e.core.LoadState(data); err != nil {
+		return err
+	}
+	e.markExecutionDiscontinuity()
+	return nil
 }
 
 // QuickSave writes the complete emulator state to <romname>.state, where
@@ -504,7 +539,11 @@ func (e *Emulator) QuickSave() error {
 
 // QuickLoad restores the emulator state from <romname>.state.
 func (e *Emulator) QuickLoad() error {
-	return e.core.QuickLoad()
+	if err := e.core.QuickLoad(); err != nil {
+		return err
+	}
+	e.markExecutionDiscontinuity()
+	return nil
 }
 
 // Close flushes any pending battery-backed save data to disk and releases
