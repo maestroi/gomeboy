@@ -171,7 +171,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 			result := left + right
 			if rd == 15 {
 				c.SetPC(result)
-				return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+				return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 			}
 			c.WriteRegister(rd, result)
 		case 1: // CMP
@@ -180,12 +180,12 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		case 2: // MOV, flags unchanged
 			if rd == 15 {
 				c.SetPC(right)
-				return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+				return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 			}
 			c.WriteRegister(rd, right)
 		case 3: // BX
 			c.branchExchange(right)
-			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+			return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 		}
 		c.advancePC()
 		if instruction == 0x46c0 { // MOV r8,r8: canonical ARMv4T Thumb NOP
@@ -211,7 +211,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		if conditionPassed(cond, c.cpsr) {
 			offset := int32(int8(instruction&0xff)) << 1
 			c.SetPC(uint32(int32(c.VisiblePC()) + offset))
-			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+			return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 		}
 		c.advancePC()
 		return ExecutionResult{InternalCycles: 1}, nil
@@ -225,7 +225,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		}
 		offset <<= 1
 		c.SetPC(uint32(int32(c.VisiblePC()) + offset))
-		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+		return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 	}
 
 	// Format 19: long branch with link, first half.
@@ -244,7 +244,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		target := c.ReadRegister(14) + uint32(instruction&0x07ff)<<1
 		c.WriteRegister(14, (c.pc+2)|1)
 		c.SetPC(target)
-		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+		return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 	}
 
 	return ExecutionResult{}, fmt.Errorf("arm7tdmi: unsupported Thumb instruction 0x%04x", instruction)
