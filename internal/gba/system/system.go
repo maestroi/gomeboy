@@ -596,7 +596,7 @@ func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint
 		}
 		// Do this before hardware advances so DMA can still replace the
 		// physical-bus value if it starts during the fetch.
-		t.m.Bus.SetOpenBus(open)
+		t.m.Bus.SetCPUOpenBus(open)
 	}
 	t.consume(cycles)
 	return value, cycles
@@ -609,7 +609,7 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 		// the current opcode executes. At an ARM fetch at PC, that is PC+8.
 		// Set it before advancing hardware so a DMA transfer that occurs
 		// during the fetch can still take ownership of the physical bus.
-		t.m.Bus.SetOpenBus(t.m.Bus.Peek32(addr + 8))
+		t.m.Bus.SetCPUOpenBus(t.m.Bus.Peek32(addr + 8))
 	}
 	t.consume(cycles)
 	return value, cycles
