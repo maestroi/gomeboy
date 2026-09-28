@@ -1,6 +1,7 @@
 package system
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
@@ -24,6 +25,25 @@ func programDMA(m *Machine, index int, source, dest uint32, count uint16, contro
 	m.Bus.Write32(base+4, dest, bus.Access{})
 	m.Bus.Write16(base+8, count, bus.Access{})
 	m.Bus.Write16(base+10, control, bus.Access{})
+}
+
+
+func TestARMFetchExposesSecondPrefetchOnOpenBus(t *testing.T) {
+	rom := make([]byte, 16)
+	binary.LittleEndian.PutUint32(rom[0:], 0xe5903000)
+	binary.LittleEndian.PutUint32(rom[4:], armNOP)
+	binary.LittleEndian.PutUint32(rom[8:], 0xe3a02007)
+	m := New(nil, rom)
+
+	if got, _ := m.memory.Read32(bus.ROM0Start, bus.Access{Instruction: true}); got != 0xe5903000 {
+		t.Fatalf("opcode fetch = %08x, want e5903000", got)
+	}
+	if got := m.Bus.OpenBus(); got != 0xe3a02007 {
+		t.Fatalf("ARM fetch open bus = %08x, want second prefetch e3a02007", got)
+	}
+	if got, _ := m.memory.Read32(0x01000000, bus.Access{}); got != 0xe3a02007 {
+		t.Fatalf("unmapped read = %08x, want prefetched e3a02007", got)
+	}
 }
 
 func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
