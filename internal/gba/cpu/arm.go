@@ -329,11 +329,30 @@ func (c *CPU) executeARMMultiplyLong(instruction uint32) (ExecutionResult, error
 	}
 
 	cycles := multiplyInternalCycles(rsValue) + 1
+	if !signed {
+		cycles = multiplyUnsignedInternalCycles(rsValue) + 1
+	}
 	if accumulate {
 		cycles++
 	}
 	c.advancePC()
 	return ExecutionResult{InternalCycles: cycles}, nil
+}
+
+func multiplyUnsignedInternalCycles(multiplier uint32) uint8 {
+	// Unsigned long multiply can terminate early only when the remaining high
+	// bytes are zero. All-one high bytes are a signed termination case and
+	// must continue through the full unsigned multiplier.
+	if multiplier&0xffffff00 == 0 {
+		return 1
+	}
+	if multiplier&0xffff0000 == 0 {
+		return 2
+	}
+	if multiplier&0xff000000 == 0 {
+		return 3
+	}
+	return 4
 }
 
 func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error) {
