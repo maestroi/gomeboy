@@ -123,6 +123,35 @@ func TestThumbLongBranchWithLink(t *testing.T) {
 	}
 }
 
+func TestThumbALUOverlapsOpcodeFetch(t *testing.T) {
+	c := newThumbCPU(t)
+
+	result, err := c.ExecuteThumb(0x2005) // MOV r0,#5
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.InternalCycles != 0 {
+		t.Fatalf("MOV immediate internal cycles = %d, want 0", result.InternalCycles)
+	}
+
+	c.WriteRegister(1, 1)
+	result, err = c.ExecuteThumb(0x1840) // ADD r0,r0,r1
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.InternalCycles != 0 {
+		t.Fatalf("ADD register internal cycles = %d, want 0", result.InternalCycles)
+	}
+
+	result, err = c.ExecuteThumb(0x4088) // LSL r0,r1
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.InternalCycles != 1 {
+		t.Fatalf("register-shift internal cycles = %d, want 1", result.InternalCycles)
+	}
+}
+
 func TestThumbALUAndMultiplyTiming(t *testing.T) {
 	c := newThumbCPU(t)
 	c.WriteRegister(0, 3)
