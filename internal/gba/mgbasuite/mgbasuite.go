@@ -427,6 +427,10 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 		return number, true, err
 	}
 	m.CPU.SetPC(lr)
+	// The real BIOS leaves this instruction in the protected BIOS read latch
+	// when returning from its SWI dispatcher. The suite relies on that value
+	// for BIOS data-read tests even though this harness HLEs the service body.
+	m.Bus.SetBIOSPrefetch(0xe3a02004)
 	return number, true, nil
 }
 
@@ -512,6 +516,11 @@ func hleDiv(m *system.Machine, arm bool) error {
 func hleCPUSet(m *system.Machine, fast bool) {
 	src := m.CPU.ReadRegister(0)
 	dst := m.CPU.ReadRegister(1)
+	// Nintendo's BIOS rejects CpuSet/CpuFastSet sources below EWRAM rather
+	// than copying protected BIOS/unmapped data.
+	if src < bus.EWRAMStart {
+		return
+	}
 	control := m.CPU.ReadRegister(2)
 	count := control & 0x000fffff
 	fill := control&(1<<24) != 0
