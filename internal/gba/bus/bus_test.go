@@ -14,6 +14,34 @@ func testBus() *Bus {
 }
 
 
+
+func TestOutOfBoundsGamePakReadsUseAddressPattern(t *testing.T) {
+	b := New(nil, make([]byte, 4))
+	const addr uint32 = 0x092468ac
+
+	if got, _ := b.Read8(addr, Access{}); got != 0x56 {
+		t.Fatalf("OOB ROM byte = %02x, want 56", got)
+	}
+	if got, _ := b.Read8(addr+1, Access{}); got != 0x34 {
+		t.Fatalf("OOB ROM odd byte = %02x, want 34", got)
+	}
+	if got, _ := b.Read16(addr, Access{}); got != 0x3456 {
+		t.Fatalf("OOB ROM halfword = %04x, want 3456", got)
+	}
+	if got, _ := b.Read16(addr+1, Access{}); got != 0x560034 {
+		t.Fatalf("OOB ROM odd halfword = %08x, want 56000034", uint32(got))
+	}
+	if got, _ := b.Read32(addr, Access{}); got != 0x34573456 {
+		t.Fatalf("OOB ROM word = %08x, want 34573456", got)
+	}
+	for offset, want := range []uint32{0x34573456, 0x56345734, 0x34563457, 0x57345634} {
+		got, _ := b.Read32(addr+uint32(offset), Access{})
+		if got != want {
+			t.Fatalf("OOB ROM word +%d = %08x, want %08x", offset, got, want)
+		}
+	}
+}
+
 func TestProtectedBIOSReadsUsePrefetchLatchOutsideBIOS(t *testing.T) {
 	bios := make([]byte, BIOSSize)
 	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
