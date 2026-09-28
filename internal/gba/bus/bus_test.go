@@ -57,10 +57,10 @@ func TestBIOSReadsRemainDirectWhileExecutingBIOS(t *testing.T) {
 func TestMemoryMapAndMirrors(t *testing.T) {
 	b := testBus()
 
-	if got, _ := b.Read8(BIOSStart, Access{}); got != 0x12 {
+	if got := b.Peek8(BIOSStart); got != 0x12 {
 		t.Fatalf("BIOS[0] = %02x, want 12", got)
 	}
-	if got, _ := b.Read8(BIOSStart+BIOSSize-1, Access{}); got != 0x34 {
+	if got := b.Peek8(BIOSStart+BIOSSize-1); got != 0x34 {
 		t.Fatalf("BIOS[last] = %02x, want 34", got)
 	}
 
