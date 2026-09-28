@@ -84,6 +84,12 @@ func TestEEPROMDMA3RoundTrip(t *testing.T) {
 	if units, _ := d.LastTransfer(3); units != uint32(len(writePacket)) {
 		t.Fatalf("EEPROM write DMA units = %d, want %d", units, len(writePacket))
 	}
+	if got, _ := b.Read16(eepAddr, bus.Access{}); got != 0 {
+		t.Fatalf("EEPROM write busy bit = %04x, want 0000", got)
+	}
+	// This test drives DMA directly rather than through system.Machine, so
+	// explicitly advance the cartridge's write-settle timer here.
+	e.Advance(cartridge.EEPROMWriteSettleCycles)
 
 	readRequest := eepromReadRequest(14, address)
 	requestSource := uint32(bus.EWRAMStart + 0x2000)

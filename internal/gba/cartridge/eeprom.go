@@ -5,6 +5,14 @@ const (
 	EEPROM512BSize = 512
 	// EEPROM8KSize is the capacity of the large GBA serial EEPROM part.
 	EEPROM8KSize = 8 * 1024
+
+	// EEPROMWriteSettleCycles is the write-cycle busy interval exposed by the
+	// serial ready/busy bit after a successful 64-bit block write.
+	//
+	// Real parts vary. This value matches the established mGBA estimate and,
+	// importantly, models the hardware-visible low-ready interval instead of
+	// making EEPROM writes appear instantaneous.
+	EEPROMWriteSettleCycles uint32 = 115000
 )
 
 type eepromMode uint8
@@ -26,12 +34,13 @@ type EEPROM struct {
 	data        []byte
 	addressBits uint8
 
-	mode      eepromMode
-	read      bool
-	address   uint32
-	bitCount  uint8
-	writeData uint64
-	readBit   uint8
+	mode       eepromMode
+	read       bool
+	address    uint32
+	bitCount   uint8
+	writeData  uint64
+	readBit    uint8
+	busyCycles uint32
 }
 
 // NewEEPROM512B creates a blank 512-byte EEPROM using six address bits.
@@ -52,9 +61,24 @@ func newEEPROM(size int, addressBits uint8) *EEPROM {
 	return e
 }
 
+// Advance advances the EEPROM's internal write-cycle timer in GBA master-clock
+// cycles. While a write is settling the serial output line reports busy (0)
+// and new commands are ignored.
+func (e *EEPROM) Advance(cycles uint32) {
+	if cycles >= e.busyCycles {
+		e.busyCycles = 0
+		return
+	}
+	e.busyCycles -= cycles
+}
+
 // WriteBit clocks one serial input bit into the EEPROM. Only bit 0 is
 // significant; callers may pass a full bus byte/halfword reduced to byte.
 func (e *EEPROM) WriteBit(value byte) {
+	if e.busyCycles != 0 {
+		return
+	}
+
 	bit := value & 1
 
 	switch e.mode {
@@ -95,8 +119,8 @@ func (e *EEPROM) WriteBit(value byte) {
 	case eepromWriteStop:
 		// A valid transfer terminates with a zero stop bit. Buffering the full
 		// payload until here prevents malformed commands from partially writing.
-		if bit == 0 {
-			e.commitWrite()
+		if bit == 0 && e.commitWrite() {
+			e.busyCycles = EEPROMWriteSettleCycles
 		}
 		e.resetProtocol()
 
@@ -115,9 +139,13 @@ func (e *EEPROM) WriteBit(value byte) {
 	}
 }
 
-// ReadBit clocks one serial output bit from the EEPROM. When no read command
-// is active the line is high, which also represents the ready state.
+// ReadBit clocks one serial output bit from the EEPROM. During the EEPROM's
+// internal write cycle the line is low (busy). Otherwise an idle line is high
+// (ready), and an active read shifts four dummy bits plus 64 data bits.
 func (e *EEPROM) ReadBit() byte {
+	if e.busyCycles != 0 {
+		return 0
+	}
 	if e.mode != eepromReadData {
 		return 1
 	}
@@ -143,15 +171,16 @@ func (e *EEPROM) ReadBit() byte {
 	return bit
 }
 
-func (e *EEPROM) commitWrite() {
+func (e *EEPROM) commitWrite() bool {
 	block := e.blockOffset()
 	if block < 0 {
-		return
+		return false
 	}
 	for i := 0; i < 8; i++ {
 		shift := uint(56 - i*8)
 		e.data[block+i] = byte(e.writeData >> shift)
 	}
+	return true
 }
 
 func (e *EEPROM) blockOffset() int {

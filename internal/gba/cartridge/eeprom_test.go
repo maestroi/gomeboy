@@ -63,11 +63,44 @@ func TestEEPROM512BWriteRead(t *testing.T) {
 	const want uint64 = 0x0123456789abcdef
 
 	eepromWriteBlock(e, address, want, 0)
+	if got := e.ReadBit(); got != 0 {
+		t.Fatalf("write busy bit = %d, want 0", got)
+	}
+	e.Advance(EEPROMWriteSettleCycles - 1)
+	if got := e.ReadBit(); got != 0 {
+		t.Fatalf("pre-settle busy bit = %d, want 0", got)
+	}
+	e.Advance(1)
+	if got := e.ReadBit(); got != 1 {
+		t.Fatalf("settled ready bit = %d, want 1", got)
+	}
 	if got := eepromReadBlock(t, e, address); got != want {
 		t.Fatalf("read block = %016x, want %016x", got, want)
 	}
 	if got := eepromReadBlock(t, e, address+1); got != ^uint64(0) {
 		t.Fatalf("neighbor block changed to %016x", got)
+	}
+}
+
+func TestEEPROMBusyIgnoresNewCommands(t *testing.T) {
+	e := NewEEPROM512B()
+	const address = 3
+	const want uint64 = 0x1020304050607080
+
+	eepromWriteBlock(e, address, want, 0)
+	// Attempt a command while the part is busy. All input is ignored until the
+	// write-cycle timer expires.
+	e.WriteBit(1)
+	e.WriteBit(1)
+	eepromWriteAddress(e, address)
+	e.WriteBit(0)
+	if got := e.ReadBit(); got != 0 {
+		t.Fatalf("busy command attempt returned %d, want 0", got)
+	}
+	e.Advance(EEPROMWriteSettleCycles)
+
+	if got := eepromReadBlock(t, e, address); got != want {
+		t.Fatalf("post-settle read = %016x, want %016x", got, want)
 	}
 }
 
@@ -77,6 +110,7 @@ func TestEEPROM8KFourteenBitAddressProtocol(t *testing.T) {
 	const want uint64 = 0xfedcba9876543210
 
 	eepromWriteBlock(e, address, want, 0)
+	e.Advance(EEPROMWriteSettleCycles)
 	if got := eepromReadBlock(t, e, address); got != want {
 		t.Fatalf("read block = %016x, want %016x", got, want)
 	}
@@ -85,6 +119,9 @@ func TestEEPROM8KFourteenBitAddressProtocol(t *testing.T) {
 func TestEEPROMMalformedStopDoesNotCommitWrite(t *testing.T) {
 	e := NewEEPROM512B()
 	eepromWriteBlock(e, 5, 0x1122334455667788, 1)
+	if got := e.ReadBit(); got != 1 {
+		t.Fatalf("malformed write entered busy state: %d", got)
+	}
 	if got := eepromReadBlock(t, e, 5); got != ^uint64(0) {
 		t.Fatalf("malformed write committed %016x", got)
 	}
@@ -105,6 +142,9 @@ func TestEEPROMOutOfRangeAddressDoesNotAlias(t *testing.T) {
 	e := NewEEPROM8K()
 	const invalid = 0x400
 	eepromWriteBlock(e, invalid, 0x0011223344556677, 0)
+	if got := e.ReadBit(); got != 1 {
+		t.Fatalf("out-of-range write entered busy state: %d", got)
+	}
 	if got := eepromReadBlock(t, e, invalid); got != ^uint64(0) {
 		t.Fatalf("out-of-range block = %016x, want erased", got)
 	}
