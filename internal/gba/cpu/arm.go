@@ -35,7 +35,7 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 	if instruction&0x0ffffff0 == 0x012fff10 {
 		rm := int(instruction & 0xf)
 		c.branchExchange(c.ReadRegister(rm))
-		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+		return ExecutionResult{PipelineFlush: true}, nil
 	}
 
 	// SWI.
@@ -58,7 +58,7 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 		}
 		offset := imm24 << 2
 		c.SetPC(uint32(int32(c.VisiblePC()) + offset))
-		return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
+		return ExecutionResult{PipelineFlush: true}, nil
 	}
 
 	if instruction&0x0e000000 == 0x08000000 {
@@ -354,7 +354,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 		}
 		c.WriteRegister(rd, uint32(value))
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	immediate := instruction&(1<<25) != 0
@@ -363,7 +363,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 	mask := psrWriteMask(fieldMask)
 	if mask == 0 {
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	var source uint32
@@ -392,7 +392,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 			return ExecutionResult{}, err
 		}
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// User mode may only update the flags field.
@@ -413,7 +413,7 @@ func (c *CPU) executeARMPSRTransfer(instruction uint32) (ExecutionResult, error)
 		return ExecutionResult{}, err
 	}
 	c.advancePC()
-	return ExecutionResult{}, nil
+	return ExecutionResult{InternalCycles: 1}, nil
 }
 
 func psrWriteMask(fields uint8) uint32 {
