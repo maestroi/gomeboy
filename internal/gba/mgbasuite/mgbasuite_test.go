@@ -122,6 +122,30 @@ func TestHLECPUSetCopiesAndFillsThroughGBABus(t *testing.T) {
 }
 
 
+func TestHLECPUSetPreservesSRAMSourceLane(t *testing.T) {
+	m := system.NewWithCartridgeConfig(nil, nil, cartridge.Config{SaveType: cartridge.SaveSRAM})
+	dst := uint32(bus.IWRAMStart + 0x1c0)
+	for index, value := range []byte{0x47, 0x61, 0x6d, 0x65} {
+		m.Bus.Write8(bus.SaveStart+uint32(index), value, bus.Access{})
+	}
+
+	m.CPU.WriteRegister(0, bus.SaveStart+1)
+	m.CPU.WriteRegister(1, dst)
+	m.CPU.WriteRegister(2, (1<<26)|1)
+	hleCPUSet(m, false)
+	if got, _ := m.Bus.Read32(dst, bus.Access{}); got != 0x61616161 {
+		t.Fatalf("unaligned SRAM CpuSet word = %08x, want 61616161", got)
+	}
+
+	m.CPU.WriteRegister(0, bus.SaveStart+1)
+	m.CPU.WriteRegister(1, dst+4)
+	m.CPU.WriteRegister(2, 1)
+	hleCPUSet(m, false)
+	if got, _ := m.Bus.Read16(dst+4, bus.Access{}); got != 0x0061 {
+		t.Fatalf("unaligned SRAM CpuSet halfword = %04x, want 0061", got)
+	}
+}
+
 func TestHLECPUSetRejectsProtectedBIOSSource(t *testing.T) {
 	bios := make([]byte, bus.BIOSSize)
 	bios[0], bios[1], bios[2], bios[3] = 0x11, 0x22, 0x33, 0x44
