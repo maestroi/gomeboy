@@ -24,6 +24,16 @@ func newTestAudio(t *testing.T) (*Audio, *bus.Bus, *requestLog) {
 }
 
 
+func TestUnusedSoundRegisterHolesReadZero(t *testing.T) {
+	_, b, _ := newTestAudio(t)
+	for _, offset := range []uint32{0x066, 0x06e, 0x076, 0x07a, 0x07e, 0x086, 0x08a} {
+		b.Write16(bus.IOStart+offset, 0xffff, bus.Access{})
+		if got, _ := b.Read16(bus.IOStart+offset, bus.Access{}); got != 0 {
+			t.Fatalf("sound hole %03x = %04x, want 0000", offset, got)
+		}
+	}
+}
+
 func TestHeadlessAdvanceBatchesHostSamplingWithoutChangingPSGState(t *testing.T) {
 	big, _, _ := newTestAudio(t)
 	chunked, _, _ := newTestAudio(t)
