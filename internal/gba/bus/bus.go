@@ -75,9 +75,11 @@ type Bus struct {
 	eeprom  EEPROMDevice
 	gamePak GamePakDevice
 
-	wait     WaitControl
-	prefetch prefetchState
-	openBus  uint32
+	wait         WaitControl
+	prefetch     prefetchState
+	openBus      uint32
+	biosPrefetch uint32
+	cpuInBIOS    bool
 
 	// Byte writes to OBJ VRAM are ignored. Tile modes start OBJ VRAM at
 	// 0x10000; bitmap modes move it to 0x14000.
@@ -140,9 +142,24 @@ func (b *Bus) OpenBus() uint32 { return b.openBus }
 // value when implementing instruction-derived open-bus behavior.
 func (b *Bus) SetOpenBus(value uint32) { b.openBus = value }
 
+// SetBIOSPrefetch updates the protected BIOS read latch. BIOS HLE adapters use
+// this when they emulate a BIOS call without executing the real instruction
+// stream; real BIOS instruction fetches maintain the latch automatically.
+func (b *Bus) SetBIOSPrefetch(value uint32) { b.biosPrefetch = value }
+
+// BIOSPrefetch returns the current protected BIOS read latch.
+func (b *Bus) BIOSPrefetch() uint32 { return b.biosPrefetch }
+
 // Read8 performs an 8-bit bus read and returns the access duration in cycles.
 func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 	cycles := b.accessCycles(addr, 1, access)
+	b.noteInstructionFetch(addr, 1, access)
+	if value, ok := b.protectedBIOSRead(addr, 1, access); ok {
+		out := byte(value)
+		b.openBus = uint32(out) * 0x01010101
+		b.afterAccess(addr, 1, access, true)
+		return out, cycles
+	}
 	if access.DMA && isSave(addr) {
 		value := byte(b.openBus >> ((addr & 3) * 8))
 		b.openBus = uint32(value) * 0x01010101
@@ -162,6 +179,16 @@ func (b *Bus) Read8(addr uint32, access Access) (byte, uint32) {
 // halfword and rotate it by 8 bits.
 func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 	cycles := b.accessCycles(addr, 2, access)
+	b.noteInstructionFetch(addr, 2, access)
+	if raw, ok := b.protectedBIOSRead(addr, 2, access); ok {
+		value := uint16(raw)
+		if addr&1 != 0 {
+			value = value>>8 | value<<8
+		}
+		b.openBus = uint32(value) | uint32(value)<<16
+		b.afterAccess(addr, 2, access, true)
+		return value, cycles
+	}
 	if b.isEEPROMAddress(addr) {
 		value := uint16(b.eeprom.ReadBit() & 1)
 		b.openBus = uint32(value) | uint32(value)<<16
@@ -210,6 +237,13 @@ func (b *Bus) Read16(addr uint32, access Access) (uint16, uint32) {
 // word right by 8/16/24 bits.
 func (b *Bus) Read32(addr uint32, access Access) (uint32, uint32) {
 	cycles := b.accessCycles(addr, 4, access)
+	b.noteInstructionFetch(addr, 4, access)
+	if raw, ok := b.protectedBIOSRead(addr, 4, access); ok {
+		value := bits.RotateLeft32(raw, -int((addr&3)*8))
+		b.openBus = value
+		b.afterAccess(addr, 4, access, true)
+		return value, cycles
+	}
 	if access.DMA && isSave(addr) {
 		value := bits.RotateLeft32(b.openBus, -int((addr&3)*8))
 		b.openBus = value
@@ -328,6 +362,47 @@ func (b *Bus) Peek8(addr uint32) byte {
 		return byte(b.openBus >> ((addr & 3) * 8))
 	}
 	return value
+}
+
+
+func (b *Bus) protectedBIOSRead(addr, width uint32, access Access) (uint32, bool) {
+	if addr >= BIOSSize || access.Instruction || access.DMA || b.cpuInBIOS {
+		return 0, false
+	}
+	switch width {
+	case 1:
+		return (b.biosPrefetch >> ((addr & 3) * 8)) & 0xff, true
+	case 2:
+		return (b.biosPrefetch >> ((addr & 2) * 8)) & 0xffff, true
+	case 4:
+		return b.biosPrefetch, true
+	default:
+		return 0, false
+	}
+}
+
+func (b *Bus) noteInstructionFetch(addr, width uint32, access Access) {
+	if !access.Instruction {
+		return
+	}
+	if addr >= BIOSSize {
+		b.cpuInBIOS = false
+		return
+	}
+	b.cpuInBIOS = true
+
+	// The ARM7 BIOS protection latch reflects the instruction pipeline rather
+	// than the addressed BIOS byte. Our CPU does not materialize a two-entry
+	// fetch queue, so derive the second prefetched word from the current fetch.
+	var ahead uint32
+	if width == 2 {
+		ahead = ((addr &^ 1) + 4) &^ 3
+	} else {
+		ahead = (addr &^ 3) + 8
+	}
+	if ahead+4 <= uint32(len(b.bios)) {
+		b.biosPrefetch = binary.LittleEndian.Uint32(b.bios[ahead : ahead+4])
+	}
 }
 
 func (b *Bus) readByte(addr uint32) (byte, bool) {
