@@ -568,6 +568,7 @@ func hleCPUSet(m *system.Machine, fast bool) {
 type resultCollector struct {
 	offset   uint32
 	pending  string
+	testName string
 	failed   int
 	failures []string
 }
@@ -594,8 +595,15 @@ func (c *resultCollector) poll(save bus.SaveDevice) {
 	c.pending = lines[len(lines)-1]
 	for _, line := range lines[:len(lines)-1] {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Memory test: ") {
+			c.testName = strings.TrimPrefix(line, "Memory test: ")
+			continue
+		}
 		if strings.HasSuffix(line, "FAIL") {
 			c.failed++
+			if c.testName != "" {
+				line = c.testName + ": " + line
+			}
 			c.failures = append(c.failures, line)
 		}
 	}
