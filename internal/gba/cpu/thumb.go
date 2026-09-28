@@ -329,11 +329,11 @@ func (c *CPU) executeThumbALU(instruction uint16) (ExecutionResult, error) {
 		// on the destination operand before it is overwritten, not on Rm.
 		cycles = multiplyInternalCycles(left)
 	}
-	result := ExecutionResult{InternalCycles: cycles}
+	execResult := ExecutionResult{InternalCycles: cycles}
 	if op == 0xd {
-		result.BreakSequentialFetch = true
+		execResult.BreakSequentialFetch = true
 	}
-	return result, nil
+	return execResult, nil
 }
 
 func multiplyInternalCycles(multiplier uint32) uint8 {
