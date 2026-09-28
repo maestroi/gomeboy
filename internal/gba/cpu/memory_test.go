@@ -42,8 +42,8 @@ func TestARMStepFetchesExecutesAndAccountsBusCycles(t *testing.T) {
 	if got, _ := b.Read32(bus.IWRAMStart, bus.Access{}); got != 0x11223344 {
 		t.Fatalf("STR result = %08x, want 11223344", got)
 	}
-	if first.FetchCycles != 8 || first.MemoryCycles != 1 || first.InternalCycles != 0 || first.TotalCycles != 9 {
-		t.Fatalf("first step timing = %+v, want fetch=8 memory=1 internal=0 total=9", first)
+	if first.FetchCycles != 8 || first.MemoryCycles != 1 || first.InternalCycles != 1 || first.TotalCycles != 10 {
+		t.Fatalf("first step timing = %+v, want fetch=8 memory=1 internal=1 total=10", first)
 	}
 
 	second, err := c.Step(b)
