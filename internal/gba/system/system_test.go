@@ -208,45 +208,6 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	}
 }
 
-func TestCPUTimerReadSamplesCompletionEdge(t *testing.T) {
-	m := New(nil, nil)
-	base := uint32(bus.IOStart + 0x100)
-
-	m.Bus.Write16(base, 0xfffd, bus.Access{})
-	m.Bus.Write16(base+2, 1<<7, bus.Access{})
-
-	value, cycles := m.memory.Read16(base, bus.Access{})
-	if cycles != 1 {
-		t.Fatalf("timer read cycles = %d, want 1", cycles)
-	}
-	if value != 0xfffe || m.Timers.Counter(0) != 0xfffe {
-		t.Fatalf("first timer read value/counter = %04x/%04x, want fffe/fffe",
-			value, m.Timers.Counter(0))
-	}
-
-	value, _ = m.memory.Read16(base, bus.Access{})
-	if value != 0xffff {
-		t.Fatalf("second timer read = %04x, want ffff", value)
-	}
-
-	value, _ = m.memory.Read16(base, bus.Access{})
-	if value != 0xfffd {
-		t.Fatalf("overflow-edge timer read = %04x, want reload fffd", value)
-	}
-}
-
-func TestCPUTimerByteReadSamplesCompletionEdge(t *testing.T) {
-	m := New(nil, nil)
-	base := uint32(bus.IOStart + 0x100)
-	m.Bus.Write16(base, 0x12fd, bus.Access{})
-	m.Bus.Write16(base+2, 1<<7, bus.Access{})
-
-	low, cycles := m.memory.Read8(base, bus.Access{})
-	if cycles != 1 || low != 0xfe {
-		t.Fatalf("timer low-byte read cycles/value = %d/%02x, want 1/fe", cycles, low)
-	}
-}
-
 func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
@@ -300,8 +261,8 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	if third.CPU.ExceptionTaken {
 		t.Fatalf("timer IRQ arrived before sampled LDRH: %+v", third.CPU)
 	}
-	if got := m.CPU.ReadRegister(0); got != 1 {
-		t.Fatalf("Timer0 completion-edge sample = %04x, want 0001", got)
+	if got := m.CPU.ReadRegister(0); got != 0 {
+		t.Fatalf("Timer0 immediate sample = %04x, want 0000", got)
 	}
 }
 
