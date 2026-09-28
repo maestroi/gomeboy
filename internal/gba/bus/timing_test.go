@@ -235,6 +235,18 @@ func TestPartialARMWordPrefetchHonorsFastSecondAccess(t *testing.T) {
 }
 
 
+func TestThumbFetchWaitsForCompletePrefetchHalfword(t *testing.T) {
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+
+	b.Read16(ROM0Start, Access{Instruction: true})
+	b.Idle(1)
+
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 3 {
+		t.Fatalf("Thumb fetch with incomplete prefetch = %d cycles, want full sequential 3", cycles)
+	}
+}
+
 func TestOpcodeFetchFinishesPartiallyFilledPrefetchHalfword(t *testing.T) {
 	b := testBus()
 	b.SetWAITCNT(1 << 14)
