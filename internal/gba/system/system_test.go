@@ -300,8 +300,8 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	if third.CPU.ExceptionTaken {
 		t.Fatalf("timer IRQ arrived before sampled LDRH: %+v", third.CPU)
 	}
-	if got := m.CPU.ReadRegister(0); got != 0 {
-		t.Fatalf("Timer0 immediate sample = %04x, want 0000", got)
+	if got := m.CPU.ReadRegister(0); got != 1 {
+		t.Fatalf("Timer0 completion-edge sample = %04x, want 0001", got)
 	}
 }
 
