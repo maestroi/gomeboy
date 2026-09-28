@@ -35,7 +35,7 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 	if instruction&0x0ffffff0 == 0x012fff10 {
 		rm := int(instruction & 0xf)
 		c.branchExchange(c.ReadRegister(rm))
-		return ExecutionResult{PipelineFlush: true}, nil
+		return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 	}
 
 	// SWI.
@@ -58,7 +58,7 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 		}
 		offset := imm24 << 2
 		c.SetPC(uint32(int32(c.VisiblePC()) + offset))
-		return ExecutionResult{PipelineFlush: true}, nil
+		return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
 	}
 
 	if instruction&0x0e000000 == 0x08000000 {
