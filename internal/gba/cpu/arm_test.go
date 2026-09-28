@@ -192,6 +192,28 @@ func TestARMBranchesUsePipelineRefillTiming(t *testing.T) {
 	}
 }
 
+func TestARMPSRTransfersOverlapOpcodeFetch(t *testing.T) {
+	c := New()
+	if err := c.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	mrs, err := c.ExecuteARM(0xe10f0000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mrs.InternalCycles != 0 {
+		t.Fatalf("MRS internal cycles = %d, want 0", mrs.InternalCycles)
+	}
+	c.WriteRegister(1, uint32(FlagNegative))
+	msr, err := c.ExecuteARM(0xe128f001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msr.InternalCycles != 0 {
+		t.Fatalf("MSR internal cycles = %d, want 0", msr.InternalCycles)
+	}
+}
+
 func TestARMRegisterSpecifiedShift(t *testing.T) {
 	c := New()
 	if err := c.SetMode(ModeSystem); err != nil {
