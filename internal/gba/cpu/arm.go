@@ -58,10 +58,7 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 		}
 		offset := imm24 << 2
 		c.SetPC(uint32(int32(c.VisiblePC()) + offset))
-		return ExecutionResult{
-			PipelineFlush:  true,
-			PipelineRefill: !link && cond == 0xe,
-		}, nil
+		return ExecutionResult{PipelineFlush: true}, nil
 	}
 
 	if instruction&0x0e000000 == 0x08000000 {
