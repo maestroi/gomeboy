@@ -290,7 +290,7 @@ func (c *CPU) executeARMMultiply(instruction uint32) (ExecutionResult, error) {
 		c.setNZ(result)
 	}
 	c.advancePC()
-	return ExecutionResult{InternalCycles: cycles}, nil
+	return ExecutionResult{InternalCycles: cycles, BreakSequentialFetch: true}, nil
 }
 
 func (c *CPU) executeARMMultiplyLong(instruction uint32) (ExecutionResult, error) {
@@ -336,7 +336,7 @@ func (c *CPU) executeARMMultiplyLong(instruction uint32) (ExecutionResult, error
 		cycles++
 	}
 	c.advancePC()
-	return ExecutionResult{InternalCycles: cycles}, nil
+	return ExecutionResult{InternalCycles: cycles, BreakSequentialFetch: true}, nil
 }
 
 func multiplyUnsignedInternalCycles(multiplier uint32) uint8 {
