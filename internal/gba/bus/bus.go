@@ -333,6 +333,18 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	return cycles
 }
 
+// Peek16 reads an aligned mapped halfword without timing or open-bus latch
+// updates. It is used by the CPU-facing adapter for Thumb pipeline state.
+func (b *Bus) Peek16(addr uint32) uint16 {
+	aligned := addr &^ 1
+	lo, ok0 := b.readByte(aligned)
+	hi, ok1 := b.readByte(aligned + 1)
+	if !ok0 || !ok1 {
+		return uint16(bits.RotateLeft32(b.openBus, -int((aligned&3)*8)))
+	}
+	return uint16(lo) | uint16(hi)<<8
+}
+
 // Peek32 reads an aligned mapped word without timing or open-bus latch updates.
 // It is used by the CPU-facing adapter to model the ARM instruction prefetch
 // value that appears on open bus.
