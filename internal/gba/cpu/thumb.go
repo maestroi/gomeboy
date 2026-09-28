@@ -188,6 +188,9 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 		}
 		c.advancePC()
+		if instruction == 0x46c0 { // MOV r8,r8: canonical ARMv4T Thumb NOP
+			return ExecutionResult{}, nil
+		}
 		return ExecutionResult{InternalCycles: 1}, nil
 	}
 

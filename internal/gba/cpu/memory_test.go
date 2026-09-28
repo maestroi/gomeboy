@@ -53,8 +53,8 @@ func TestARMStepFetchesExecutesAndAccountsBusCycles(t *testing.T) {
 	if got := c.ReadRegister(2); got != 0x11223344 {
 		t.Fatalf("LDR r2 = %08x, want 11223344", got)
 	}
-	if second.FetchCycles != 6 || second.MemoryCycles != 1 || second.TotalCycles != 8 {
-		t.Fatalf("second step timing = %+v, want sequential fetch=6 memory=1 total=8", second)
+	if second.FetchCycles != 8 || second.MemoryCycles != 1 || second.TotalCycles != 10 {
+		t.Fatalf("second step timing = %+v, want post-data nonseq fetch=8 memory=1 total=10", second)
 	}
 
 	third, err := c.Step(b)
@@ -64,11 +64,37 @@ func TestARMStepFetchesExecutesAndAccountsBusCycles(t *testing.T) {
 	if got := c.ReadRegister(3); got != 0x11223345 {
 		t.Fatalf("ADD r3 = %08x, want 11223345", got)
 	}
-	if third.FetchCycles != 6 || third.MemoryCycles != 0 || third.InternalCycles != 0 || third.TotalCycles != 6 {
-		t.Fatalf("third step timing = %+v, want fetch=6 internal=0 total=6", third)
+	if third.FetchCycles != 8 || third.MemoryCycles != 0 || third.InternalCycles != 0 || third.TotalCycles != 8 {
+		t.Fatalf("third step timing = %+v, want post-load nonseq fetch=8 internal=0 total=8", third)
 	}
 	if got := c.PC(); got != bus.ROM0Start+12 {
 		t.Fatalf("PC = %08x, want %08x", got, bus.ROM0Start+12)
+	}
+}
+
+func TestDataTransferMakesNextFetchNonSequential(t *testing.T) {
+	rom := make([]byte, 0x20)
+	putARM(rom, 0x00, 0xe5801000) // STR r1,[r0]
+	putARM(rom, 0x04, 0xe1a00000) // MOV r0,r0
+
+	b := newExecutionBus(rom)
+	c := New()
+	if err := c.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	c.SetPC(bus.ROM0Start)
+	c.WriteRegister(0, bus.IWRAMStart)
+	c.WriteRegister(1, 0x12345678)
+
+	if _, err := c.Step(b); err != nil {
+		t.Fatal(err)
+	}
+	next, err := c.Step(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.FetchCycles != 8 {
+		t.Fatalf("fetch after data transfer = %d cycles, want non-sequential 8", next.FetchCycles)
 	}
 }
 
@@ -328,7 +354,7 @@ func TestThumbStepRunsLoadStoreProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.FetchCycles != 5 || first.MemoryCycles != 1 || first.TotalCycles != 7 {
+	if first.FetchCycles != 5 || first.MemoryCycles != 1 || first.InternalCycles != 1 || first.TotalCycles != 7 {
 		t.Fatalf("Thumb STR step = %+v, want fetch=5 memory=1 internal=1 total=7", first)
 	}
 
@@ -339,8 +365,8 @@ func TestThumbStepRunsLoadStoreProgram(t *testing.T) {
 	if got := c.ReadRegister(2); got != 0x55667788 {
 		t.Fatalf("Thumb LDR r2 = %08x, want 55667788", got)
 	}
-	if second.FetchCycles != 3 || second.MemoryCycles != 1 || second.TotalCycles != 5 {
-		t.Fatalf("Thumb LDR step = %+v, want fetch=3 memory=1 total=5", second)
+	if second.FetchCycles != 5 || second.MemoryCycles != 1 || second.TotalCycles != 7 {
+		t.Fatalf("Thumb LDR step = %+v, want post-data nonseq fetch=5 memory=1 total=7", second)
 	}
 
 	if _, err := c.Step(b); err != nil {
