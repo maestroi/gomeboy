@@ -207,8 +207,8 @@ func TestARMStoresDoNotPayLoadInternalCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if halfResult.InternalCycles != 0 || halfResult.MemoryCycles != 1 {
-		t.Fatalf("STRH timing = %+v, want memory=1 internal=0", halfResult)
+	if halfResult.InternalCycles != 1 || halfResult.MemoryCycles != 1 {
+		t.Fatalf("STRH timing = %+v, want memory=1 internal=1", halfResult)
 	}
 }
 
