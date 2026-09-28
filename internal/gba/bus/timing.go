@@ -34,6 +34,31 @@ func (b *Bus) installSystemRegisters() {
 		func() uint16 { return b.WAITCNT() },
 		func(value uint16) { b.SetWAITCNT(value) },
 	)
+
+	// These addresses are physically unimplemented in the native GBA I/O map.
+	// Writes disappear and reads expose the CPU pipeline/open-bus halfword.
+	openBusHoles := []uint32{
+		0x04e,
+		0x056, 0x058, 0x05a, 0x05c, 0x05e,
+		0x08c, 0x08e,
+		0x0a8, 0x0aa, 0x0ac, 0x0ae,
+	}
+	for offset := uint32(0x0e0); offset <= 0x0fe; offset += 2 {
+		openBusHoles = append(openBusHoles, offset)
+	}
+	for _, offset := range openBusHoles {
+		offset := offset
+		b.io.Register16(offset,
+			func() uint16 {
+				value := b.CPUOpenBus()
+				if offset&2 != 0 {
+					return uint16(value >> 16)
+				}
+				return uint16(value)
+			},
+			nil,
+		)
+	}
 }
 
 // AccessCycles returns the duration of a bus transaction without performing
