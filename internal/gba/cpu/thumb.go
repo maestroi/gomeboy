@@ -171,7 +171,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 			result := left + right
 			if rd == 15 {
 				c.SetPC(result)
-				return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
+				return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 			}
 			c.WriteRegister(rd, result)
 		case 1: // CMP
@@ -180,12 +180,12 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		case 2: // MOV, flags unchanged
 			if rd == 15 {
 				c.SetPC(right)
-				return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
+				return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 			}
 			c.WriteRegister(rd, right)
 		case 3: // BX
 			c.branchExchange(right)
-			return ExecutionResult{PipelineFlush: true, PipelineRefill: true}, nil
+			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 		}
 		c.advancePC()
 		if instruction == 0x46c0 { // MOV r8,r8: canonical ARMv4T Thumb NOP
