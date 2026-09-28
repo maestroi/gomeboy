@@ -72,6 +72,61 @@ func TestARMStepFetchesExecutesAndAccountsBusCycles(t *testing.T) {
 	}
 }
 
+func TestMultiplyMakesNextFetchNonSequential(t *testing.T) {
+	t.Run("ARM", func(t *testing.T) {
+		rom := make([]byte, 0x20)
+		putARM(rom, 0x00, 0xe0020190) // MUL r2,r0,r1
+		putARM(rom, 0x04, 0xe1a00000) // MOV r0,r0
+
+		b := newExecutionBus(rom)
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		c.SetPC(bus.ROM0Start)
+		c.WriteRegister(0, 3)
+		c.WriteRegister(1, 4)
+
+		if _, err := c.Step(b); err != nil {
+			t.Fatal(err)
+		}
+		next, err := c.Step(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next.FetchCycles != 8 {
+			t.Fatalf("ARM fetch after MUL = %d cycles, want non-sequential 8", next.FetchCycles)
+		}
+	})
+
+	t.Run("Thumb", func(t *testing.T) {
+		rom := make([]byte, 0x20)
+		putThumb(rom, 0x00, 0x4348) // MUL r0,r1
+		putThumb(rom, 0x02, 0x46c0) // NOP
+
+		b := newExecutionBus(rom)
+		c := New()
+		if err := c.SetMode(ModeSystem); err != nil {
+			t.Fatal(err)
+		}
+		c.SetThumb(true)
+		c.SetPC(bus.ROM0Start)
+		c.WriteRegister(0, 3)
+		c.WriteRegister(1, 4)
+
+		if _, err := c.Step(b); err != nil {
+			t.Fatal(err)
+		}
+		next, err := c.Step(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next.FetchCycles != 5 {
+			t.Fatalf("Thumb fetch after MUL = %d cycles, want non-sequential 5", next.FetchCycles)
+		}
+	})
+}
+
 func TestDataTransferMakesNextFetchNonSequential(t *testing.T) {
 	rom := make([]byte, 0x20)
 	putARM(rom, 0x00, 0xe5801000) // STR r1,[r0]
