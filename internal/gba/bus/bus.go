@@ -333,6 +333,22 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 	return cycles
 }
 
+// Peek32 reads an aligned mapped word without timing or open-bus latch updates.
+// It is used by the CPU-facing adapter to model the ARM instruction prefetch
+// value that appears on open bus.
+func (b *Bus) Peek32(addr uint32) uint32 {
+	aligned := addr &^ 3
+	var raw [4]byte
+	for index := range raw {
+		value, mapped := b.readByte(aligned + uint32(index))
+		if !mapped {
+			return b.openBus
+		}
+		raw[index] = value
+	}
+	return binary.LittleEndian.Uint32(raw[:])
+}
+
 // Peek8 reads mapped memory without timing, open-bus latch updates, or I/O
 // write side effects. It is intended for debugger/inspection tooling.
 func (b *Bus) Peek8(addr uint32) byte {
