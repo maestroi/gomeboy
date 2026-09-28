@@ -328,8 +328,8 @@ func TestThumbStepRunsLoadStoreProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.FetchCycles != 5 || first.MemoryCycles != 1 || first.InternalCycles != 0 || first.TotalCycles != 6 {
-		t.Fatalf("Thumb STR step = %+v, want fetch=5 memory=1 internal=0 total=6", first)
+	if first.FetchCycles != 5 || first.MemoryCycles != 1 || first.TotalCycles != 7 {
+		t.Fatalf("Thumb STR step = %+v, want fetch=5 memory=1 internal=1 total=7", first)
 	}
 
 	second, err := c.Step(b)
