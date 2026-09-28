@@ -31,7 +31,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		c.WriteRegister(rd, result)
 		c.setNZC(result, carry)
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// Format 2: add/subtract register or immediate 3-bit.
@@ -56,7 +56,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		c.WriteRegister(rd, result)
 		c.setNZCV(result, carry, overflow)
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// Format 3: MOV/CMP/ADD/SUB immediate.
@@ -85,7 +85,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 			c.setNZCV(result, carry, overflow)
 		}
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// Format 6: PC-relative LDR.
@@ -188,7 +188,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 		}
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// SWI.
@@ -211,7 +211,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 			return ExecutionResult{InternalCycles: 1, PipelineFlush: true}, nil
 		}
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// Format 18: unconditional branch.
@@ -233,7 +233,7 @@ func (c *CPU) executeThumb(instruction uint16, mem Memory) (ExecutionResult, err
 		}
 		c.WriteRegister(14, uint32(int32(c.VisiblePC())+(offset<<12)))
 		c.advancePC()
-		return ExecutionResult{}, nil
+		return ExecutionResult{InternalCycles: 1}, nil
 	}
 
 	// Format 19: long branch with link, second half.
@@ -319,13 +319,11 @@ func (c *CPU) executeThumbALU(instruction uint16) (ExecutionResult, error) {
 	}
 	c.advancePC()
 
-	cycles := uint8(0)
-	switch op {
-	case 0x2, 0x3, 0x4, 0x7:
-		// Register-controlled shifts take one extra internal cycle.
-		cycles = 1
-	case 0xd:
+	cycles := uint8(1)
+	if op == 0xd {
 		// ARM7TDMI MUL timing depends on the high bytes of the multiplier.
+		// Expose a conservative internal-cycle estimate now; bus timing is
+		// added by the future GBA memory layer.
 		cycles = multiplyInternalCycles(right)
 	}
 	return ExecutionResult{InternalCycles: cycles}, nil
