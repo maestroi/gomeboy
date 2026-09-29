@@ -11,8 +11,12 @@
       "source": "c-sp/age-test-roms",
       "revision": "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e",
       "status": "automated",
-      "coverage": "32 register-verifiable ROM cases across halt, LCD/LY, OAM, STAT, and VRAM groups",
-      "note": "Screenshot-only AGE groups are not run by this adapter."
+      "coverage": "32 source ROMs / 40 DMG+CGB model runs across halt, LCD/LY, OAM, STAT, and VRAM groups",
+      "note": "Screenshot-only AGE groups are not run by this adapter.",
+      "baseline": {
+        "pass": 7,
+        "xfail": 33
+      }
     },
     {
       "name": "Mealybug Tearoom Tests",
