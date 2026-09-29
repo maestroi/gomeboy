@@ -167,14 +167,10 @@ func controlMask(index int) uint16 {
 
 func (t *Timers) writeControl(index int, value uint16) {
 	if t.deferWrites {
-		// Disabling an already-running timer takes effect at the I/O write bus
-		// phase. Starts and other control changes remain deferred to the CPU
-		// instruction boundary so the existing start/reload edge semantics are
-		// preserved.
-		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
-			t.applyControl(index, value)
-			return
-		}
+		// CPU control writes commit at the instruction boundary. This keeps the
+		// final bus phase of a TMxCNT_H disable inside the currently-running
+		// timer window, matching the IRQ-handler timing observed by the hardware
+		// conformance suites.
 		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingControl, value: value})
 		return
 	}
