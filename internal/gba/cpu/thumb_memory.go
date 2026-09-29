@@ -155,7 +155,7 @@ func (c *CPU) executeThumbLoadAddress(instruction uint16) (ExecutionResult, erro
 	}
 	c.WriteRegister(rd, base+uint32(instruction&0xff)<<2)
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1}, nil
+	return ExecutionResult{}, nil
 }
 
 func (c *CPU) executeThumbAdjustSP(instruction uint16) (ExecutionResult, error) {
@@ -168,5 +168,5 @@ func (c *CPU) executeThumbAdjustSP(instruction uint16) (ExecutionResult, error) 
 	}
 	c.WriteRegister(13, sp)
 	c.advancePC()
-	return ExecutionResult{InternalCycles: 1}, nil
+	return ExecutionResult{}, nil
 }
