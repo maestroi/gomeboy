@@ -9,3 +9,4 @@ tests/gba/compatibility/roms/
 *.sav
 *.state
 tests/gba/mgba-suite/roms/\n
+tests/regression-results.json

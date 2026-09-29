@@ -1,0 +1,1809 @@
+{
+  "schema_version": 1,
+  "tests": [
+    {
+      "id": "acid2/cgb-acid2/cgb-acid-hell",
+      "suite": "acid2",
+      "collection": "cgb-acid2",
+      "name": "cgb-acid-hell",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "acid2/cgb-acid2/cgb-acid2",
+      "suite": "acid2",
+      "collection": "cgb-acid2",
+      "name": "cgb-acid2",
+      "expected": "pass"
+    },
+    {
+      "id": "acid2/dmg-acid2/dmg-acid2 (CGB)",
+      "suite": "acid2",
+      "collection": "dmg-acid2",
+      "name": "dmg-acid2 (CGB)",
+      "model": "CGB",
+      "expected": "pass"
+    },
+    {
+      "id": "acid2/dmg-acid2/dmg-acid2 (DMG)",
+      "suite": "acid2",
+      "collection": "dmg-acid2",
+      "name": "dmg-acid2 (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/01-registers",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "01-registers",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/02-len ctr",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "02-len ctr",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/03-trigger",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "03-trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/04-sweep",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "04-sweep",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/05-sweep details",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "05-sweep details",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/06-overflow on trigger",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "06-overflow on trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/07-len sweep period sync",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "07-len sweep period sync",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/08-len ctr during power",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "08-len ctr during power",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/09-wave read while on",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "09-wave read while on",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/10-wave trigger while on",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "10-wave trigger while on",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/11-regs after power",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "11-regs after power",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cgb_sound/12-wave",
+      "suite": "blarrg",
+      "collection": "cgb_sound",
+      "name": "12-wave",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/01-special",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "01-special",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/02-interrupts",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "02-interrupts",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/03-op sp,hl",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "03-op sp,hl",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/04-op r,imm",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "04-op r,imm",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/05-op rp",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "05-op rp",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/06-ld r,r",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "06-ld r,r",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/07-jr,jp,call,ret,rst",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "07-jr,jp,call,ret,rst",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/08-misc instrs",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "08-misc instrs",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/09-op r,r",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "09-op r,r",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/10-bit ops",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "10-bit ops",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/cpu_instrs/11-op a,(hl)",
+      "suite": "blarrg",
+      "collection": "cpu_instrs",
+      "name": "11-op a,(hl)",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/01-registers",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "01-registers",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/02-len ctr",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "02-len ctr",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/03-trigger",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "03-trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/04-sweep",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "04-sweep",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/05-sweep details",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "05-sweep details",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/06-overflow on trigger",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "06-overflow on trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/07-len sweep period sync",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "07-len sweep period sync",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/08-len ctr during power",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "08-len ctr during power",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/09-wave read while on",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "09-wave read while on",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/10-wave trigger while on",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "10-wave trigger while on",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/11-regs after power",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "11-regs after power",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/dmg_sound/12-wave write while on",
+      "suite": "blarrg",
+      "collection": "dmg_sound",
+      "name": "12-wave write while on",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/halt_bug/halt_bug (CGB)",
+      "suite": "blarrg",
+      "collection": "halt_bug",
+      "name": "halt_bug (CGB)",
+      "model": "CGB",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/halt_bug/halt_bug (DMG)",
+      "suite": "blarrg",
+      "collection": "halt_bug",
+      "name": "halt_bug (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/instr_timing/instr_timing",
+      "suite": "blarrg",
+      "collection": "instr_timing",
+      "name": "instr_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/interrupt_time/interrupt_time (CGB)",
+      "suite": "blarrg",
+      "collection": "interrupt_time",
+      "name": "interrupt_time (CGB)",
+      "model": "CGB",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/interrupt_time/interrupt_time (DMG)",
+      "suite": "blarrg",
+      "collection": "interrupt_time",
+      "name": "interrupt_time (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/mem_timing/01-read_timing",
+      "suite": "blarrg",
+      "collection": "mem_timing",
+      "name": "01-read_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/mem_timing/02-write_timing",
+      "suite": "blarrg",
+      "collection": "mem_timing",
+      "name": "02-write_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "blarrg/mem_timing/03-modify_timing",
+      "suite": "blarrg",
+      "collection": "mem_timing",
+      "name": "03-modify_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "bully/bully/bully (CGB)",
+      "suite": "bully",
+      "collection": "bully",
+      "name": "bully (CGB)",
+      "model": "CGB",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "bully/bully/bully (DMG)",
+      "suite": "bully",
+      "collection": "bully",
+      "name": "bully (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "little-things-gb/firstwhite/firstwhite (CGB)",
+      "suite": "little-things-gb",
+      "collection": "firstwhite",
+      "name": "firstwhite (CGB)",
+      "model": "CGB",
+      "expected": "pass"
+    },
+    {
+      "id": "little-things-gb/firstwhite/firstwhite (DMG)",
+      "suite": "little-things-gb",
+      "collection": "firstwhite",
+      "name": "firstwhite (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "little-things-gb/tellinglys/tellinglys (CGB)",
+      "suite": "little-things-gb",
+      "collection": "tellinglys",
+      "name": "tellinglys (CGB)",
+      "model": "CGB",
+      "expected": "pass"
+    },
+    {
+      "id": "little-things-gb/tellinglys/tellinglys (DMG)",
+      "suite": "little-things-gb",
+      "collection": "tellinglys",
+      "name": "tellinglys (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/add_sp_e_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "add_sp_e_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_div-dmg0",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_div-dmg0",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_div-dmgABCmgb",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_div-dmgABCmgb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_div-S",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_div-S",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_div2-S",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_div2-S",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_hwio-dmg0",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_hwio-dmg0",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_hwio-dmgABCmgb",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_hwio-dmgABCmgb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_hwio-S",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_hwio-S",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_regs-dmg0",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_regs-dmg0",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_regs-dmgABC",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_regs-dmgABC",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_regs-mgb",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_regs-mgb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_regs-sgb",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_regs-sgb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/boot_regs-sgb2",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "boot_regs-sgb2",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/call_cc_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "call_cc_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/call_cc_timing2",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "call_cc_timing2",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/call_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "call_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/call_timing2",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "call_timing2",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/di_timing-GS",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "di_timing-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/div_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "div_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/ei_sequence",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "ei_sequence",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/ei_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "ei_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/halt_ime0_ei",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "halt_ime0_ei",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/halt_ime0_nointr_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "halt_ime0_nointr_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/halt_ime1_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "halt_ime1_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/halt_ime1_timing2-GS",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "halt_ime1_timing2-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/if_ie_registers",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "if_ie_registers",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/intr_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "intr_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/jp_cc_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "jp_cc_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/jp_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "jp_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/ld_hl_sp_e_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "ld_hl_sp_e_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/oam_dma_restart",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "oam_dma_restart",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/oam_dma_start",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "oam_dma_start",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/oam_dma_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "oam_dma_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/pop_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "pop_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/push_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "push_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/rapid_di_ei",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "rapid_di_ei",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/ret_cc_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "ret_cc_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/ret_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "ret_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/reti_intr_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "reti_intr_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/reti_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "reti_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/acceptance/rst_timing",
+      "suite": "mooneye",
+      "collection": "acceptance",
+      "name": "rst_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/bits/mem_oam",
+      "suite": "mooneye",
+      "collection": "bits",
+      "name": "mem_oam",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/bits/reg_f",
+      "suite": "mooneye",
+      "collection": "bits",
+      "name": "reg_f",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/bits/unused_hwio-C",
+      "suite": "mooneye",
+      "collection": "bits",
+      "name": "unused_hwio-C",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/bits/unused_hwio-GS",
+      "suite": "mooneye",
+      "collection": "bits",
+      "name": "unused_hwio-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/instr/daa",
+      "suite": "mooneye",
+      "collection": "instr",
+      "name": "daa",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/interrupts/ie_push",
+      "suite": "mooneye",
+      "collection": "interrupts",
+      "name": "ie_push",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/madness/mgb_oam_dma_halt_sprites",
+      "suite": "mooneye",
+      "collection": "madness",
+      "name": "mgb_oam_dma_halt_sprites",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "mooneye/manual-only/sprite_priority (CGB)",
+      "suite": "mooneye",
+      "collection": "manual-only",
+      "name": "sprite_priority (CGB)",
+      "model": "CGB",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/manual-only/sprite_priority (DMG)",
+      "suite": "mooneye",
+      "collection": "manual-only",
+      "name": "sprite_priority (DMG)",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/bits_bank1",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "bits_bank1",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/bits_bank2",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "bits_bank2",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/bits_mode",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "bits_mode",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/bits_ramg",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "bits_ramg",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/multicart_rom_8Mb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "multicart_rom_8Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/ram_256kb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "ram_256kb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/ram_64kb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "ram_64kb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/rom_16Mb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "rom_16Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/rom_1Mb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "rom_1Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/rom_2Mb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "rom_2Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/rom_4Mb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "rom_4Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/rom_512kb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "rom_512kb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc1/rom_8Mb",
+      "suite": "mooneye",
+      "collection": "mbc1",
+      "name": "rom_8Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/bits_ramg",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "bits_ramg",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/bits_romb",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "bits_romb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/bits_unused",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "bits_unused",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/ram",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "ram",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/rom_1Mb",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "rom_1Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/rom_2Mb",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "rom_2Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc2/rom_512kb",
+      "suite": "mooneye",
+      "collection": "mbc2",
+      "name": "rom_512kb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_16Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_16Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_1Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_1Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_2Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_2Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_32Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_32Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_4Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_4Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_512kb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_512kb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_64Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_64Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/mbc5/rom_8Mb",
+      "suite": "mooneye",
+      "collection": "mbc5",
+      "name": "rom_8Mb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/misc/boot_div-A",
+      "suite": "mooneye",
+      "collection": "misc",
+      "name": "boot_div-A",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/misc/boot_div-cgb0",
+      "suite": "mooneye",
+      "collection": "misc",
+      "name": "boot_div-cgb0",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/misc/boot_div-cgbABCDE",
+      "suite": "mooneye",
+      "collection": "misc",
+      "name": "boot_div-cgbABCDE",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/misc/boot_hwio-C",
+      "suite": "mooneye",
+      "collection": "misc",
+      "name": "boot_hwio-C",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/misc/boot_regs-A",
+      "suite": "mooneye",
+      "collection": "misc",
+      "name": "boot_regs-A",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/misc/boot_regs-cgb",
+      "suite": "mooneye",
+      "collection": "misc",
+      "name": "boot_regs-cgb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/oam_dma/basic",
+      "suite": "mooneye",
+      "collection": "oam_dma",
+      "name": "basic",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/oam_dma/reg_read",
+      "suite": "mooneye",
+      "collection": "oam_dma",
+      "name": "reg_read",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/oam_dma/sources-GS",
+      "suite": "mooneye",
+      "collection": "oam_dma",
+      "name": "sources-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/hblank_ly_scx_timing-GS",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "hblank_ly_scx_timing-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/intr_1_2_timing-GS",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "intr_1_2_timing-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/intr_2_0_timing",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "intr_2_0_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/intr_2_mode0_timing",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "intr_2_mode0_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/intr_2_mode0_timing_sprites",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "intr_2_mode0_timing_sprites",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/intr_2_mode3_timing",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "intr_2_mode3_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/intr_2_oam_ok_timing",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "intr_2_oam_ok_timing",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/lcdon_timing-GS",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "lcdon_timing-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/lcdon_write_timing-GS",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "lcdon_write_timing-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/stat_irq_blocking",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "stat_irq_blocking",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/stat_lyc_onoff",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "stat_lyc_onoff",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/vblank_stat_intr-C",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "vblank_stat_intr-C",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/ppu/vblank_stat_intr-GS",
+      "suite": "mooneye",
+      "collection": "ppu",
+      "name": "vblank_stat_intr-GS",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/serial/boot_sclk_align-dmgABCmgb",
+      "suite": "mooneye",
+      "collection": "serial",
+      "name": "boot_sclk_align-dmgABCmgb",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/div_write",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "div_write",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/rapid_toggle",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "rapid_toggle",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim00",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim00",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim00_div_trigger",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim00_div_trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim01",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim01",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim01_div_trigger",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim01_div_trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim10",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim10",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim10_div_trigger",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim10_div_trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim11",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim11",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tim11_div_trigger",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tim11_div_trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tima_reload",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tima_reload",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tima_write_reloading",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tima_write_reloading",
+      "expected": "pass"
+    },
+    {
+      "id": "mooneye/timer/tma_write_reloading",
+      "suite": "mooneye",
+      "collection": "timer",
+      "name": "tma_write_reloading",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_align",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_align",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_align_cpu",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_align_cpu",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_duty",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_duty",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_duty_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_duty_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_extra_length_clocking-cgb0B",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_extra_length_clocking-cgb0B",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_freq_change",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_freq_change",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-A",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_freq_change_timing-A",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-cgb0BC",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_freq_change_timing-cgb0BC",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-cgbDE",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_freq_change_timing-cgbDE",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_nrx2_glitch",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_nrx2_glitch",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_nrx2_speed_change",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_nrx2_speed_change",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_restart",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_restart",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_restart_nrx2_glitch",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_restart_nrx2_glitch",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_stop_div",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_stop_div",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_stop_restart",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_stop_restart",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_sweep",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_sweep",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_sweep_restart",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_sweep_restart",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_sweep_restart_2",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_sweep_restart_2",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_volume",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_volume",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_volume_div",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_volume_div",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_align",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_align",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_align_cpu",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_align_cpu",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_duty",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_duty",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_duty_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_duty_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_extra_length_clocking-cgb0B",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_extra_length_clocking-cgb0B",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_freq_change",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_freq_change",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_nrx2_glitch",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_nrx2_glitch",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_nrx2_speed_change",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_nrx2_speed_change",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_restart",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_restart",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_restart_nrx2_glitch",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_restart_nrx2_glitch",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_stop_div",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_stop_div",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_stop_restart",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_stop_restart",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_volume",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_volume",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_volume_div",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_volume_div",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_and_glitch",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_and_glitch",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_extra_length_clocking-cgb0",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_extra_length_clocking-cgb0",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_extra_length_clocking-cgbB",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_extra_length_clocking-cgbB",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_first_sample",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_first_sample",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_freq_change_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_freq_change_delay",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_restart_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_restart_delay",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_restart_during_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_restart_during_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_restart_stop_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_restart_stop_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_shift_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_shift_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_shift_skip_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_shift_skip_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_stop_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_stop_delay",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_stop_div",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_stop_div",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_wave_ram_dac_on_rw",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_wave_ram_dac_on_rw",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_wave_ram_locked_write",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_wave_ram_locked_write",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_3/channel_3_wave_ram_sync",
+      "suite": "samesuite",
+      "collection": "apu/channel_3",
+      "name": "channel_3_wave_ram_sync",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_align",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_align",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_delay",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_delay",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_equivalent_frequencies",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_equivalent_frequencies",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_extra_length_clocking-cgb0B",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_extra_length_clocking-cgb0B",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_freq_change",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_freq_change",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_frequency_alignment",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_frequency_alignment",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_lfsr",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_lfsr",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_lfsr_15_7",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_lfsr_15_7",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_lfsr_7_15",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_lfsr_7_15",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_lfsr_restart",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_lfsr_restart",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_lfsr_restart_fast",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_lfsr_restart_fast",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_lfsr15",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_lfsr15",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_volume_div",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_volume_div",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/div_trigger_volume_10",
+      "suite": "samesuite",
+      "collection": "apu",
+      "name": "div_trigger_volume_10",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/div_write_trigger",
+      "suite": "samesuite",
+      "collection": "apu",
+      "name": "div_write_trigger",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/div_write_trigger_10",
+      "suite": "samesuite",
+      "collection": "apu",
+      "name": "div_write_trigger_10",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/div_write_trigger_volume",
+      "suite": "samesuite",
+      "collection": "apu",
+      "name": "div_write_trigger_volume",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/apu/div_write_trigger_volume_10",
+      "suite": "samesuite",
+      "collection": "apu",
+      "name": "div_write_trigger_volume_10",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/dma/gbc_dma_cont",
+      "suite": "samesuite",
+      "collection": "dma",
+      "name": "gbc_dma_cont",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/dma/gdma_addr_mask",
+      "suite": "samesuite",
+      "collection": "dma",
+      "name": "gdma_addr_mask",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/dma/hdma_lcd_off",
+      "suite": "samesuite",
+      "collection": "dma",
+      "name": "hdma_lcd_off",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/dma/hdma_mode0",
+      "suite": "samesuite",
+      "collection": "dma",
+      "name": "hdma_mode0",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/interrupt/ei_delay_halt",
+      "suite": "samesuite",
+      "collection": "interrupt",
+      "name": "ei_delay_halt",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/ppu/blocking_bgpi_increase",
+      "suite": "samesuite",
+      "collection": "ppu",
+      "name": "blocking_bgpi_increase",
+      "expected": "pass"
+    },
+    {
+      "id": "samesuite/sgb/command_mlt_req",
+      "suite": "samesuite",
+      "collection": "sgb",
+      "name": "command_mlt_req",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "samesuite/sgb/command_mlt_req_1_incrementing",
+      "suite": "samesuite",
+      "collection": "sgb",
+      "name": "command_mlt_req_1_incrementing",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "scribbltests/scribbltests/lycscx",
+      "suite": "scribbltests",
+      "collection": "scribbltests",
+      "name": "lycscx",
+      "expected": "pass"
+    },
+    {
+      "id": "scribbltests/scribbltests/lycscy",
+      "suite": "scribbltests",
+      "collection": "scribbltests",
+      "name": "lycscy",
+      "expected": "pass"
+    },
+    {
+      "id": "scribbltests/scribbltests/palettely",
+      "suite": "scribbltests",
+      "collection": "scribbltests",
+      "name": "palettely",
+      "expected": "pass"
+    },
+    {
+      "id": "scribbltests/scribbltests/scxly",
+      "suite": "scribbltests",
+      "collection": "scribbltests",
+      "name": "scxly",
+      "expected": "pass"
+    },
+    {
+      "id": "scribbltests/scribbltests/statcount-auto",
+      "suite": "scribbltests",
+      "collection": "scribbltests",
+      "name": "statcount-auto",
+      "expected": "pass"
+    },
+    {
+      "id": "strikethrough/strikethrough/strikethrough (CGB)",
+      "suite": "strikethrough",
+      "collection": "strikethrough",
+      "name": "strikethrough (CGB)",
+      "model": "CGB",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    },
+    {
+      "id": "strikethrough/strikethrough/strikethrough (DMG)",
+      "suite": "strikethrough",
+      "collection": "strikethrough",
+      "name": "strikethrough (DMG)",
+      "model": "DMG",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md"
+    }
+  ]
+}
