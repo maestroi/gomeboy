@@ -65,14 +65,9 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		if err := c.EnterException(kind, c.pc+4); err != nil {
 			return StepResult{}, err
 		}
-		// ARM7TDMI exception entry refills the ARM pipeline before the vector
-		// instruction can execute. There is no opcode fetch for the interrupted
-		// instruction at this boundary, so charge all three entry cycles here;
-		// the vector opcode fetch remains the following Step.
-		mem.Idle(3)
 		return StepResult{
-			InternalCycles: 3,
-			TotalCycles:    3,
+			InternalCycles: 1,
+			TotalCycles:    1,
 			PipelineFlush:  true,
 			ExceptionTaken: true,
 			Exception:      kind,
