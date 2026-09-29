@@ -4,6 +4,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,48 +12,28 @@ const (
 	ageROMPath = "roms/age"
 )
 
-// assertModelsPassed is a helper function to assert which models
-// should pass a test given the filename.
-//
-// e.g.
-//
-//	ei-halt-dmgC-cgbBCE.gb should pass on DMGABC and CGBABC
-func assertModelsPassed(file os.DirEntry) []types.Model {
-	// get name
-	name := file.Name()
+// ageModelsForName returns the hardware families encoded in an AGE ROM
+// filename. AGE distinguishes several CGB revisions and native/compatibility
+// modes more finely than GomeBoy currently does, so all CGB variants collapse
+// to the CGB model until the core exposes those revisions separately.
+func ageModelsForName(name string) []types.Model {
+	name = strings.TrimSuffix(name, filepath.Ext(name))
 
-	// ends with cgbE -> should pass on CGBE
-	if name[len(name)-len("cgbE.gb"):] == "cgbE.gb" {
-		return []types.Model{types.CGBABC} // TODO correctly differentiate between CGBABC and CGBE
-	}
-
-	// ends with ncmE -> should pass on CGBE (non CGB mode)
-	if name[len(name)-len("ncmE.gb"):] == "ncmE.gb" {
-		return []types.Model{types.CGBABC} // TODO correctly differentiate between CGBABC and CGBE
-	}
-
-	// ends with ncmBC -> should pass on CGBBC (non CGB mode)
-	if name[len(name)-len("ncmBC.gb"):] == "ncmBC.gb" {
-		return []types.Model{types.CGBABC} // TODO correctly differentiate between CGBABC and CGBBC
-	}
-
-	// ends with cgbBC -> should pass on CGBBC
-	if name[len(name)-len("cgbBC.gb"):] == "cgbBC.gb" {
-		return []types.Model{types.CGBABC} // TODO correctly differentiate between CGBABC and CGBBC
-	}
-
-	// ends with dmgC-cgbBC -> should pass on DMGABC and CGBBC
-	if name[len(name)-len("dmgC-cgbBC.gb"):] == "dmgC-cgbBC.gb" {
-		return []types.Model{types.DMGABC, types.CGBABC} // TODO correctly differentiate between CGBABC and CGBBC
-	}
-
-	// ends with dmgC-cgbBCE -> should pass on DMGABC and CGBABC
-	if name[len(name)-len("dmgC-cgbBCE.gb"):] == "dmgC-cgbBCE.gb" {
+	switch {
+	case strings.HasSuffix(name, "dmgC-cgbBCE"), strings.HasSuffix(name, "dmgC-cgbBC"):
 		return []types.Model{types.DMGABC, types.CGBABC}
+	case strings.HasSuffix(name, "cgbBCE"),
+		strings.HasSuffix(name, "cgbBC"),
+		strings.HasSuffix(name, "cgbE"),
+		strings.HasSuffix(name, "ncmBCE"),
+		strings.HasSuffix(name, "ncmBC"),
+		strings.HasSuffix(name, "ncmE"):
+		return []types.Model{types.CGBABC}
+	case strings.HasSuffix(name, "dmgC"):
+		return []types.Model{types.DMGABC}
+	default:
+		return []types.Model{types.DMGABC}
 	}
-
-	// default to DMGABC
-	return []types.Model{types.DMGABC}
 }
 
 func newAgeTestCollectionFromDir(suite *TestSuite, dir string) *TestCollection {
@@ -71,7 +52,7 @@ func newAgeTestCollectionFromDir(suite *TestSuite, dir string) *TestCollection {
 		}
 
 		// get models that should pass
-		models := assertModelsPassed(file)
+		models := ageModelsForName(file.Name())
 
 		// Create one stable regression identity per ROM/model pair. AGE filenames
 		// can target more than one hardware family, so the model must be part of
