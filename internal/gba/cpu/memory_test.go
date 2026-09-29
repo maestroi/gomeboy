@@ -222,6 +222,30 @@ func TestFailedConditionalARMBranchDoesNotRefill(t *testing.T) {
 	}
 }
 
+func TestThumbBranchChargesPipelineRefill(t *testing.T) {
+	b := newExecutionBus(nil)
+	code := uint32(bus.IWRAMStart + 0x240)
+	b.Write16(code, 0xe7fe, bus.Access{}) // B to self
+
+	core := New()
+	if err := core.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	core.SetThumb(true)
+	core.SetPC(code)
+
+	result, err := core.Step(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FetchCycles != 1 || result.RefillCycles != 2 || result.InternalCycles != 0 || result.TotalCycles != 3 {
+		t.Fatalf("Thumb B timing = %+v, want fetch=1 refill=2 total=3", result)
+	}
+	if got := core.PC(); got != code {
+		t.Fatalf("Thumb B target = %08x, want %08x", got, code)
+	}
+}
+
 func TestStepPipelineFlushMakesNextFetchNonSequential(t *testing.T) {
 	rom := make([]byte, 0x20)
 	putARM(rom, 0x00, 0xea000000) // B +0 -> current PC +8
@@ -478,8 +502,8 @@ func TestThumbStepRunsLoadStoreProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.FetchCycles != 5 || first.MemoryCycles != 1 || first.InternalCycles != 1 || first.TotalCycles != 7 {
-		t.Fatalf("Thumb STR step = %+v, want fetch=5 memory=1 internal=1 total=7", first)
+	if first.FetchCycles != 5 || first.MemoryCycles != 1 || first.InternalCycles != 0 || first.TotalCycles != 6 {
+		t.Fatalf("Thumb STR step = %+v, want fetch=5 memory=1 internal=0 total=6", first)
 	}
 
 	second, err := c.Step(b)
@@ -503,6 +527,52 @@ func TestThumbStepRunsLoadStoreProgram(t *testing.T) {
 
 func thumbRegisterTransfer(op uint16, rm, rn, rd uint16) uint16 {
 	return 0x5000 | (op&7)<<9 | (rm&7)<<6 | (rn&7)<<3 | (rd & 7)
+}
+
+func TestThumbStoreFormsDoNotAddLoadInternalCycle(t *testing.T) {
+	cases := []struct {
+		name        string
+		instruction uint16
+	}{
+		{"register word", thumbRegisterTransfer(0, 2, 0, 1)}, // STR r1,[r0,r2]
+		{"register halfword", thumbRegisterTransfer(1, 2, 0, 1)}, // STRH r1,[r0,r2]
+		{"register byte", thumbRegisterTransfer(2, 2, 0, 1)}, // STRB r1,[r0,r2]
+		{"immediate word", 0x6001}, // STR r1,[r0,#0]
+		{"immediate byte", 0x7001}, // STRB r1,[r0,#0]
+		{"immediate halfword", 0x8001}, // STRH r1,[r0,#0]
+		{"SP relative", 0x9100}, // STR r1,[SP,#0]
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newExecutionBus(nil)
+			c := newThumbCPU(t)
+			c.WriteRegister(0, bus.IWRAMStart+0x500)
+			c.WriteRegister(1, 0x11223344)
+			c.WriteRegister(2, 0)
+			c.WriteRegister(13, bus.IWRAMStart+0x500)
+
+			result, err := c.ExecuteThumbWithMemory(tc.instruction, b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.InternalCycles != 0 {
+				t.Fatalf("store timing = %+v, want no load-only internal cycle", result)
+			}
+		})
+	}
+
+	b := newExecutionBus(nil)
+	c := newThumbCPU(t)
+	c.WriteRegister(0, bus.IWRAMStart+0x540)
+	b.Write32(bus.IWRAMStart+0x540, 0xaabbccdd, bus.Access{})
+	load, err := c.ExecuteThumbWithMemory(0x6801, b) // LDR r1,[r0,#0]
+	if err != nil {
+		t.Fatal(err)
+	}
+	if load.InternalCycles != 1 {
+		t.Fatalf("Thumb load internal cycles = %d, want 1", load.InternalCycles)
+	}
 }
 
 func TestThumbSignedAndHalfwordRegisterTransfers(t *testing.T) {

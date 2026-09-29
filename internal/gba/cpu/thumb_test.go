@@ -70,8 +70,8 @@ func TestThumbConditionalBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.PipelineFlush {
-		t.Fatal("taken BEQ did not flush pipeline")
+	if !result.PipelineFlush || !result.PipelineRefill || result.InternalCycles != 0 {
+		t.Fatalf("taken BEQ timing = %+v, want fetch-overlapped pipeline refill", result)
 	}
 	if got := c.PC(); got != 0x108 {
 		t.Fatalf("BEQ PC = 0x%x, want 0x108", got)
@@ -87,8 +87,8 @@ func TestThumbBXSwitchesToARM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.PipelineFlush {
-		t.Fatal("BX did not flush pipeline")
+	if !result.PipelineFlush || !result.PipelineRefill || result.InternalCycles != 0 {
+		t.Fatalf("BX timing = %+v, want fetch-overlapped pipeline refill", result)
 	}
 	if c.CPSR().Thumb() {
 		t.Fatal("BX even address did not switch to ARM")
@@ -112,14 +112,47 @@ func TestThumbLongBranchWithLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.PipelineFlush {
-		t.Fatal("BL suffix did not flush pipeline")
+	if !result.PipelineFlush || !result.PipelineRefill || result.InternalCycles != 0 {
+		t.Fatalf("BL suffix timing = %+v, want fetch-overlapped pipeline refill", result)
 	}
 	if got := c.PC(); got != 0x104 {
 		t.Fatalf("BL target = 0x%x, want 0x104", got)
 	}
 	if got := c.ReadRegister(14); got != 0x105 {
 		t.Fatalf("BL return LR = 0x%x, want 0x105", got)
+	}
+}
+
+func TestThumbSingleCycleOpsOverlapOpcodeFetch(t *testing.T) {
+	c := newThumbCPU(t)
+	c.SetPC(0x100)
+
+	for _, instruction := range []uint16{
+		0x0008, // LSL r0,r1,#0
+		0x1888, // ADD r0,r1,r2
+		0x2001, // MOV r0,#1
+		0x4308, // ORR r0,r1
+		0x4688, // MOV r8,r1
+		0xa001, // ADD r0,PC,#4
+		0xb001, // ADD SP,#4
+	} {
+		result, err := c.ExecuteThumb(instruction)
+		if err != nil {
+			t.Fatalf("ExecuteThumb(%04x): %v", instruction, err)
+		}
+		if result.InternalCycles != 0 {
+			t.Fatalf("Thumb %04x internal cycles = %d, want fetch-overlapped 0", instruction, result.InternalCycles)
+		}
+	}
+
+	c.WriteRegister(0, 1)
+	c.WriteRegister(1, 2)
+	shift, err := c.ExecuteThumb(0x4088) // LSL r0,r1
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shift.InternalCycles != 1 {
+		t.Fatalf("register shift internal cycles = %d, want 1", shift.InternalCycles)
 	}
 }
 
