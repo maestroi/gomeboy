@@ -347,6 +347,54 @@ func TestMBC7EEPROMCommandsAndWriteEnable(t *testing.T) {
 	}
 }
 
+func TestMBC7EEPROMTransferSurvivesCartridgeStateRoundTrips(t *testing.T) {
+	b := newMBC7EEPROMTestBus(t)
+	const (
+		address = uint16(5)
+		value   = uint16(0xabcd)
+	)
+
+	mbc7EEPROMCommand(b, 0x0c0) // EWEN
+	b.Write(0xa080, 0x00)
+	mbc7EEPROMCommand(b, 0x100|address)
+
+	// Capture both state paths halfway through the 16-bit WRITE payload.
+	for bit := 15; bit >= 8; bit-- {
+		mbc7EEPROMClockBit(b, byte(value>>bit&1))
+	}
+	portable := b.c.Snapshot()
+	var checkpoint CartridgeState
+	b.c.SnapshotInto(&checkpoint)
+
+	finish := func() {
+		for bit := 7; bit >= 0; bit-- {
+			mbc7EEPROMClockBit(b, byte(value>>bit&1))
+		}
+		b.Write(0xa080, 0x00)
+	}
+	word := func() uint16 {
+		idx := int(address * 2)
+		return uint16(b.c.RAM[idx]) | uint16(b.c.RAM[idx+1])<<8
+	}
+
+	finish()
+	if got := word(); got != value {
+		t.Fatalf("initial resumed WRITE = %#04x, want %#04x", got, value)
+	}
+
+	b.c.Restore(portable)
+	finish()
+	if got := word(); got != value {
+		t.Fatalf("WRITE after Snapshot/Restore = %#04x, want %#04x", got, value)
+	}
+
+	b.c.Restore(checkpoint)
+	finish()
+	if got := word(); got != value {
+		t.Fatalf("WRITE after SnapshotInto/Restore = %#04x, want %#04x", got, value)
+	}
+}
+
 func TestHuC1IRModePreservesRAM(t *testing.T) {
 	rom := make([]byte, 0x8000)
 	rom[0x0147] = byte(HUDSONHUC1)
