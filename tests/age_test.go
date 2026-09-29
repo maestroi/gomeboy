@@ -73,9 +73,13 @@ func newAgeTestCollectionFromDir(suite *TestSuite, dir string) *TestCollection {
 		// get models that should pass
 		models := assertModelsPassed(file)
 
-		// create test for each model
+		// Create one stable regression identity per ROM/model pair. AGE filenames
+		// can target more than one hardware family, so the model must be part of
+		// the test name rather than relying on Go's duplicate-subtest #01 suffix.
 		for _, model := range models {
-			tc.AddTests(&mooneyeTest{basicTest: newBasicTest(filepath.Join(romDir, file.Name()), model)})
+			basic := newBasicTest(filepath.Join(romDir, file.Name()), model)
+			basic.name += "@" + model.String()
+			tc.AddTests(&mooneyeTest{basicTest: basic})
 		}
 	}
 
