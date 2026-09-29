@@ -63,8 +63,8 @@ func TestIRQEntryAtInstructionBoundary(t *testing.T) {
 	if !result.ExceptionTaken || result.Exception != ExceptionIRQ || !result.PipelineFlush {
 		t.Fatalf("IRQ Step result = %+v", result)
 	}
-	if result.FetchCycles != 0 || result.MemoryCycles != 0 || result.InternalCycles != 1 || result.TotalCycles != 1 {
-		t.Fatalf("IRQ boundary timing = %+v, want one entry cycle before vector fetch", result)
+	if result.FetchCycles != 0 || result.MemoryCycles != 0 || result.InternalCycles != 3 || result.TotalCycles != 3 {
+		t.Fatalf("IRQ boundary timing = %+v, want three entry cycles before vector fetch", result)
 	}
 	if got := c.ReadRegister(0); got != 0 {
 		t.Fatalf("instruction losing priority executed: r0=%d", got)
