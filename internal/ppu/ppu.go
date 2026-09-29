@@ -626,7 +626,7 @@ func (p *PPU) handleVisualLine() {
 			// fill obj buffer
 			p.objBuffer = []Object{}
 			for i := uint16(0); i < 0xa0 && len(p.objBuffer) < 10; i += 4 {
-				y, x, id, attr := p.b.Get(0xfe00+i), p.b.Get(0xfe00+i+1), p.b.Get(0xfe00+i+2), p.b.Get(0xfe00+i+3)
+				y, x, id, attr := p.b.PPUReadOAM(0xfe00+i), p.b.PPUReadOAM(0xfe00+i+1), p.b.PPUReadOAM(0xfe00+i+2), p.b.PPUReadOAM(0xfe00+i+3)
 
 				if p.ly+16 >= y &&
 					p.ly+16 < y+p.objSize {
