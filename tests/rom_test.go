@@ -68,7 +68,7 @@ var (
 // tests/README.md and the main README.md, so they are excluded from the
 // default `go test ./...` context.
 
-var testers = []func(*TestTable){testAcid2, testBully, testBlarrg, testLittleThings, testMooneye, testSamesuite, testScribbl, testStrikethrough}
+var testers = []func(*TestTable){testAcid2, testAge, testBully, testBlarrg, testLittleThings, testMooneye, testSamesuite, testScribbl, testStrikethrough}
 
 func testAllTable() *TestTable {
 	testTable := &TestTable{
