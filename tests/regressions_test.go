@@ -3,27 +3,23 @@
 package tests
 
 import (
-	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"testing"
 )
 
-// skipKnownFailures is disabled under the "test" build tag: Test_Regressions
-// relies on the Test_All subprocess exiting with status 1 (known failures
-// must keep failing) and on the README table reporting them as failures.
+// skipKnownFailures is disabled under the "test" build tag so Test_All records
+// the real outcome of every test. Expected failures are classified against the
+// checked-in per-test baseline instead of being skipped.
 var skipKnownFailures = false
 
 func Test_All(t *testing.T) {
 	testTable := testAllTable()
 
-	// execute tests
 	for _, top := range testTable.testSuites {
 		suite := top
 		t.Run(suite.name, func(t *testing.T) {
@@ -39,130 +35,80 @@ func Test_All(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		// write markdown table to README.md
-		f, err := os.Create("README.md")
+		baseline, err := loadRegressionBaseline(regressionBaselinePath)
 		if err != nil {
 			panic(err)
 		}
-
-		_, err = f.WriteString(testTable.CreateReadme())
-
+		report, err := buildRegressionReport(testTable, baseline)
 		if err != nil {
 			panic(err)
 		}
-
-		if err := f.Close(); err != nil {
+		if err := writeRegressionJSON(regressionResultsPath, report); err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile("README.md", []byte(report.markdown()), 0o644); err != nil {
 			panic(err)
 		}
 
-		// update the test results table in the main readme
-		b, err := os.ReadFile("../README.md")
+		// Keep the compact summary in the repository root README in sync with
+		// the same structured result set used by the regression gate.
+		rootREADME, err := os.ReadFile("../README.md")
 		if err != nil {
 			panic(err)
 		}
-
-		newResults := testTable.createTestResultsTable()
-
-		b = findTableRE.ReplaceAll(b, []byte(newResults))
-		b = progressRE.ReplaceAll(b, []byte(testTable.createProgressBar()))
-
-		if err := os.WriteFile("../README.md", b, 0644); err != nil {
+		rootREADME = findTableRE.ReplaceAll(rootREADME, []byte(report.testResultsTable()))
+		rootREADME = progressRE.ReplaceAll(rootREADME, []byte(report.progressBar()))
+		if err := os.WriteFile("../README.md", rootREADME, 0o644); err != nil {
 			panic(err)
 		}
 	})
 }
 
-type regressionTests map[string]int
-
 func Test_Regressions(t *testing.T) {
-	// load README from main branch
-	req, err := http.Get("https://raw.githubusercontent.com/thelolagemann/gomeboy/main/tests/README.md")
-	if err != nil {
-		t.Error(err)
-	}
-	defer req.Body.Close()
-
-	// read bytes
-	b, err := io.ReadAll(req.Body)
-	if err != nil {
-		t.Error(err)
-	}
-
-	currentTests := parseTable(string(b))
-
-	// jump to basepath
 	if err := os.Chdir(basePath); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
+	_ = os.Remove(regressionResultsPath)
 
-	// read existing README to compare against to make sure file changed
-	oldF, err := os.Open("README.md")
-	if err != nil {
-		panic(err)
-	}
-	oldB, err := io.ReadAll(oldF)
-	if err != nil {
-		panic(err)
-	}
+	cmd := exec.Command("go", "test", "-tags", "test", "-v", "-run", "^Test_All$")
+	var output strings.Builder
+	cmd.Stdout = &output
+	cmd.Stderr = &output
 
-	// run test with exec (cheeky hack to avoid exit status 1 on failure)
-	cmd := exec.Command("go", "test", "-tags", "test", "-v", "-run", "Test_All")
-	var exitError *exec.ExitError
-	var out strings.Builder
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); errors.As(err, &exitError) {
-		if exitError.ExitCode() > 1 {
-			t.Error(err)
-		} else {
-			fmt.Println(err, out.String())
+	err := cmd.Run()
+	if err != nil {
+		var exitError *exec.ExitError
+		if !errors.As(err, &exitError) || exitError.ExitCode() > 1 {
+			t.Fatalf("Test_All could not complete: %v\n%s", err, output.String())
 		}
-	} else {
-		t.Error(err)
 	}
 
-	// load local README for comparison
-	f, err := os.Open("README.md")
+	data, err := os.ReadFile(regressionResultsPath)
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("structured regression results were not produced: %v\n%s", err, output.String())
 	}
-	defer f.Close()
-	newB, err := io.ReadAll(f)
-	if err != nil {
-		t.Error(err)
+	var report regressionReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("invalid structured regression results: %v", err)
 	}
-
-	if bytes.Equal(b, newB) {
-		t.Error("no changes detected in README file", string(oldB), string(newB))
+	if report.SchemaVersion != 1 {
+		t.Fatalf("unexpected regression result schema %d", report.SchemaVersion)
 	}
 
-	newTests := parseTable(string(newB))
-
-	// check that each test suite either passes the same number, or a greater number of tests (TODO per test specificity)
-	for suite, passed := range currentTests {
-		t.Run(suite, func(t *testing.T) {
-			if newTests[suite] < passed {
-				t.Errorf("%s has a regression, %d -> %d", suite, passed, newTests[suite])
-			}
+	unexpected := report.unexpected()
+	for _, result := range unexpected {
+		result := result
+		t.Run(result.ID, func(t *testing.T) {
+			t.Errorf("%s: expected=%s actual=%s status=%s: %s",
+				result.ID,
+				result.Expected,
+				result.Actual,
+				result.Status,
+				result.Reason,
+			)
 		})
 	}
-
-	if t.Failed() {
-		fmt.Println(string(oldB), string(newB))
+	if len(unexpected) > 0 {
+		fmt.Println(output.String())
 	}
-
-}
-
-func parseTable(markdown string) regressionTests {
-	matches := parseTableRE.FindAllStringSubmatch(markdown, -1)
-
-	tests := make(regressionTests)
-
-	for _, match := range matches {
-		suite := match[1]
-		passed, _ := strconv.Atoi(match[3])
-		tests[suite] = passed
-	}
-
-	return tests
 }
