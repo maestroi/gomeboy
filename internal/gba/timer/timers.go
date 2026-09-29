@@ -45,6 +45,7 @@ type state struct {
 	control           uint16
 	phase             uint32
 	lastTickOverflow  bool
+	startupDelay      uint32
 }
 
 type pendingWriteKind uint8
@@ -132,7 +133,7 @@ func (t *Timers) EndWriteBusAccess() {
 	pending := t.pendingBusWrites
 	t.pendingBusWrites = t.pendingBusWrites[:0]
 	for _, write := range pending {
-		t.applyControl(write.index, write.value)
+		t.applyControl(write.index, write.value, false)
 	}
 }
 
@@ -154,7 +155,7 @@ func (t *Timers) EndWriteAccess() {
 		case pendingReload:
 			t.timer[write.index].reload = write.value
 		case pendingControl:
-			t.applyControl(write.index, write.value)
+			t.applyControl(write.index, write.value, true)
 		}
 	}
 }
@@ -196,10 +197,10 @@ func (t *Timers) writeControl(index int, value uint16) {
 		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingControl, value: value})
 		return
 	}
-	t.applyControl(index, value)
+	t.applyControl(index, value, false)
 }
 
-func (t *Timers) applyControl(index int, value uint16) {
+func (t *Timers) applyControl(index int, value uint16, cpuCommit bool) {
 	s := &t.timer[index]
 	oldControl := s.control
 	s.control = value & controlMask(index)
@@ -215,10 +216,14 @@ func (t *Timers) applyControl(index int, value uint16) {
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
+		if cpuCommit {
+			s.startupDelay = 2
+		}
 		return
 	}
 	if oldEnabled && !newEnabled {
 		s.phase = 0
+		s.startupDelay = 0
 		return
 	}
 
@@ -249,6 +254,13 @@ func (t *Timers) CyclesUntilEvent() uint32 {
 			continue
 		}
 
+		if s.startupDelay != 0 {
+			if uint64(s.startupDelay) < best {
+				best = uint64(s.startupDelay)
+			}
+			continue
+		}
+
 		divisor := uint64(prescalers[s.control&controlPrescalerMask])
 		ticks := uint64(0x10000 - uint32(s.counter))
 		cycles := ticks*divisor - uint64(s.phase)
@@ -275,12 +287,23 @@ func (t *Timers) Advance(cycles uint32) {
 			continue
 		}
 
+		activeCycles := cycles
+		if s.startupDelay != 0 {
+			if activeCycles <= s.startupDelay {
+				s.startupDelay -= activeCycles
+				s.lastTickOverflow = false
+				continue
+			}
+			activeCycles -= s.startupDelay
+			s.startupDelay = 0
+		}
+
 		var ticks uint64
 		if index > 0 && s.control&controlCountUp != 0 {
 			ticks = uint64(overflows[index-1])
 		} else {
 			divisor := prescalers[s.control&controlPrescalerMask]
-			total := uint64(s.phase) + uint64(cycles)
+			total := uint64(s.phase) + uint64(activeCycles)
 			ticks = total / uint64(divisor)
 			s.phase = uint32(total % uint64(divisor))
 		}
