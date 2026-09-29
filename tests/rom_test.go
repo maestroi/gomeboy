@@ -48,7 +48,9 @@ GomeBoy is automatically tested against the following test suites:
 * **[SameSuite](https://github.com/LIJI32/SameSuite)**  
   <sup>by [Lior Halphon](https://github.com/LIJI32) </sup>
 
-External-suite integration status, including pinned but not-yet-run candidates, is tracked in `tests/external-corpus.json`.\n\nDifferent test suites use different pass/fail criteria. Some may write output to the serial port such as
+External-suite integration status, including pinned but not-yet-run candidates, is tracked in tests/external-corpus.json.
+
+Different test suites use different pass/fail criteria. Some may write output to the serial port such as
 [Blargg's test roms](https://github.com/retrio/gb-test-roms), others may write to the CPU registers, such as 
 [Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite) and [SameSuite](https://github.com/LIJI32/SameSuite).
 If the test suite does not provide a way to automatically determine a pass/fail criteria, then the emulator's output
