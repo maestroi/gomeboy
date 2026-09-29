@@ -611,7 +611,7 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 	value, cycles := t.m.Bus.Read32(addr, access)
 	if !access.Instruction {
 		if timer, ok := timerCounterIndex(addr); ok {
-			value = value&0xffff0000 | uint32(t.m.Timers.CounterForCPURead(timer))
+			value = value&0xffff0000 | uint32(t.m.Timers.CounterForCPURead32(timer))
 		}
 	}
 	if access.Instruction {
