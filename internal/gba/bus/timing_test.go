@@ -120,8 +120,8 @@ func TestPrefetchConsumesIdleCycles(t *testing.T) {
 	// Fill two more halfwords and consume them as one word.
 	b.Idle(6)
 	_, wordCycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true})
-	if wordCycles != 2 {
-		t.Fatalf("prefetched word = %d cycles, want 2", wordCycles)
+	if wordCycles != 1 {
+		t.Fatalf("prefetched word = %d cycles, want 1", wordCycles)
 	}
 }
 
@@ -198,14 +198,14 @@ func TestPartialARMWordPrefetchUsesBufferedFirstHalfword(t *testing.T) {
 	// Queue exactly one halfword of the next ARM instruction.
 	b.Idle(3)
 
-	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 4 {
-		t.Fatalf("partially prefetched ARM word = %d cycles, want 4 (1 buffered + 3 sequential)", cycles)
+	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 3 {
+		t.Fatalf("partially prefetched ARM word = %d cycles, want 3 remaining burst cycles", cycles)
 	}
 
 	// The direct cartridge tail restarts filling after the completed word.
 	b.Idle(6)
-	if _, cycles := b.Read32(ROM0Start+8, Access{Sequential: true, Instruction: true}); cycles != 2 {
-		t.Fatalf("ARM word after restarted fill = %d cycles, want fully prefetched 2", cycles)
+	if _, cycles := b.Read32(ROM0Start+8, Access{Sequential: true, Instruction: true}); cycles != 1 {
+		t.Fatalf("ARM word after restarted fill = %d cycles, want fully prefetched 1", cycles)
 	}
 }
 
@@ -218,8 +218,8 @@ func TestPartialARMWordPrefetchKeepsTailProgress(t *testing.T) {
 	// complete the first halfword and leave one cycle of progress on the tail.
 	b.Idle(4)
 
-	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 3 {
-		t.Fatalf("partially progressed ARM tail = %d cycles, want 3 (1 buffered + 2 remaining tail)", cycles)
+	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 2 {
+		t.Fatalf("partially progressed ARM tail = %d cycles, want 2 remaining tail cycles", cycles)
 	}
 }
 
@@ -229,8 +229,8 @@ func TestPartialARMWordPrefetchHonorsFastSecondAccess(t *testing.T) {
 
 	b.Read32(ROM0Start, Access{Instruction: true})
 	b.Idle(2)
-	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 3 {
-		t.Fatalf("fast partially prefetched ARM word = %d cycles, want 3", cycles)
+	if _, cycles := b.Read32(ROM0Start+4, Access{Sequential: true, Instruction: true}); cycles != 2 {
+		t.Fatalf("fast partially prefetched ARM word = %d cycles, want 2", cycles)
 	}
 }
 

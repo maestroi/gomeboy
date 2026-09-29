@@ -46,16 +46,21 @@ func (p *prefetchState) consume(addr, width uint32, partialWordTailCycles uint32
 		p.count--
 		p.lastConsumeHit = true
 		p.lastConsumePartial = true
-		return 1 + tailCycles, true
+		// The buffered first halfword and the in-flight tail belong to one ARM
+		// opcode fetch. Reference implementations model takeover of that burst as
+		// only the remaining cartridge time; there is no extra CPU cycle for the
+		// already-buffered halfword.
+		return tailCycles, true
 	}
 
 	p.startAddress += uint32(halfwords) * 2
 	p.count -= halfwords
 	p.lastConsumeHit = true
 	p.lastConsumePartial = false
-	// Prefetched halfwords have zero waitstates but still consume the CPU-side
-	// access cycle itself.
-	return uint32(halfwords), true
+	// A complete prefetched opcode is delivered in one CPU cycle regardless of
+	// whether the opcode is a Thumb halfword or an ARM word. The Game Pak bus
+	// width controls fill time, not buffered opcode consumption time.
+	return 1, true
 }
 
 
