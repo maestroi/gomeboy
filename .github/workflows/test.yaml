@@ -142,7 +142,11 @@ jobs:
       - name: install dependencies
         run: go mod download
       - name: extract bundled GB/GBC test ROMs
-        run: go test -tags test ./tests -run '^
+        run: go test -tags test ./tests -run '^$'
+      - name: fetch pinned AGE conformance corpus
+        run: bash tests/fetch-age.sh
+      - name: tests
+        run: go test -tags test -v ./tests -run Test_Regressions
       - name: upload GB/GBC regression report
         if: always()
         uses: actions/upload-artifact@v6
