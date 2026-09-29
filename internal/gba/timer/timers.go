@@ -68,8 +68,9 @@ type Timers struct {
 	timer  [4]state
 	active uint8
 
-	deferWrites   bool
-	pendingWrites []pendingWrite
+	deferWrites      bool
+	pendingWrites    []pendingWrite
+	pendingBusWrites []pendingWrite
 }
 
 // New maps TM0-TM3 onto b.
@@ -109,10 +110,10 @@ func (t *Timers) install(io *bus.IO) {
 	}
 }
 
-// BeginWriteAccess defers timer register side effects until EndWriteAccess.
-// The system keeps this scope open through the remainder of the current CPU
-// instruction so writes become visible at the ARM7 instruction completion
-// edge instead of at the start of the I/O access.
+// BeginWriteAccess marks timer writes performed by a CPU instruction. Timer
+// starts and ordinary control changes remain deferred to EndWriteAccess, while
+// disabling a running timer commits at the end of the individual I/O bus
+// access via EndWriteBusAccess.
 func (t *Timers) BeginWriteAccess() {
 	if t.deferWrites {
 		return
@@ -120,13 +121,31 @@ func (t *Timers) BeginWriteAccess() {
 	t.deferWrites = true
 }
 
-// EndWriteAccess commits queued timer writes in bus order at the CPU
-// instruction boundary. Direct bus/debug writes remain immediate because they
-// do not call BeginWriteAccess.
+// EndWriteBusAccess commits timer side effects that become visible only after
+// the current CPU I/O transfer has consumed its bus cycles. In particular, a
+// TMxCNT_H disable keeps the timer running through the store itself but is
+// visible before the next CPU phase.
+func (t *Timers) EndWriteBusAccess() {
+	if len(t.pendingBusWrites) == 0 {
+		return
+	}
+	pending := t.pendingBusWrites
+	t.pendingBusWrites = t.pendingBusWrites[:0]
+	for _, write := range pending {
+		t.applyControl(write.index, write.value)
+	}
+}
+
+// EndWriteAccess commits control changes whose hardware effect is delayed until
+// the CPU instruction boundary. Direct bus/debug writes remain immediate
+// because they do not call BeginWriteAccess.
 func (t *Timers) EndWriteAccess() {
 	if !t.deferWrites {
 		return
 	}
+	// A caller that does not model individual bus completion still gets a
+	// deterministic final commit at the instruction edge.
+	t.EndWriteBusAccess()
 	t.deferWrites = false
 	pending := t.pendingWrites
 	t.pendingWrites = t.pendingWrites[:0]
@@ -167,12 +186,11 @@ func controlMask(index int) uint16 {
 
 func (t *Timers) writeControl(index int, value uint16) {
 	if t.deferWrites {
-		// Disabling an already-running timer takes effect at the I/O write bus
-		// phase. Starts and other control changes remain deferred to the CPU
-		// instruction boundary so the existing start/reload edge semantics are
-		// preserved.
+		// A disable is sampled by the I/O write but does not stop the timer until
+		// that transfer completes. Starts and other control changes remain
+		// deferred to the instruction boundary.
 		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
-			t.applyControl(index, value)
+			t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, kind: pendingControl, value: value})
 			return
 		}
 		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingControl, value: value})
@@ -325,6 +343,7 @@ func (t *Timers) Reset() {
 	t.active = 0
 	t.deferWrites = false
 	t.pendingWrites = t.pendingWrites[:0]
+	t.pendingBusWrites = t.pendingBusWrites[:0]
 }
 
 // Active reports whether at least one timer is enabled.

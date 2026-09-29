@@ -101,9 +101,8 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		mem.Idle(uint32(exec.InternalCycles))
 	}
 
-	// A taken conditional branch refills the two pipeline slots after the
-	// branch target. The target opcode itself is fetched by the following Step,
-	// so these are the two sequential phases after it.
+	// A taken branch can request sequential refill phases after its target.
+	// The target opcode itself is fetched by the following Step.
 	var refill uint32
 	if exec.PipelineRefill {
 		if timing, ok := mem.(interface {
@@ -113,9 +112,14 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 			if c.cpsr.Thumb() {
 				width = 2
 			}
+			phases := uint8(2)
+			if exec.PipelineRefillCycles != 0 {
+				phases = exec.PipelineRefillCycles
+			}
 			seq := gbamemory.Access{Sequential: true}
-			refill = timing.AccessCycles(c.pc+width, width, seq) +
-				timing.AccessCycles(c.pc+2*width, width, seq)
+			for phase := uint8(1); phase <= phases; phase++ {
+				refill += timing.AccessCycles(c.pc+uint32(phase)*width, width, seq)
+			}
 			if spender, ok := mem.(interface{ SpendCycles(uint32) }); ok {
 				spender.SpendCycles(refill)
 			}

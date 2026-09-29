@@ -640,6 +640,9 @@ func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) u
 	cycles := t.m.Bus.Write8(addr, value, access)
 	t.inBusCall = false
 	t.consume(cycles)
+	if t.inInstruction {
+		t.m.Timers.EndWriteBusAccess()
+	}
 	t.flushDeferredDMARequest()
 	return cycles
 }
@@ -652,6 +655,9 @@ func (t *timedMemory) Write16(addr uint32, value uint16, access gbamemory.Access
 	cycles := t.m.Bus.Write16(addr, value, access)
 	t.inBusCall = false
 	t.consume(cycles)
+	if t.inInstruction {
+		t.m.Timers.EndWriteBusAccess()
+	}
 	t.flushDeferredDMARequest()
 	return cycles
 }
@@ -664,6 +670,9 @@ func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access
 	cycles := t.m.Bus.Write32(addr, value, access)
 	t.inBusCall = false
 	t.consume(cycles)
+	if t.inInstruction {
+		t.m.Timers.EndWriteBusAccess()
+	}
 	t.flushDeferredDMARequest()
 	return cycles
 }

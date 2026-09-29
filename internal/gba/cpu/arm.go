@@ -58,6 +58,11 @@ func (c *CPU) executeARM(instruction uint32, mem Memory) (ExecutionResult, error
 		}
 		offset := imm24 << 2
 		c.SetPC(uint32(int32(c.VisiblePC()) + offset))
+		if cond == 0xe && !link {
+			// The target fetch is performed by the following Step. Charge the
+			// remaining explicit sequential refill phase here.
+			return ExecutionResult{PipelineFlush: true, PipelineRefill: true, PipelineRefillCycles: 2}, nil
+		}
 		return ExecutionResult{PipelineFlush: true, PipelineRefill: cond != 0xe}, nil
 	}
 
