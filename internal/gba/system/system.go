@@ -24,6 +24,10 @@ const (
 	// IRQPropagationLatency is the GBA interrupt-controller delay from an
 	// enabled pending request (IE & IF) to the CPU-visible IRQ delivery event.
 	IRQPropagationLatency uint64 = 7
+
+	// TimerIRQPropagationLatency is the timer-overflow-to-CPU IRQ delay. High-accuracy
+	// references pipeline timer interrupt delivery for four master cycles.
+	TimerIRQPropagationLatency uint64 = 4
 )
 
 // StepResult describes one architectural CPU step plus any DMA stalls that
@@ -72,6 +76,21 @@ type Machine struct {
 	stopRequested  bool
 }
 
+type timerIRQSink struct {
+	m *Machine
+}
+
+func (s timerIRQSink) Request(source gbairq.Source) {
+	s.m.IRQ.Request(source)
+	if !s.m.stopped && s.m.IRQ.EnabledPending() {
+		deadline := s.m.cycles + TimerIRQPropagationLatency
+		if !s.m.irqScheduled || deadline < s.m.irqEventAt {
+			s.m.irqEventAt = deadline
+			s.m.irqScheduled = true
+		}
+	}
+}
+
 // New creates a wired GBA timing domain around owned BIOS/ROM bus storage and
 // automatically configures cartridge save hardware from ROM markers.
 func New(bios, rom []byte) *Machine {
@@ -114,7 +133,7 @@ func NewWithCartridgeConfig(bios, rom []byte, config cartridge.Config) *Machine 
 			}
 		},
 	})
-	m.Timers = timer.New(m.Bus, m.IRQ, timer.Hooks{
+	m.Timers = timer.New(m.Bus, timerIRQSink{m: m}, timer.Hooks{
 		Overflow: m.Audio.TimerOverflow,
 	})
 	m.PPU = ppu.New(m.Bus, ppu.Hooks{
