@@ -191,8 +191,8 @@ func TestUnconditionalARMBranchChargesPipelineRefill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.RefillCycles != 1 || result.TotalCycles != 2 {
-		t.Fatalf("B timing = %+v, want fetch=1 refill=1 total=2", result)
+	if result.RefillCycles != 2 || result.TotalCycles != 3 {
+		t.Fatalf("B timing = %+v, want fetch=1 refill=2 total=3", result)
 	}
 	if got := core.PC(); got != code {
 		t.Fatalf("B target = %08x, want %08x", got, code)
