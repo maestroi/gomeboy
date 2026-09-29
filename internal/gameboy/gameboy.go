@@ -137,7 +137,7 @@ func (g *GameBoy) Init() {
 		if g.save == nil {
 			// try to load the save file
 			var err error
-			g.save, err = emulator.NewSave(filepath.Join(g.saveDir, g.filename), uint(b.Cartridge().RAMSize))
+			g.save, err = emulator.NewSave(filepath.Join(g.saveDir, g.filename), uint(len(b.Cartridge().RAM)))
 
 			if err != nil {
 				// was there an error loading the save files?

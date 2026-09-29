@@ -529,6 +529,9 @@ func (b *Bus) Read(addr uint16) byte {
 			if b.c.rtc.enabled && b.c.rtc.register != 0 {
 				return b.c.RAM[b.c.RAMSize+int(b.c.rtc.register-3)]
 			}
+			if !b.c.ramEnabled {
+				return 0xff
+			}
 		case MBC7:
 			return b.c.readMBC7RAM(addr)
 		case POCKETCAMERA:
