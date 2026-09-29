@@ -208,7 +208,7 @@ func TestCentralClockDelaysTimerIRQPropagation(t *testing.T) {
 		t.Fatal("timer IRQ reached CPU without propagation delay")
 	}
 
-	m.Advance(uint32(IRQPropagationLatency - 1))
+	m.Advance(uint32(TimerIRQPropagationLatency - 1))
 	if m.CPU.IRQLine() {
 		t.Fatal("timer IRQ reached CPU one cycle before propagation deadline")
 	}
@@ -217,7 +217,7 @@ func TestCentralClockDelaysTimerIRQPropagation(t *testing.T) {
 	if !m.CPU.IRQLine() {
 		t.Fatal("timer IRQ did not reach CPU at propagation deadline")
 	}
-	if want := uint64(2) + IRQPropagationLatency; m.Cycle() != want {
+	if want := uint64(2) + TimerIRQPropagationLatency; m.Cycle() != want {
 		t.Fatalf("IRQ delivery cycle = %d, want %d", m.Cycle(), want)
 	}
 }
@@ -524,9 +524,9 @@ func TestHALTWakesOnEnabledTimerRequestWithIMEClear(t *testing.T) {
 		t.Fatalf("timer wake result woke/halted = %v/%v machine=%v",
 			wake.Woke, wake.Halted, m.Halted())
 	}
-	if propagation != IRQPropagationLatency {
+	if propagation != TimerIRQPropagationLatency {
 		t.Fatalf("HALT IRQ propagation = %d cycles across scheduler boundaries, want %d",
-			propagation, IRQPropagationLatency)
+			propagation, TimerIRQPropagationLatency)
 	}
 	if m.CPU.PC() != pc {
 		t.Fatalf("CPU executed while fast-forwarding HALT: PC=%08x want %08x", m.CPU.PC(), pc)
@@ -576,9 +576,9 @@ func TestHALTWakeThenTakesIRQWhenIMEEnabled(t *testing.T) {
 	}
 
 	wake, propagation := stepUntilWake(t, m, 10)
-	if !wake.Woke || propagation != IRQPropagationLatency {
+	if !wake.Woke || propagation != TimerIRQPropagationLatency {
 		t.Fatalf("HALT IRQ wake = woke:%v propagation:%d, want true/%d",
-			wake.Woke, propagation, IRQPropagationLatency)
+			wake.Woke, propagation, TimerIRQPropagationLatency)
 	}
 	if !m.CPU.IRQLine() {
 		t.Fatal("IRQ line was not asserted at HALT wake event")
