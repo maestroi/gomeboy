@@ -141,10 +141,10 @@ func (t *Timers) EndWriteAccess() {
 }
 
 func (t *Timers) writeReload(index int, value uint16) {
-	if t.deferWrites {
-		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingReload, value: value})
-		return
-	}
+	// TMxCNT_L is a reload latch rather than a start/stop control. CPU writes
+	// are visible at the I/O bus phase even while the timer is running, so an
+	// overflow during that same access can reload the newly written value.
+	// Enable/control transitions still commit at the instruction boundary.
 	t.timer[index].reload = value
 }
 
@@ -342,8 +342,11 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 		return s.counter
 	}
 	divisor := prescalers[s.control&controlPrescalerMask]
-	if divisor == 0 || s.phase != 0 || s.lastTickOverflow {
+	if divisor == 0 || s.phase != 0 {
 		return s.counter
+	}
+	if s.lastTickOverflow {
+		return 0xffff
 	}
 	return s.counter - 1
 }
