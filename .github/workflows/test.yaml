@@ -143,6 +143,15 @@ jobs:
         run: go mod download
       - name: tests
         run: go test -tags test -v ./tests -run Test_Regressions
+      - name: upload GB/GBC regression report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gb-gbc-regression
+          path: |
+            tests/regression-results.json
+            tests/README.md
+          if-no-files-found: ignore
 
   test_desktop_glfw:
     runs-on: ubuntu-latest
