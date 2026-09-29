@@ -265,10 +265,10 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	//   strh r2, [r1]   ; update reload latch while running
 	//   ldrh r0, [r1]   ; sample the live counter
 	//
-	// Timer writes become visible only once the issuing ARM instruction
-	// completes. That leaves the live counter at FFFF through the STRH, so the
-	// following instruction fetch overflows into the newly written 0000 reload
-	// and the LDRH observes exactly 0000.
+	// Timer enable/control commits at the instruction boundary, while TMxCNT_L
+	// reload writes are visible at their I/O bus phase. That lets the running
+	// timer use the new 0000 latch on an overflow during STRH; the following
+	// LDRH still samples the preceding timer phase.
 	code := uint32(bus.IWRAMStart + 0x1a00)
 	m.Bus.Write32(code+0, 0xe5813000, bus.Access{}) // STR  r3,[r1]
 	m.Bus.Write32(code+4, 0xe1c120b0, bus.Access{}) // STRH r2,[r1]
@@ -294,8 +294,8 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CPU.TotalCycles != 2 || m.Timers.Reload(0) != 0 || m.Timers.Counter(0) != 0xffff {
-		t.Fatalf("reload instruction cycles/reload/counter = %d/%04x/%04x, want 2/0000/ffff",
+	if second.CPU.TotalCycles != 2 || m.Timers.Reload(0) != 0 || m.Timers.Counter(0) != 0 {
+		t.Fatalf("reload instruction cycles/reload/counter = %d/%04x/%04x, want 2/0000/0000",
 			second.CPU.TotalCycles, m.Timers.Reload(0), m.Timers.Counter(0))
 	}
 
@@ -342,9 +342,44 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fff9", got)
 	}
 
-	// The existing FFFF case above covers the complementary edge: when the
-	// fetch itself overflows, the read must observe the reload rather than the
-	// pre-fetch snapshot.
+	// If the instruction fetch itself crosses the overflow edge, the data read
+	// still sees the pre-fetch FFFF value rather than the freshly reloaded latch.
+	m2 := New(nil, nil)
+	if err := m2.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
+		t.Fatal(err)
+	}
+	code2 := uint32(bus.IWRAMStart + 0x1a80)
+	m2.Bus.Write32(code2+0, 0xe5813000, bus.Access{}) // STR  r3,[r1]
+	m2.Bus.Write32(code2+4, 0xe1c120b0, bus.Access{}) // STRH r2,[r1]
+	for offset := uint32(8); offset < 24; offset += 4 {
+		m2.Bus.Write32(code2+offset, 0xe1a00000, bus.Access{}) // NOP
+	}
+	m2.Bus.Write32(code2+24, 0xe1d100b0, bus.Access{}) // LDRH r0,[r1]
+	m2.CPU.SetPC(code2)
+	m2.CPU.WriteRegister(1, bus.IOStart+0x100)
+	m2.CPU.WriteRegister(2, 0)
+	m2.CPU.WriteRegister(3, uint32(1<<7)<<16|0xfff9)
+
+	if _, err := m2.Step(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m2.Step(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		if _, err := m2.Step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := m2.Timers.Counter(0); got != 0xffff {
+		t.Fatalf("Timer0 before overflow-edge load = %04x, want ffff", got)
+	}
+	if _, err := m2.Step(); err != nil {
+		t.Fatal(err)
+	}
+	if got := m2.CPU.ReadRegister(0); got != 0xffff {
+		t.Fatalf("Timer0 overflow-edge sample = %04x, want pre-overflow ffff", got)
+	}
 }
 
 func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
