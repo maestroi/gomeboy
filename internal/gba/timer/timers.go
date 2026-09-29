@@ -249,6 +249,7 @@ func (t *Timers) CyclesUntilEvent() uint32 {
 			continue
 		}
 
+
 		divisor := uint64(prescalers[s.control&controlPrescalerMask])
 		ticks := uint64(0x10000 - uint32(s.counter))
 		cycles := ticks*divisor - uint64(s.phase)
@@ -274,6 +275,7 @@ func (t *Timers) Advance(cycles uint32) {
 		if s.control&controlEnable == 0 {
 			continue
 		}
+
 
 		var ticks uint64
 		if index > 0 && s.control&controlCountUp != 0 {
