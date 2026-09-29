@@ -185,7 +185,7 @@ func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 	}
 }
 
-func TestDeferredTimerDisableStopsAtWriteBusPhase(t *testing.T) {
+func TestDeferredTimerDisableCommitsAtInstructionBoundary(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xff00, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -196,16 +196,23 @@ func TestDeferredTimerDisableStopsAtWriteBusPhase(t *testing.T) {
 
 	timers.BeginWriteAccess()
 	b.Write16(timerHigh(0), 0, bus.Access{})
-	if got := timers.Control(0); got != 0 {
-		t.Fatalf("timer disable was deferred past bus phase: control=%04x", got)
+	if got := timers.Control(0); got != controlEnable {
+		t.Fatalf("timer disable became visible before instruction boundary: control=%04x", got)
 	}
 
-	// The bus phase itself may still consume master cycles, but a timer whose
-	// enable bit has already fallen must no longer tick through them.
+	// The write's bus phase still belongs to the old enabled state. The disable
+	// becomes visible only when the CPU instruction finishes.
 	timers.Advance(4)
+	if got := timers.Counter(0); got != 0xff07 {
+		t.Fatalf("timer did not advance through disable bus phase: %04x, want ff07", got)
+	}
 	timers.EndWriteAccess()
-	if got := timers.Counter(0); got != 0xff03 {
-		t.Fatalf("timer advanced after disable bus phase: %04x, want ff03", got)
+	if got := timers.Control(0); got != 0 {
+		t.Fatalf("timer disable did not commit: control=%04x", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 0xff07 {
+		t.Fatalf("timer advanced after disable commit: %04x, want ff07", got)
 	}
 }
 
