@@ -69,6 +69,8 @@ const (
 	rtcDH                    // days higher & control
 )
 
+const rtcCyclesPerSecond uint64 = 4_194_304
+
 type Cartridge struct {
 	ROM []byte
 	RAM []byte
@@ -131,6 +133,11 @@ type Cartridge struct {
 	}
 
 	Camera *Camera
+
+	// rtcNow returns the deterministic time base used by the MBC3 RTC. The
+	// production path uses scheduler cycles; tests can inject a controlled clock
+	// without sleeping or depending on wall-clock time.
+	rtcNow func() uint64
 
 	rtc struct {
 		enabled, latched, latching bool
@@ -209,18 +216,37 @@ func (c *Cartridge) updateRAMBank(bank uint8) {
 
 // updateRTC sets the RTC registers based on how many cycles have passed since the last read.
 // TODO make configurable to sync to host
+func (c *Cartridge) rtcCycle() uint64 {
+	if c.rtcNow != nil {
+		return c.rtcNow()
+	}
+	return c.b.s.Cycle()
+}
+
+// updateRTC advances the live MBC3 clock from its deterministic cycle source.
+// lastUpdate tracks the exact cycle boundary of the most recently accounted
+// second, so repeated latches do not discard the sub-second remainder.
 func (c *Cartridge) updateRTC() {
-	// is the RTC ticking?
+	// Is the RTC ticking?
 	if c.RAM[c.RAMSize+rtcDH]&types.Bit6 > 0 {
-		return // no
+		return
 	}
 
-	// get delta and determine how many seconds have passed
-	delta := c.b.s.Cycle() - c.rtc.lastUpdate
-	ticks := int(delta / 4194304)
-	rB := c.RAM[c.RAMSize : c.RAMSize+rtcDH+1]
+	now := c.rtcCycle()
+	if now < c.rtc.lastUpdate {
+		// A restored/custom clock should never underflow the unsigned delta.
+		c.rtc.lastUpdate = now
+		return
+	}
 
-	for i := 0; i < ticks; i++ {
+	delta := now - c.rtc.lastUpdate
+	ticks := delta / rtcCyclesPerSecond
+	if ticks == 0 {
+		return
+	}
+
+	rB := c.RAM[c.RAMSize : c.RAMSize+rtcDH+1]
+	for i := uint64(0); i < ticks; i++ {
 		rB[rtcS]++
 
 		if rB[rtcS] == 60 {
@@ -261,14 +287,11 @@ func (c *Cartridge) updateRTC() {
 		if rB[rtcS] > 63 {
 			rB[rtcS] = 0 // invalid rollovers don't increment the next register
 		}
-
 	}
 
-	if ticks > 0 {
-		// copy modified registers back
-		copy(c.RAM[c.RAMSize:], rB)
-		c.rtc.lastUpdate = c.b.s.Cycle()
-	}
+	// Advance only by complete seconds. Keeping the remainder makes two
+	// half-second advances equivalent to one full second.
+	c.rtc.lastUpdate += ticks * rtcCyclesPerSecond
 }
 
 // Destination returns the destination as specified in the cartridge header.
@@ -529,6 +552,7 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 
 				c.updateROMBank(uint16(c.mbc1.bank2<<c.mbc1.bankShift | value))
 			case MBC3, MBC3RAM, MBC3RAMBATT, MBC3TIMERBATT, MBC3TIMERRAMBATT:
+				value &= 0x7f
 				if value == 0 {
 					value = 1
 				}
@@ -567,8 +591,8 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 					}
 				}
 			case MBC3RAM, MBC3RAMBATT, MBC3TIMERBATT, MBC3TIMERRAMBATT:
-				if value <= 3 {
-					c.updateRAMBank(value & 3)
+				if value <= 7 {
+					c.updateRAMBank(value & 7)
 					c.rtc.register = 0
 				} else if value >= 0x08 && value <= 0x0c {
 					c.rtc.register = value
@@ -600,6 +624,7 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 				if c.rtc.latching && value == 1 {
 					c.updateRTC()
 					copy(c.RAM[c.RAMSize+5:c.RAMSize+10], c.RAM[c.RAMSize:c.RAMSize+5])
+					c.rtc.latched = true
 				}
 
 				c.rtc.latching = value == 0
@@ -610,7 +635,7 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 				if c.rtc.enabled && c.rtc.register != 0 {
 					switch c.rtc.register {
 					case 0x08:
-						c.rtc.lastUpdate = c.b.s.Cycle() // cheeky hack not accurate at all
+						c.rtc.lastUpdate = c.rtcCycle()
 						c.RAM[c.RAMSize+rtcS] = value & 0x3f
 					case 0x09:
 						c.RAM[c.RAMSize+rtcM] = value & 0x3f
@@ -619,10 +644,26 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 					case 0x0B:
 						c.RAM[c.RAMSize+rtcDL] = value
 					case 0x0C:
-						if c.RAM[c.RAMSize+rtcDH]&types.Bit6 == 0 && value&types.Bit6 > 0 { // store ticks
-							c.rtc.heldTicks = c.b.s.Cycle() - c.rtc.lastUpdate
-						} else if c.RAM[c.RAMSize+rtcDH]&types.Bit6 > 0 && value&types.Bit6 == 0 { // restore ticks
-							c.rtc.lastUpdate = c.b.s.Cycle() - c.rtc.heldTicks
+						now := c.rtcCycle()
+						wasHalted := c.RAM[c.RAMSize+rtcDH]&types.Bit6 > 0
+						willHalt := value&types.Bit6 > 0
+
+						if !wasHalted {
+							// Bring the live registers current before freezing them.
+							c.updateRTC()
+						}
+
+						switch {
+						case !wasHalted && willHalt:
+							// Preserve the fractional second so resume continues from the
+							// same phase instead of rounding to a whole second.
+							c.rtc.heldTicks = now - c.rtc.lastUpdate
+						case wasHalted && !willHalt:
+							if c.rtc.heldTicks > now {
+								c.rtc.lastUpdate = now
+							} else {
+								c.rtc.lastUpdate = now - c.rtc.heldTicks
+							}
 							c.rtc.heldTicks = 0
 						}
 
