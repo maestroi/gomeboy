@@ -4,6 +4,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -33,6 +34,25 @@ func ageModelsForName(name string) []types.Model {
 		return []types.Model{types.DMGABC}
 	default:
 		return []types.Model{types.DMGABC}
+	}
+}
+
+func TestAgeModelsForName(t *testing.T) {
+	cases := []struct {
+		name string
+		want []types.Model
+	}{
+		{"ei-halt-dmgC-cgbBCE.gb", []types.Model{types.DMGABC, types.CGBABC}},
+		{"ly-dmgC-cgbBC.gb", []types.Model{types.DMGABC, types.CGBABC}},
+		{"oam-write-cgbBCE.gb", []types.Model{types.CGBABC}},
+		{"stat-mode-sprites-ds-cgbBCE.gb", []types.Model{types.CGBABC}},
+		{"oam-write-ncmBCE.gb", []types.Model{types.CGBABC}},
+		{"oam-write-dmgC.gb", []types.Model{types.DMGABC}},
+	}
+	for _, tc := range cases {
+		if got := ageModelsForName(tc.name); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 
