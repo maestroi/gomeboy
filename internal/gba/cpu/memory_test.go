@@ -176,6 +176,29 @@ func TestTakenConditionalARMBranchChargesPipelineRefill(t *testing.T) {
 	}
 }
 
+func TestUnconditionalARMBranchChargesPipelineRefill(t *testing.T) {
+	b := newExecutionBus(nil)
+	code := uint32(bus.IWRAMStart + 0x200)
+	b.Write32(code, 0xeafffffe, bus.Access{}) // B to self
+
+	core := New()
+	if err := core.SetMode(ModeSystem); err != nil {
+		t.Fatal(err)
+	}
+	core.SetPC(code)
+
+	result, err := core.Step(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RefillCycles != 2 || result.TotalCycles != 3 {
+		t.Fatalf("B timing = %+v, want fetch=1 refill=2 total=3", result)
+	}
+	if got := core.PC(); got != code {
+		t.Fatalf("B target = %08x, want %08x", got, code)
+	}
+}
+
 func TestFailedConditionalARMBranchDoesNotRefill(t *testing.T) {
 	b := newExecutionBus(nil)
 	code := uint32(bus.IWRAMStart + 0x1c0)
