@@ -65,9 +65,12 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		if err := c.EnterException(kind, c.pc+4); err != nil {
 			return StepResult{}, err
 		}
+		// IRQ/FIQ entry consumes the three ARM7TDMI exception/refill phases
+		// before execution resumes from the vector. Keep them explicit here so
+		// peripherals continue advancing while the CPU is entering the handler.
 		return StepResult{
-			InternalCycles: 1,
-			TotalCycles:    1,
+			InternalCycles: 3,
+			TotalCycles:    3,
 			PipelineFlush:  true,
 			ExceptionTaken: true,
 			Exception:      kind,
