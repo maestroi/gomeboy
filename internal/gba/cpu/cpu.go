@@ -12,6 +12,9 @@ type ExecutionResult struct {
 	MemoryCycles         uint32
 	PipelineFlush        bool
 	PipelineRefill       bool
+	// PipelineRefillCycles optionally overrides the default two sequential
+	// refill phases when PipelineRefill is set.
+	PipelineRefillCycles uint8
 	BreakSequentialFetch bool
 }
 
