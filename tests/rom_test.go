@@ -29,6 +29,8 @@ func init() {
 const readmeBlurb = `<hr/>
 GomeBoy is automatically tested against the following test suites:
 
+* **[AGE test roms](https://github.com/c-sp/age-test-roms)**  
+  <sup>by [c-sp](https://github.com/c-sp); CI uses AGE revision cd3f654d13bf from the pinned game-boy-test-roms v7.0 release.</sup>
 * **[Blargg's test roms](https://github.com/retrio/gb-test-roms)**  
   <sup>by [Shay Green (a.k.a. Blargg)](http://www.slack.net/~ant/) </sup>
 * **[Bully](https://github.com/Hacktix/BullyGB)**, 
@@ -45,6 +47,8 @@ GomeBoy is automatically tested against the following test suites:
   <sup>by [Joonas Javanainen](https://github.com/Gekkio) </sup>
 * **[SameSuite](https://github.com/LIJI32/SameSuite)**  
   <sup>by [Lior Halphon](https://github.com/LIJI32) </sup>
+
+External-suite integration status, including pinned but not-yet-run candidates, is tracked in tests/external-corpus.json.
 
 Different test suites use different pass/fail criteria. Some may write output to the serial port such as
 [Blargg's test roms](https://github.com/retrio/gb-test-roms), others may write to the CPU registers, such as 
@@ -64,11 +68,11 @@ var (
 )
 
 // Test_All and Test_Regressions live in regressions_test.go behind the
-// "test" build tag: they are slow, network-dependent, and rewrite
+// "test" build tag: they are slow, fetch a pinned external corpus, and rewrite
 // tests/README.md and the main README.md, so they are excluded from the
 // default `go test ./...` context.
 
-var testers = []func(*TestTable){testAcid2, testBully, testBlarrg, testLittleThings, testMooneye, testSamesuite, testScribbl, testStrikethrough}
+var testers = []func(*TestTable){testAcid2, testAge, testBully, testBlarrg, testLittleThings, testMooneye, testSamesuite, testScribbl, testStrikethrough}
 
 func testAllTable() *TestTable {
 	testTable := &TestTable{
