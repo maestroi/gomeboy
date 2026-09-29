@@ -232,6 +232,167 @@ func TestMBC7AccelerometerLatchAndRAMGates(t *testing.T) {
 	if got := uint16(b.Read(0xa040)) | uint16(b.Read(0xa050))<<8; got != 0x82b0 {
 		t.Errorf("latched Y = %#04x, want 0x82b0", got)
 	}
+
+	// A second latch command without the required 0x55 reset must leave the
+	// previous sample untouched.
+	b.c.AccelerometerX = 3
+	b.c.AccelerometerY = 4
+	b.Write(0xa010, 0xaa)
+	if got := uint16(b.Read(0xa020)) | uint16(b.Read(0xa030))<<8; got != 0x8240 {
+		t.Errorf("X changed without latch reset: got %#04x, want 0x8240", got)
+	}
+
+	b.Write(0xa000, 0x55)
+	if got := uint16(b.Read(0xa020)) | uint16(b.Read(0xa030))<<8; got != 0x8000 {
+		t.Errorf("X after latch reset = %#04x, want 0x8000", got)
+	}
+	b.Write(0xa010, 0xaa)
+	if got := uint16(b.Read(0xa020)) | uint16(b.Read(0xa030))<<8; got != 0x8320 {
+		t.Errorf("X after reset + relatch = %#04x, want 0x8320", got)
+	}
+	if got := uint16(b.Read(0xa040)) | uint16(b.Read(0xa050))<<8; got != 0x8390 {
+		t.Errorf("Y after reset + relatch = %#04x, want 0x8390", got)
+	}
+}
+
+func newMBC7EEPROMTestBus(t *testing.T) *Bus {
+	t.Helper()
+	rom := make([]byte, 0x8000)
+	rom[0x0147] = byte(MBC7)
+	b := NewBus(scheduler.NewScheduler(), rom)
+	b.Write(0x0000, 0x0a)
+	b.Write(0x4000, 0x40)
+	return b
+}
+
+func mbc7EEPROMClockBit(b *Bus, bit byte) byte {
+	value := byte(0x80) // CS high, CLK low
+	if bit != 0 {
+		value |= 0x02 // DI
+	}
+	b.Write(0xa080, value)
+	b.Write(0xa080, value|0x40)
+	out := b.Read(0xa080) & 1
+	b.Write(0xa080, value)
+	return out
+}
+
+func mbc7EEPROMCommand(b *Bus, command uint16) {
+	b.Write(0xa080, 0x00) // lower CS
+	b.Write(0xa080, 0x80) // raise CS
+	mbc7EEPROMClockBit(b, 1)
+	for bit := 9; bit >= 0; bit-- {
+		mbc7EEPROMClockBit(b, byte(command>>bit&1))
+	}
+}
+
+func mbc7EEPROMData(b *Bus, value uint16) {
+	for bit := 15; bit >= 0; bit-- {
+		mbc7EEPROMClockBit(b, byte(value>>bit&1))
+	}
+	b.Write(0xa080, 0x00)
+}
+
+func mbc7EEPROMReadWord(b *Bus, address uint16) uint16 {
+	mbc7EEPROMCommand(b, 0x200|address&0x7f) // READ 10xAAAAAAA
+	var value uint16
+	for range 16 {
+		value = value<<1 | uint16(mbc7EEPROMClockBit(b, 0))
+	}
+	b.Write(0xa080, 0x00)
+	return value
+}
+
+func mbc7EEPROMWriteWord(b *Bus, address, value uint16) {
+	mbc7EEPROMCommand(b, 0x100|address&0x7f) // WRITE 01xAAAAAAA
+	mbc7EEPROMData(b, value)
+}
+
+func TestMBC7EEPROMCommandsAndWriteEnable(t *testing.T) {
+	b := newMBC7EEPROMTestBus(t)
+	const address = uint16(3)
+
+	// Programming commands are ignored until EWEN.
+	mbc7EEPROMWriteWord(b, address, 0x1234)
+	if got := mbc7EEPROMReadWord(b, address); got != 0x0000 {
+		t.Fatalf("WRITE before EWEN changed EEPROM: got %#04x, want 0x0000", got)
+	}
+
+	mbc7EEPROMCommand(b, 0x0c0) // EWEN 0011xxxxxx
+	b.Write(0xa080, 0x00)
+	mbc7EEPROMWriteWord(b, address, 0x1234)
+	if got := mbc7EEPROMReadWord(b, address); got != 0x1234 {
+		t.Fatalf("READ after WRITE = %#04x, want 0x1234", got)
+	}
+
+	mbc7EEPROMCommand(b, 0x300|address) // ERASE 11xAAAAAAA
+	b.Write(0xa080, 0x00)
+	if got := mbc7EEPROMReadWord(b, address); got != 0xffff {
+		t.Fatalf("READ after ERASE = %#04x, want 0xffff", got)
+	}
+
+	mbc7EEPROMCommand(b, 0x040) // WRAL 0001xxxxxx
+	mbc7EEPROMData(b, 0x55aa)
+	for _, address := range []uint16{0, 63, 127} {
+		if got := mbc7EEPROMReadWord(b, address); got != 0x55aa {
+			t.Errorf("WRAL address %d = %#04x, want 0x55aa", address, got)
+		}
+	}
+
+	mbc7EEPROMCommand(b, 0x000) // EWDS 0000xxxxxx
+	b.Write(0xa080, 0x00)
+	mbc7EEPROMWriteWord(b, address, 0xbeef)
+	if got := mbc7EEPROMReadWord(b, address); got != 0x55aa {
+		t.Fatalf("WRITE after EWDS changed EEPROM: got %#04x, want 0x55aa", got)
+	}
+}
+
+func TestMBC7EEPROMTransferSurvivesCartridgeStateRoundTrips(t *testing.T) {
+	b := newMBC7EEPROMTestBus(t)
+	const (
+		address = uint16(5)
+		value   = uint16(0xabcd)
+	)
+
+	mbc7EEPROMCommand(b, 0x0c0) // EWEN
+	b.Write(0xa080, 0x00)
+	mbc7EEPROMCommand(b, 0x100|address)
+
+	// Capture both state paths halfway through the 16-bit WRITE payload.
+	for bit := 15; bit >= 8; bit-- {
+		mbc7EEPROMClockBit(b, byte(value>>bit&1))
+	}
+	portable := b.c.Snapshot()
+	var checkpoint CartridgeState
+	b.c.SnapshotInto(&checkpoint)
+
+	finish := func() {
+		for bit := 7; bit >= 0; bit-- {
+			mbc7EEPROMClockBit(b, byte(value>>bit&1))
+		}
+		b.Write(0xa080, 0x00)
+	}
+	word := func() uint16 {
+		idx := int(address * 2)
+		return uint16(b.c.RAM[idx]) | uint16(b.c.RAM[idx+1])<<8
+	}
+
+	finish()
+	if got := word(); got != value {
+		t.Fatalf("initial resumed WRITE = %#04x, want %#04x", got, value)
+	}
+
+	b.c.Restore(portable)
+	finish()
+	if got := word(); got != value {
+		t.Fatalf("WRITE after Snapshot/Restore = %#04x, want %#04x", got, value)
+	}
+
+	b.c.Restore(checkpoint)
+	finish()
+	if got := word(); got != value {
+		t.Fatalf("WRITE after SnapshotInto/Restore = %#04x, want %#04x", got, value)
+	}
 }
 
 func TestHuC1IRModePreservesRAM(t *testing.T) {
