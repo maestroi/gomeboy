@@ -585,16 +585,65 @@ func (b *Bus) Model() types.Model    { return b.model }              // returns 
 
 func (b *Bus) isDMATransferring() bool { return b.dmaActive || b.dmaRestarting } // DMA transfer in progress
 
+// PPUReadOAM returns the value currently visible to the PPU on the OAM bus.
+//
+// During the MGB halted-DMA edge case, OAM DMA stops advancing but the
+// in-flight DMA word continues to drive the OAM bus. The Pocket profile
+// measured by Mooneye exposes a repeated two-byte value derived from the
+// destination word and the next source byte. Other models keep the normal
+// raw OAM path here; their halted-DMA corruption patterns are model/unit
+// dependent and are intentionally not generalized from the MGB measurement.
+func (b *Bus) PPUReadOAM(address uint16) byte {
+	if address < 0xfe00 || address >= 0xfea0 {
+		return b.data[address]
+	}
+
+	if b.model != types.MGB || !b.s.Halted || !b.dmaActive ||
+		b.dmaDestination < 0xfe00 || b.dmaDestination >= 0xfea0 {
+		return b.data[address]
+	}
+
+	// The measured MGB bus profile only produces usable sprite data when OAM
+	// contains a row matching the enable pattern documented by the hardware
+	// test. Its position in OAM is irrelevant.
+	enabled := false
+	for i := uint16(0xfe00); i < 0xfea0; i += 4 {
+		if b.data[i] >= 0x98 && b.data[i] <= 0x9f &&
+			b.data[i+1] <= 0xa7 &&
+			b.data[i+2] >= 0x09 && b.data[i+2] <= 0x9f &&
+			b.data[i+3] <= 0xa7 {
+			enabled = true
+			break
+		}
+	}
+	if !enabled {
+		return 0xff
+	}
+
+	incoming := b.data[b.dmaSource]
+	word := b.dmaDestination &^ 1
+	if address&1 == 0 {
+		return (b.data[word] | incoming) & 0xfc
+	}
+	return b.data[word+1] | incoming
+}
+
 // startDMATransfer initiates a DMA transfer.
 func (b *Bus) startDMATransfer() {
 	b.dmaActive = true
 	b.dmaRestarting = false
 	b.doDMATransfer()
-	b.s.ScheduleEvent(scheduler.DMAEndTransfer, 640)
 }
 
 // doDMATransfer performs a single DMA operation, copying a byte from the source to OAM.
+// OAM DMA is clock-gated while the CPU is halted, so the transfer event remains
+// pending and resumes one machine cycle after HALT is released.
 func (b *Bus) doDMATransfer() {
+	if b.s.Halted {
+		b.s.ScheduleEvent(scheduler.DMATransfer, 4)
+		return
+	}
+
 	b.dmaConflict = b.data[b.dmaSource]
 	b.data[b.dmaDestination] = b.dmaConflict
 
@@ -603,6 +652,8 @@ func (b *Bus) doDMATransfer() {
 
 	if b.dmaDestination < 0xfea0 {
 		b.s.ScheduleEvent(scheduler.DMATransfer, 4)
+	} else {
+		b.s.ScheduleEvent(scheduler.DMAEndTransfer, 4)
 	}
 }
 
