@@ -162,6 +162,47 @@ func TestDeferredTimerControlButImmediateReloadLatch(t *testing.T) {
 	}
 }
 
+func TestDeferredTimerStartWaitsTwoCyclesBeforeTicking(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0xfffe, bus.Access{})
+
+	timers.BeginWriteAccess()
+	b.Write16(timerHigh(0), controlEnable, bus.Access{})
+	timers.EndWriteAccess()
+
+	if got := timers.Counter(0); got != 0xfffe {
+		t.Fatalf("start counter = %04x, want reload fffe", got)
+	}
+	timers.Advance(2)
+	if got := timers.Counter(0); got != 0xfffe {
+		t.Fatalf("counter during startup delay = %04x, want fffe", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 0xffff {
+		t.Fatalf("first tick after startup delay = %04x, want ffff", got)
+	}
+}
+
+func TestDeferredCascadedTimerIgnoresParentOverflowDuringStartup(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0xffff, bus.Access{})
+	b.Write16(timerHigh(0), controlEnable, bus.Access{})
+	b.Write16(timerLow(1), 0x1234, bus.Access{})
+
+	timers.BeginWriteAccess()
+	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
+	timers.EndWriteAccess()
+
+	timers.Advance(2)
+	if got := timers.Counter(1); got != 0x1234 {
+		t.Fatalf("cascade counter during startup = %04x, want 1234", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(1); got != 0x1235 {
+		t.Fatalf("cascade counter after startup = %04x, want 1235", got)
+	}
+}
+
 func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xfffe, bus.Access{})
