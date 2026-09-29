@@ -30,7 +30,7 @@ const readmeBlurb = `<hr/>
 GomeBoy is automatically tested against the following test suites:
 
 * **[AGE test roms](https://github.com/c-sp/age-test-roms)**  
-  <sup>by [c-sp](https://github.com/c-sp); CI uses AGE revision `cd3f654d13bf` from the pinned game-boy-test-roms v7.0 release.</sup>
+  <sup>by [c-sp](https://github.com/c-sp); CI uses AGE revision cd3f654d13bf from the pinned game-boy-test-roms v7.0 release.</sup>
 * **[Blargg's test roms](https://github.com/retrio/gb-test-roms)**  
   <sup>by [Shay Green (a.k.a. Blargg)](http://www.slack.net/~ant/) </sup>
 * **[Bully](https://github.com/Hacktix/BullyGB)**, 
