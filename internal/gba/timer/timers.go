@@ -347,21 +347,6 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 	return s.counter - 1
 }
 
-// CounterForCPURead32 returns the low halfword visible to a 32-bit timer
-// register read. A word read that lands exactly on an overflow edge observes
-// the reloaded counter value; 16-bit TMxCNT_L reads keep the pre-overflow
-// sampling behavior modeled by CounterForCPURead.
-func (t *Timers) CounterForCPURead32(index int) uint16 {
-	s := &t.timer[index]
-	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
-		return s.counter
-	}
-	divisor := prescalers[s.control&controlPrescalerMask]
-	if divisor == 0 || s.phase != 0 || s.lastTickOverflow {
-		return s.counter
-	}
-	return s.counter - 1
-}
 
 // Reload returns the programmed reload latch.
 func (t *Timers) Reload(index int) uint16 { return t.timer[index].reload }
