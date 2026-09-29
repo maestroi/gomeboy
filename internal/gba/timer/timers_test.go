@@ -185,6 +185,32 @@ func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 	}
 }
 
+func TestCounterForCPUReadSamplesPreCascadePhase(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0xffff, bus.Access{})
+	b.Write16(timerHigh(0), controlEnable, bus.Access{})
+	b.Write16(timerLow(1), 0x1234, bus.Access{})
+	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
+
+	timers.Advance(1)
+	if got := timers.Counter(1); got != 0x1235 {
+		t.Fatalf("live cascaded counter = %04x, want 1235", got)
+	}
+	if got := timers.CounterForCPURead(1); got != 0x1234 {
+		t.Fatalf("CPU read on cascade edge = %04x, want pre-tick 1234", got)
+	}
+
+	// If the cascaded timer itself overflows on that parent edge, the CPU still
+	// observes ffff rather than the freshly reloaded value.
+	b.Write16(timerHigh(1), 0, bus.Access{})
+	b.Write16(timerLow(1), 0xffff, bus.Access{})
+	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
+	timers.Advance(1)
+	if got := timers.CounterForCPURead(1); got != 0xffff {
+		t.Fatalf("CPU read on cascade overflow = %04x, want ffff", got)
+	}
+}
+
 func TestDeferredTimerDisableCommitsAtEndOfWriteBusPhase(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xff00, bus.Access{})
