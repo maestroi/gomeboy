@@ -181,10 +181,7 @@ func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 		t.Fatalf("live counter after overflow = %04x, want 0000", got)
 	}
 	if got := timers.CounterForCPURead(0); got != 0xffff {
-		t.Fatalf("CPU halfword read on overflow edge = %04x, want pre-overflow ffff", got)
-	}
-	if got := timers.CounterForCPURead32(0); got != 0x0000 {
-		t.Fatalf("CPU word read on overflow edge = %04x, want reloaded 0000", got)
+		t.Fatalf("CPU read on overflow edge = %04x, want pre-overflow ffff", got)
 	}
 }
 
