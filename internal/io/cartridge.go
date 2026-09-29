@@ -214,8 +214,6 @@ func (c *Cartridge) updateRAMBank(bank uint8) {
 	c.b.CopyTo(0xA000, 0xC000, c.RAM[c.ramOffset:])           // copy new RAM bank from cart -> bus
 }
 
-// updateRTC sets the RTC registers based on how many cycles have passed since the last read.
-// TODO make configurable to sync to host
 func (c *Cartridge) rtcCycle() uint64 {
 	if c.rtcNow != nil {
 		return c.rtcNow()
@@ -396,7 +394,7 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 					c.mbc7.xLatch, c.mbc7.yLatch = 0x8000, 0x8000
 				}
 			case 1:
-				if value == 0xAA { // latch values
+				if value == 0xAA && c.mbc7.latchReady { // latch values after the required reset
 					c.mbc7.latchReady = false
 
 					// accelerometer values are centered around 0x81D0
@@ -481,12 +479,14 @@ func (c *Cartridge) Write(address uint16, value uint8) {
 							// have we transferred 16 bits yet?
 							if c.mbc7.eeprom.bitsLeft == 0 {
 								idx := c.mbc7.eeprom.command & 0x7f * 2 // get address from command
-								if c.mbc7.eeprom.command&0x100 > 0 {    // WRITE
-									c.RAM[idx] = uint8(c.mbc7.eeprom.bitsIn)
-									c.RAM[idx+1] = uint8(c.mbc7.eeprom.bitsIn >> 8)
-									c.mbc7.eeprom.bitsOut = 0xff
-								} else { // WRAL
-									for i := 0; i < 0x7f; i++ {
+								if c.mbc7.eeprom.command&0x100 > 0 { // WRITE
+									if c.mbc7.eeprom.writeEnabled {
+										c.RAM[idx] = uint8(c.mbc7.eeprom.bitsIn)
+										c.RAM[idx+1] = uint8(c.mbc7.eeprom.bitsIn >> 8)
+										c.mbc7.eeprom.bitsOut = 0xff
+									}
+								} else if c.mbc7.eeprom.writeEnabled { // WRAL
+									for i := 0; i < len(c.RAM); i += 2 {
 										c.RAM[i] = uint8(c.mbc7.eeprom.bitsIn)
 										c.RAM[i+1] = uint8(c.mbc7.eeprom.bitsIn >> 8)
 									}
