@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "aggregate": {
+    "name": "c-sp/game-boy-test-roms",
+    "release": "v7.0",
+    "revision": "8e1f6d7f3a1d8683f11fdf23008d1b1b26e51b52"
+  },
+  "suites": [
+    {
+      "name": "AGE",
+      "source": "c-sp/age-test-roms",
+      "revision": "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e",
+      "status": "automated",
+      "coverage": "32 register-verifiable ROM cases across halt, LCD/LY, OAM, STAT, and VRAM groups",
+      "note": "Screenshot-only AGE groups are not run by this adapter."
+    },
+    {
+      "name": "Mealybug Tearoom Tests",
+      "source": "mattcurrie/mealybug-tearoom-tests",
+      "revision": "70e88fb90b59d19dfbb9c3ac36c64105202bb1f4",
+      "status": "not-run",
+      "note": "Pinned by the same aggregate release; no GomeBoy result adapter is integrated yet."
+    },
+    {
+      "name": "Wilbert Pol test suite",
+      "source": "vojty/wilbertpol-test-suite",
+      "revision": "325f8e80775cdce408d6d827910c5657c8f0504e",
+      "status": "not-run",
+      "note": "Pinned by the same aggregate release; no GomeBoy result adapter is integrated yet."
+    },
+    {
+      "name": "rtc3test",
+      "source": "aaaaaa123456789/rtc3test",
+      "revision": "80ae792bf1b3c3387929b912e6df001af3511e24",
+      "status": "not-run",
+      "note": "Pinned by the same aggregate release; RTC result automation is not integrated yet."
+    },
+    {
+      "name": "jsmoo/Game Boy tests",
+      "status": "not-run",
+      "note": "Candidate from issue #78; a reproducible source revision and GomeBoy adapter have not been selected yet."
+    },
+    {
+      "name": "Game Boy Doctor differential cases",
+      "status": "not-run",
+      "note": "Candidate differential workflow from issue #78; no deterministic trace corpus is integrated yet."
+    }
+  ]
+}
