@@ -9,7 +9,7 @@ AGGREGATE_REVISION="8e1f6d7f3a1d8683f11fdf23008d1b1b26e51b52"
 AGE_REVISION="cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e"
 ARCHIVE_NAME="game-boy-test-roms-v7.0.zip"
 ARCHIVE_URL="https://github.com/c-sp/game-boy-test-roms/releases/download/${VERSION}/${ARCHIVE_NAME}"
-EXPECTED_ROM_COUNT=32
+EXPECTED_ARCHIVE_SHA256="b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c"\nEXPECTED_ROM_COUNT=32
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST_DIR="${ROOT_DIR}/tests/roms/age"
