@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "suite": "gomeboy-gb-gbc-compatibility-smoke",
+  "suite_revision": "1",
+  "tests": [
+    {
+      "name": "dmg-render-input-stability",
+      "rom": "roms/dmg-input-render.gb",
+      "rom_name": "dmg-input-render.gb",
+      "rom_sha256": "44500b4ba7cd6a17e66d6dddbcd309d2ab1eb7e51ecb6f12a1857373d2172c9d",
+      "source": "maestroi/gomeboy",
+      "source_revision": "fixturegen-v1",
+      "model": "DMG",
+      "max_frames": 180,
+      "target_stage": "bounded_stability",
+      "checkpoint": {
+        "address": "0xC000",
+        "value": "INPT"
+      },
+      "inputs": [
+        {"frame": 2, "button": "a", "pressed": true},
+        {"frame": 4, "button": "a", "pressed": false}
+      ]
+    },
+    {
+      "name": "cgb-render-input-stability",
+      "rom": "roms/cgb-input-render.gbc",
+      "rom_name": "cgb-input-render.gbc",
+      "rom_sha256": "20b3b7cb9966a15fbd658bc696f96acd6e626b0fe664c8028cfea0029512a4f3",
+      "source": "maestroi/gomeboy",
+      "source_revision": "fixturegen-v1",
+      "model": "CGB",
+      "max_frames": 180,
+      "target_stage": "bounded_stability",
+      "checkpoint": {
+        "address": "0xC000",
+        "value": "INPT"
+      },
+      "inputs": [
+        {"frame": 2, "button": "a", "pressed": true},
+        {"frame": 4, "button": "a", "pressed": false}
+      ]
+    },
+    {
+      "name": "mbc1-banking-ram",
+      "rom": "roms/mbc1-banking.gb",
+      "rom_name": "mbc1-banking.gb",
+      "rom_sha256": "8eac69a5531a3c7a1c8905e8571e34553cbae7a6df6fe1d281189be2a446c375",
+      "source": "maestroi/gomeboy",
+      "source_revision": "fixturegen-v1",
+      "model": "DMG",
+      "max_frames": 30,
+      "target_stage": "checkpoint",
+      "checkpoint": {
+        "address": "0xC000",
+        "value": "COMP"
+      }
+    },
+    {
+      "name": "mbc3-battery-persistence",
+      "rom": "roms/mbc3-persistence.gb",
+      "rom_name": "mbc3-persistence.gb",
+      "rom_sha256": "1583b72a7fb2564e316bfa05bbd2d4a2ebec5d65a824218f2e20167ef037aebf",
+      "source": "maestroi/gomeboy",
+      "source_revision": "fixturegen-v1",
+      "model": "DMG",
+      "max_frames": 30,
+      "target_stage": "battery_persistence",
+      "persistence": {
+        "before": {
+          "address": "0xC000",
+          "value": "INIT"
+        },
+        "after": {
+          "address": "0xC000",
+          "value": "PERS"
+        }
+      }
+    },
+    {
+      "name": "mbc5-banking-ram",
+      "rom": "roms/mbc5-banking.gb",
+      "rom_name": "mbc5-banking.gb",
+      "rom_sha256": "e44e15e256918971716ae6cbbf98dc98e2ed7c06b94f9acfaa69ba710c6b1a0b",
+      "source": "maestroi/gomeboy",
+      "source_revision": "fixturegen-v1",
+      "model": "DMG",
+      "max_frames": 30,
+      "target_stage": "checkpoint",
+      "checkpoint": {
+        "address": "0xC000",
+        "value": "COMP"
+      }
+    }
+  ]
+}
