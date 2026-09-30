@@ -507,15 +507,21 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		return
 	}
 
-	// Most ARM bus/idle phases are only a handful of cycles long. If no timer
-	// or IRQ deadline can occur and the phase ends no later than the next PPU
-	// edge, advance all hardware directly instead of entering the generic
-	// event-splitting loop. PPU hooks at an edge still observe the exact master
-	// cycle because m.cycles is advanced before PPU.Advance.
-	if !m.irqScheduled && !m.Timers.NeedsAdvance() && cycles <= m.PPU.CyclesUntilEvent() {
+	// Keep the timer scheduler on the same continuously advancing master clock
+	// as the rest of the machine, even while all timers are disabled. Timer
+	// prescalers are phase-aligned to this global clock, so pausing the timer
+	// timestamp while inactive corrupts the first tick after a later enable.
+	//
+	// Most ARM bus/idle phases are only a handful of cycles long. If no IRQ,
+	// timer, or PPU deadline occurs before the end of the phase, advance all
+	// hardware directly without entering the generic event-splitting loop.
+	if !m.irqScheduled &&
+		cycles <= m.Timers.CyclesUntilEvent() &&
+		cycles <= m.PPU.CyclesUntilEvent() {
 		m.cycles += uint64(cycles)
 		m.Cartridge.Advance(cycles)
 		m.Audio.Advance(cycles)
+		m.Timers.Advance(cycles)
 		m.PPU.Advance(cycles)
 		return
 	}
@@ -528,11 +534,8 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
 			step = untilPPU
 		}
-		timersNeedAdvance := m.Timers.NeedsAdvance()
-		if timersNeedAdvance {
-			if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
-				step = untilTimer
-			}
+		if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
+			step = untilTimer
 		}
 		if m.irqScheduled && m.irqEventAt > m.cycles {
 			if untilIRQ := m.irqEventAt - m.cycles; untilIRQ < uint64(step) {
@@ -546,9 +549,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		// end; timer overflow then updates the Direct Sound latch for the next
 		// interval.
 		m.Audio.Advance(step)
-		if timersNeedAdvance {
-			m.Timers.Advance(step)
-		}
+		m.Timers.Advance(step)
 		m.PPU.Advance(step)
 		remaining -= step
 		m.serviceDueIRQ()
