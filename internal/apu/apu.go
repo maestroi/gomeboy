@@ -884,7 +884,7 @@ func (a *APU) glitchNRx2(channel uint16, value uint8, oldValue uint8) {
 
 func (a *APU) readWaveRAM(address uint16) uint8 {
 	if a.channels[2].isEnabled() {
-		if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model() == types.CGBABC || a.b.Model() == types.CGB0 {
+		if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model().IsCGB() {
 			return a.waveRAM[a.channel3.waveRAMLastPosition]
 		} else {
 			return 0xff
