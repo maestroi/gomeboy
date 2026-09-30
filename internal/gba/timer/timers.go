@@ -6,6 +6,7 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
+	gbascheduler "github.com/maestroi/gomeboy/internal/gba/scheduler"
 )
 
 const (
@@ -45,6 +46,7 @@ type state struct {
 	control           uint16
 	phase             uint32
 	lastTickOverflow  bool
+	overflowEvent     gbascheduler.Handle
 }
 
 type pendingWriteKind uint8
@@ -64,6 +66,7 @@ type pendingWrite struct {
 type Timers struct {
 	irq   IRQSink
 	hooks Hooks
+	scheduler *gbascheduler.Scheduler
 
 	timer  [4]state
 	active uint8
@@ -75,10 +78,16 @@ type Timers struct {
 
 // New maps TM0-TM3 onto b.
 func New(b *bus.Bus, irq IRQSink, hooks Hooks) *Timers {
+	return NewWithScheduler(b, irq, hooks, gbascheduler.New())
+}
+
+// NewWithScheduler creates timers on a shared GBA master-clock scheduler.
+func NewWithScheduler(b *bus.Bus, irq IRQSink, hooks Hooks, scheduler *gbascheduler.Scheduler) *Timers {
 	if b == nil {
 		panic("gba timer: nil bus")
 	}
-	t := &Timers{irq: irq, hooks: hooks}
+	if scheduler == nil { panic("gba timer: nil scheduler") }
+	t := &Timers{irq: irq, hooks: hooks, scheduler: scheduler}
 	t.install(b.IO())
 	return t
 }
@@ -215,11 +224,19 @@ func (t *Timers) applyControl(index int, value uint16) {
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
+		t.scheduleOverflow(index)
 		return
 	}
 	if oldEnabled && !newEnabled {
+		t.syncCounter(index)
+		t.cancelOverflow(index)
 		s.phase = 0
 		return
+	}
+
+	if newEnabled && oldControl != s.control {
+		t.syncCounter(index)
+		t.cancelOverflow(index)
 	}
 
 	// Keep the accumulated prescaler position valid when software changes the
@@ -229,7 +246,54 @@ func (t *Timers) applyControl(index int, value uint16) {
 		if divisor != 0 {
 			s.phase %= divisor
 		}
+		t.scheduleOverflow(index)
 	}
+}
+
+func (t *Timers) cancelOverflow(index int) {
+	s := &t.timer[index]
+	if s.overflowEvent != 0 {
+		t.scheduler.Cancel(s.overflowEvent)
+		s.overflowEvent = 0
+	}
+}
+
+func (t *Timers) scheduleOverflow(index int) {
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) { return }
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	ticks := uint64(0x10000 - uint32(s.counter))
+	delay := ticks*divisor - uint64(s.phase)
+	s.overflowEvent = t.scheduler.Schedule(delay, gbascheduler.PriorityEarly, func() { t.onOverflow(index) })
+}
+
+func (t *Timers) onOverflow(index int) {
+	s := &t.timer[index]
+	s.overflowEvent = 0
+	if s.control&controlEnable == 0 { return }
+	s.counter = s.reload
+	s.phase = 0
+	s.lastTickOverflow = true
+	if t.hooks.Overflow != nil { t.hooks.Overflow(index, 1) }
+	if s.control&controlIRQ != 0 && t.irq != nil { t.irq.Request(irqSources[index]) }
+	t.cascade(index + 1)
+	t.scheduleOverflow(index)
+}
+
+func (t *Timers) cascade(index int) {
+	if index >= len(t.timer) { return }
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || s.control&controlCountUp == 0 { return }
+	if s.counter != 0xffff { s.counter++; s.lastTickOverflow = false; return }
+	s.counter = s.reload
+	s.lastTickOverflow = true
+	if t.hooks.Overflow != nil { t.hooks.Overflow(index, 1) }
+	if s.control&controlIRQ != 0 && t.irq != nil { t.irq.Request(irqSources[index]) }
+	t.cascade(index + 1)
+}
+
+func (t *Timers) syncCounter(index int) {
+	// Event-backed timers are synchronized whenever the shared scheduler advances.
 }
 
 // CyclesUntilEvent returns the master-clock distance to the next overflow of
