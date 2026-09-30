@@ -68,6 +68,10 @@ type APU struct {
 		negate          bool
 		didNegate       bool
 		sweepEnabled    bool
+		sweepCheckAt    uint64
+		sweepStopAt     uint64
+		sweepLoadAt     uint64
+		sweepLoadValue  uint16
 	}
 	channel2 squareChannel
 	channel3 struct {
@@ -153,6 +157,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 	a.channel3.volumeCode = 4
 	a.channel1.lastStepAt = math.MaxUint64
 	a.channel2.lastStepAt = math.MaxUint64
+	a.channel1.sweepCheckAt = math.MaxUint64
+	a.channel1.sweepStopAt = math.MaxUint64
+	a.channel1.sweepLoadAt = math.MaxUint64
 
 	s.RegisterEvent(scheduler.APUChannel1, func() {
 		// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_1/channel_1_stop_restart.asm
@@ -210,6 +217,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 	a.sample()
 
 	b.ReserveLazyReader(types.NR52, func() byte {
+		a.runSweepDue()
 		v := uint8(0x70)
 		if a.enabled {
 			v |= types.Bit7
@@ -238,6 +246,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 
 	b.RegisterGBCHandler(func() {
 		b.ReserveLazyReader(types.PCM12, func() byte {
+			a.runSweepDue()
 			// warning to any who read
 			// this is not accurate to hardware in the slightest, this is many botch jobs and timing hacks to work around
 			// botch jobs. even these PCM readers are hacked together
@@ -309,6 +318,7 @@ func (a *APU) Visualise(v bool) {
 }
 
 func (a *APU) StepFrameSequencer() {
+	a.runSweepDue()
 	if !a.enabled { // frame sequencer does nothing if the APU is disabled
 		return
 	}
@@ -351,19 +361,7 @@ func (a *APU) StepFrameSequencer() {
 
 	// clock sweep (128hz)
 	if a.frameSequencerStep&3 == 3 {
-		if a.channels[0].enabled && a.channel1.sweepEnabled {
-			a.channel1.sweepTimer++
-			a.channel1.sweepTimer &= 7
-
-			if a.channel1.sweepTimer == 7 {
-				a.channel1.sweepTimer = a.channel1.sweepPeriod ^ 7
-
-				if a.channel1.sweepPeriod != 0 {
-					a.freqCalc(true)
-					a.freqCalc(false)
-				}
-			}
-		}
+		a.clockSweep()
 	}
 }
 
@@ -412,6 +410,7 @@ var digitalAnalog = []float32{
 var volumes = []float32{.125, .250, .375, .500, .625, .750, .875, 1}
 
 func (a *APU) sample() {
+	a.runSweepDue()
 	// Headless mode has no audio consumer. SetHeadless normally removes this
 	// event entirely; this guard also makes old/inconsistent save states safe.
 	if a.headless {
@@ -507,6 +506,7 @@ func (a *APU) AnalogOutput() [4][]float32 {
 }
 
 func (a *APU) Write(address uint16, v uint8) uint8 {
+	a.runSweepDue()
 	switch address {
 	case types.NR10:
 		if !a.enabled {
@@ -654,11 +654,22 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.ScheduleEvent(scheduler.APUChannel1, t)
 				a.channel1.didNegate = false
 				a.channel1.sweepTimer = a.channel1.sweepPeriod ^ 7
-				a.channel1.frequencyShadow = a.channels[0].frequency
 				a.channel1.sweepEnabled = a.channel1.sweepPeriod != 0 || a.channel1.shift != 0
+				a.channel1.sweepStopAt = math.MaxUint64
 
+				// Trigger reaches the sweep unit on the next 1 MHz APU edge, then
+				// the shadow register latches two M-cycles later. With a non-zero
+				// shift, the trigger overflow check follows seven M-cycles after
+				// that arrival and any stop becomes visible one APU tick later.
+				scale := a.apuTimingScale()
+				tick := uint64(4) * scale
+				arrives := alignForward(a.s.Cycle(), a.enableTimer, tick) + tick
+				a.channel1.sweepLoadValue = a.channels[0].frequency
+				a.channel1.sweepLoadAt = arrives + 8*scale
 				if a.channel1.shift > 0 {
-					a.freqCalc(false)
+					a.channel1.sweepCheckAt = arrives + 28*scale
+				} else {
+					a.channel1.sweepCheckAt = math.MaxUint64
 				}
 			case 1: // Square 2
 				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_2/channel_2_delay.asm
@@ -831,10 +842,17 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				negate          bool
 				didNegate       bool
 				sweepEnabled    bool
+				sweepCheckAt    uint64
+				sweepStopAt     uint64
+				sweepLoadAt     uint64
+				sweepLoadValue  uint16
 			}{}
 			a.channel2 = squareChannel{}
 			a.channel1.lastStepAt = math.MaxUint64
 			a.channel2.lastStepAt = math.MaxUint64
+			a.channel1.sweepCheckAt = math.MaxUint64
+			a.channel1.sweepStopAt = math.MaxUint64
+			a.channel1.sweepLoadAt = math.MaxUint64
 			a.channel4 = struct {
 				clockShift   uint8
 				divisorCode  uint8
@@ -882,6 +900,100 @@ func (a *APU) reschedulePulseAfterReload(ch uint16) {
 	}
 	a.s.DescheduleEvent(event)
 	a.s.ScheduleEvent(event, uint64((2048-a.channels[ch].frequency)<<2))
+}
+
+
+func (a *APU) apuTimingScale() uint64 {
+	if a.s.DoubleSpeed() {
+		return 2
+	}
+	return 1
+}
+
+func (a *APU) sweepFrequencyCalc(at uint64) (uint16, bool) {
+	shifted := a.channel1.frequencyShadow >> a.channel1.shift
+	var next uint16
+	if a.channel1.negate {
+		a.channel1.didNegate = true
+		next = a.channel1.frequencyShadow - shifted
+	} else {
+		next = a.channel1.frequencyShadow + shifted
+	}
+	if next > 0x7ff {
+		a.channel1.sweepStopAt = at + 4*a.apuTimingScale()
+		return next, false
+	}
+	return next, true
+}
+
+func (a *APU) runSweepDue() {
+	now := a.s.Cycle()
+
+	applyLoad := func() {
+		if a.channel1.sweepLoadAt <= now {
+			a.channel1.sweepLoadAt = math.MaxUint64
+			a.channel1.frequencyShadow = a.channel1.sweepLoadValue
+		}
+	}
+	applyCheck := func() {
+		if a.channel1.sweepCheckAt <= now {
+			at := a.channel1.sweepCheckAt
+			a.channel1.sweepCheckAt = math.MaxUint64
+			// The delayed second check re-reads NR10. Clearing the shift before
+			// this point cancels it; changing the shift changes the calculation.
+			if a.channel1.sweepEnabled && a.channel1.shift > 0 {
+				_, _ = a.sweepFrequencyCalc(at)
+			}
+		}
+	}
+
+	if a.channel1.sweepCheckAt < a.channel1.sweepLoadAt {
+		applyCheck()
+		applyLoad()
+	} else {
+		applyLoad()
+		applyCheck()
+	}
+
+	if a.channel1.sweepStopAt <= now {
+		a.channel1.sweepStopAt = math.MaxUint64
+		a.channels[0].enabled = false
+	}
+}
+
+func (a *APU) clockSweep() {
+	if !a.channels[0].enabled || !a.channel1.sweepEnabled {
+		return
+	}
+
+	a.channel1.sweepTimer = (a.channel1.sweepTimer + 1) & 7
+	if a.channel1.sweepTimer != 7 {
+		return
+	}
+	a.channel1.sweepTimer = a.channel1.sweepPeriod ^ 7
+	if a.channel1.sweepPeriod == 0 {
+		return
+	}
+
+	now := a.s.Cycle()
+	next, ok := a.sweepFrequencyCalc(now)
+	if !ok {
+		return
+	}
+	if a.channel1.shift == 0 {
+		return
+	}
+
+	reloadNow := a.channel1.lastStepAt == now
+	a.channel1.frequencyShadow = next
+	a.channels[0].frequency = next
+	if reloadNow {
+		a.reschedulePulseAfterReload(0)
+	}
+	// The hardware's second overflow calculation is not part of this atomic
+	// writeback. It occurs seven M-cycles later and then takes one APU tick for
+	// an overflow disable to become visible.
+	a.channel1.sweepCheckAt = now + 28*a.apuTimingScale()
 }
 
 
@@ -1180,23 +1292,6 @@ func (a *APU) Samples() ([]float32, uint32) {
 		a.buffer = a.buffer[:bufferSize]
 	}
 	return s, b
-}
-
-func (a *APU) freqCalc(update bool) {
-	newFreq := a.channel1.frequencyShadow >> a.channel1.shift
-	if a.channel1.negate {
-		a.channel1.didNegate = true
-		newFreq = a.channel1.frequencyShadow - newFreq
-	} else {
-		newFreq = a.channel1.frequencyShadow + newFreq
-	}
-
-	if newFreq > 0x7ff {
-		a.channels[0].enabled = false
-	} else if a.channel1.shift > 0 && update {
-		a.channel1.frequencyShadow = newFreq
-		a.channels[0].frequency = newFreq
-	}
 }
 
 // shouldExtraClockLength implements the NRx4 length-enable edge clock.
