@@ -455,33 +455,10 @@ func (t *Timers) Counter(index int) uint16 { t.syncCounter(index); return t.time
 // after the read sample, while an overflow/reload edge is already visible.
 func (t *Timers) CounterForCPURead(index int) uint16 {
 	t.syncCounter(index)
-	s := &t.timer[index]
-	if s.control&controlEnable == 0 {
-		return s.counter
-	}
-	if index > 0 && s.control&controlCountUp != 0 {
-		// A cascade tick is sourced by the previous timer's overflow at the same
-		// master-clock edge. CPU data reads sample before that count-up tick, just
-		// like they sample before an ordinary prescaler tick.
-		parent := &t.timer[index-1]
-		if !parent.lastTickOverflow {
-			return s.counter
-		}
-		if s.lastTickOverflow {
-			return 0xffff
-		}
-		return s.counter - 1
-	}
-	divisor := prescalers[s.control&controlPrescalerMask]
-	if divisor == 0 || s.phase != 0 {
-		return s.counter
-	}
-	if s.lastTickOverflow {
-		// Overflow events have earlier same-timestamp priority than CPU-visible
-		// timer reads, so the reloaded counter is observable on this edge.
-		return s.counter
-	}
-	return s.counter - 1
+	// Timer reads observe the counter materialized at the current scheduler
+	// timestamp. Overflow/cascade events have already run according to their
+	// event priority, so no pre-edge subtraction is needed here.
+	return t.timer[index].counter
 }
 
 // Reload returns the programmed reload latch.
