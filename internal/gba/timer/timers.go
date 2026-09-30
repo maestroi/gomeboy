@@ -450,7 +450,13 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 		return s.counter - 1
 	}
 
-	if s.lastTickAt == now && s.lastOverflowAt != now {
+	if s.lastTickAt == now {
+		if s.lastOverflowAt == now {
+			// The overflow/reload event has updated internal state, but a CPU data
+			// read sampling this exact master-clock edge still sees the pre-edge
+			// counter value. This is the same rule used for cascade overflow reads.
+			return 0xffff
+		}
 		return s.counter - 1
 	}
 	return s.counter
