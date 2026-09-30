@@ -272,6 +272,11 @@ func (b *Bus) Boot() {
 	for k, v := range types.ModelIO[b.model] {
 		ioRegs[k] = v
 	}
+	if b.IsGBCCart() {
+		for k, v := range types.ModelIOCGB[b.model] {
+			ioRegs[k] = v
+		}
+	}
 	for i := types.HardwareAddress(0xFF00); i < 0xFF80; i++ {
 		// has the model provided a value?
 		if ioRegs[i] != nil {
