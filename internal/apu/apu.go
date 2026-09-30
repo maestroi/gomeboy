@@ -269,7 +269,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 				}
 				pcm |= (((a.channel3.waveRAMSampleBuffer) >> shift) & 0x0f) >> a.channel3.volumeCode
 			}
-			sampleLength = uint64(a.channel4.frequencyTimer) + 4
+			sampleLength := uint64(a.channel4.frequencyTimer) + 4
 			if a.s.DoubleSpeed() {
 				sampleLength *= 2
 			}
