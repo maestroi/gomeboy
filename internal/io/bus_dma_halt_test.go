@@ -141,3 +141,40 @@ func TestMGBHaltedDMAUsesExactInFlightOAMByte(t *testing.T) {
 		t.Errorf("odd-index frozen DMA X/flags = %#02x, want 0x9f", got)
 	}
 }
+
+
+func TestActiveOAMDMAHidesEntriesFromPPUScan(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.DMGABC)
+
+	b.data[0xfe00] = 0x54
+	b.dmaActive = true
+
+	if got := b.PPUReadOAMScan(0xfe00); got != 0xff {
+		t.Fatalf("Mode 2 OAM read during active DMA = %#02x, want 0xff", got)
+	}
+
+	b.dmaActive = false
+	if got := b.PPUReadOAMScan(0xfe00); got != 0x54 {
+		t.Fatalf("Mode 2 OAM read after DMA = %#02x, want 0x54", got)
+	}
+}
+
+func TestActiveOAMDMAExposesCurrentWordToObjectFetcher(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.DMGABC)
+
+	b.dmaActive = true
+	b.dmaDestination = 0xfe03 // FE02 was the most recently copied byte.
+	b.data[0xfe02] = 0x12
+	b.data[0xfe03] = 0x34
+
+	if got := b.PPUReadOAMFetch(0xfe42); got != 0x12 {
+		t.Fatalf("Mode 3 tile byte during DMA = %#02x, want 0x12", got)
+	}
+	if got := b.PPUReadOAMFetch(0xfe43); got != 0x34 {
+		t.Fatalf("Mode 3 attribute byte during DMA = %#02x, want 0x34", got)
+	}
+}
