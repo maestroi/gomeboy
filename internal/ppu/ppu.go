@@ -299,6 +299,14 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	b.ReserveAddress(types.LY, func(v byte) byte {
 		if b.IsBooting() {
 			p.ly = v
+			visibleLY := v
+			// DMG0's HLE bootstrap keeps its hidden line pipeline one line
+			// ahead of the LY value visible at cartridge entry. Keeping p.ly
+			// at the established phase preserves the later boot-HWIO cadence,
+			// while whichboot observes the measured LY=145 handoff.
+			if b.Model() == types.DMG0 && v == 0x92 {
+				visibleLY = 0x91
+			}
 
 			// CGB/AGB boot ROMs hand CGB-compatible cartridges off while the
 			// LCD is already in VBlank (LY=144). Bus.Boot applies LCDC before
@@ -314,7 +322,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 				p.offscreenLineState = StartVBlank
 				p.handleOffscreenLine()
 			}
-			return v
+			return visibleLY
 		}
 		return p.b.Get(types.LY)
 	})
