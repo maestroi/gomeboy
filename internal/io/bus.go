@@ -704,14 +704,15 @@ func (b *Bus) PPUReadOAMFetch(address uint16) byte {
 		return b.PPUReadOAM(address)
 	}
 
-	// dmaDestination points at the next byte to be copied, so the most recently
-	// touched OAM byte is one behind it. OAM is internally word-oriented here;
-	// expose the current word while preserving the tile/attribute byte parity.
-	if b.dmaDestination <= 0xfe00 {
-		return 0xff
+	// dmaDestination points at the next byte to be copied. The PPU-facing OAM
+	// bus is word-oriented and advances to the word containing that destination;
+	// crossing an even-byte boundary therefore exposes the next word immediately,
+	// rather than the word containing the byte that was just written.
+	if b.dmaDestination >= 0xfea0 {
+		return b.PPUReadOAM(address)
 	}
-	wordBase := (b.dmaDestination - 1) &^ 1
-	if wordBase < 0xfe00 || wordBase+1 >= 0xfea0 {
+	wordBase := b.dmaDestination &^ 1
+	if wordBase < 0xfe00 {
 		return 0xff
 	}
 	return b.data[wordBase+address&1]
