@@ -117,3 +117,28 @@ func TestHaltedDMAConflictProfileIsMGBSpecific(t *testing.T) {
 		t.Fatalf("DMG inherited MGB halted-DMA profile: got %#02x, want raw OAM 0x12", got)
 	}
 }
+
+
+func TestMGBHaltedDMAUsesExactInFlightOAMByte(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.MGB)
+
+	b.dmaActive = true
+	b.dmaSource = 0x2002
+	b.dmaDestination = 0xfe03
+	b.data[0x2002] = 0x1a
+	b.data[0xfe03] = 0x40
+	b.data[0xfe04] = 0x9f
+	b.data[0xfe05] = 0xa7
+	b.data[0xfe06] = 0x9f
+	b.data[0xfe07] = 0xa7
+	s.Halted = true
+
+	if got := b.PPUReadOAM(0xfe00); got != 0x58 {
+		t.Errorf("odd-index frozen DMA Y/tile = %#02x, want 0x58", got)
+	}
+	if got := b.PPUReadOAM(0xfe01); got != 0x9f {
+		t.Errorf("odd-index frozen DMA X/flags = %#02x, want 0x9f", got)
+	}
+}
