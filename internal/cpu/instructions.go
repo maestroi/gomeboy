@@ -58,8 +58,8 @@ var InstructionSet = [256]Instruction{
 			c.PC++
 		}
 
-		// are we in gbc mode (STOP is alternatively used for speed-switching)
-		if c.b.Model().IsCGB() && c.b.Get(types.KEY1)&types.Bit0 == types.Bit0 {
+		// CGB-capable hardware, including AGB compatibility mode, uses STOP for KEY1 speed switching.
+		if (c.b.Model().IsCGB() || c.b.Model() == types.AGB) && c.b.Get(types.KEY1)&types.Bit0 == types.Bit0 {
 			c.DoubleSpeed = !c.DoubleSpeed
 			c.s.ChangeSpeed(c.DoubleSpeed)
 

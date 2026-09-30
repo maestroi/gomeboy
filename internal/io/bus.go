@@ -53,6 +53,7 @@ type Bus struct {
 	s     *scheduler.Scheduler
 
 	gbcHandlers []func()
+	agbHandlers []func()
 
 	// DMA related stuff
 	dmaSource, dmaDestination  uint16
@@ -129,7 +130,7 @@ func (b *Bus) syncWRAMEcho() {
 
 func (b *Bus) Map(m types.Model) {
 	b.model = m
-	b.isGBC = m.IsCGB()
+	b.isGBC = m.IsCGB() || m == types.AGB
 	if b.isSGB() {
 		b.initSGB()
 	}
@@ -256,6 +257,12 @@ func (b *Bus) Map(m types.Model) {
 		}
 	}
 
+	if b.model == types.AGB {
+		for _, f := range b.agbHandlers {
+			f()
+		}
+	}
+
 	for i := 0xFF00; i < 0xFF80; i++ {
 		if wHandler := b.writeHandlers[i&0xFF]; wHandler == nil {
 			b.data[i] = 0xFF // default to 0xff if no write handler exists
@@ -362,6 +369,7 @@ func (b *Bus) ReserveAddress(addr uint16, f func(byte) byte) { b.writeHandlers[a
 func (b *Bus) ReserveLazyReader(addr uint16, f func() byte)  { b.lazyReaders[addr&0xff] = f }               // reserve IO lazy reader
 func (b *Bus) RegisterBootHandler(f func())                  { b.bootHandlers = append(b.bootHandlers, f) } // called after boot ROM
 func (b *Bus) RegisterGBCHandler(f func())                   { b.gbcHandlers = append(b.gbcHandlers, f) }   // called when model is CGB
+func (b *Bus) RegisterAGBHandler(f func())                   { b.agbHandlers = append(b.agbHandlers, f) }   // called for AGB GB-compatibility hardware
 
 // Write writes to the specified memory address. This function
 // calls the write handler if it exists.

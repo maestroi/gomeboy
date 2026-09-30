@@ -13,12 +13,6 @@ var knownFailures = map[string]bool{
 	"bully (CGB)":                           true,
 	"tellinglys (DMG)":                      true,
 	"tellinglys (CGB)":                      true,
-	"channel_1_freq_change_timing-A":        true,
-	"channel_1_freq_change_timing-cgb0BC":   true,
-	"channel_1_freq_change_timing-cgbDE":    true,
-	"channel_1_sweep":                       true,
-	"channel_1_sweep_restart":               true,
-	"channel_1_sweep_restart_2":             true,
 	"strikethrough (DMG)":                   true,
 	"strikethrough (CGB)":                   true,
 }
