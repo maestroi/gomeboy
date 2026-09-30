@@ -632,11 +632,20 @@ func (b *Bus) PPUReadOAM(address uint16) byte {
 	}
 
 	incoming := b.data[b.dmaSource]
-	word := b.dmaDestination &^ 1
-	if address&1 == 0 {
-		return (b.data[word] | incoming) & 0xfc
+	old := b.data[b.dmaDestination]
+	next := byte(0xff)
+	if b.dmaDestination+1 < 0xfea0 {
+		next = b.data[b.dmaDestination+1]
 	}
-	return b.data[word+1] | incoming
+
+	// Every OAM slot is observed as the same Y/X/tile/flags tuple while the
+	// access is frozen. The old byte is the exact destination currently being
+	// replaced; it is not word-aligned, so an odd-byte freeze must use that odd
+	// OAM byte and its successor.
+	if address&1 == 0 {
+		return (old | incoming) & 0xfc
+	}
+	return next | incoming
 }
 
 // startDMATransfer initiates a DMA transfer.
