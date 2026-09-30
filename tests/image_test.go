@@ -408,6 +408,9 @@ func logImageMismatchStats(t *testing.T, expectedImage string, gb *gameboy.GameB
 	}
 	t.Logf("cgb-acid-hell mismatch pixels=%d bbox=(%d,%d)-(%d,%d)", count, minX, minY, maxX, maxY)
 	t.Logf("cgb-acid-hell TILE_SEL stats: %+v", gb.PPU.TileSelectDebugStats())
+	st := gb.PPU.Snapshot()
+	t.Logf("cgb-acid-hell final cpu PC=%04x B=%02x C=%02x D=%02x E=%02x LCDC=%02x CGBMode=%v mode=%d ly=%d lx=%d",
+		gb.CPU.PC, gb.CPU.B, gb.CPU.C, gb.CPU.D, gb.CPU.E, gb.Bus.Get(types.LCDC), st.CGBMode, st.Mode, st.LY, st.LX)
 	for _, sample := range samples {
 		t.Log(sample)
 	}
