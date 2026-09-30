@@ -1827,24 +1827,21 @@
       "suite": "samesuite",
       "collection": "apu/channel_1",
       "name": "channel_1_sweep",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_1/channel_1_sweep_restart",
       "suite": "samesuite",
       "collection": "apu/channel_1",
       "name": "channel_1_sweep_restart",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_1/channel_1_sweep_restart_2",
       "suite": "samesuite",
       "collection": "apu/channel_1",
       "name": "channel_1_sweep_restart_2",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_1/channel_1_volume",
