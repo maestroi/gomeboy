@@ -126,26 +126,27 @@ func TestTimerReloadByteWritesMergeAgainstReloadNotCounter(t *testing.T) {
 	}
 }
 
-func TestDeferredTimerControlButImmediateReloadLatch(t *testing.T) {
+func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
-	// The reload half of a CPU timer write is visible at the I/O bus phase,
-	// while the enable transition remains deferred to the instruction boundary.
+	// CPU writes become visible one master cycle later. A 32-bit TMxCNT
+	// write schedules reload before control at the same timestamp.
 	timers.BeginWriteAccess()
 	b.Write32(timerLow(0), uint32(controlEnable)<<16|0xffff, bus.Access{})
-	if timers.Control(0) != 0 || timers.Reload(0) != 0xffff || timers.Counter(0) != 0 {
-		t.Fatalf("timer start bus phase = control:%04x reload:%04x counter:%04x",
+	if timers.Control(0) != 0 || timers.Reload(0) != 0 || timers.Counter(0) != 0 {
+		t.Fatalf("timer write visible too early = control:%04x reload:%04x counter:%04x",
 			timers.Control(0), timers.Reload(0), timers.Counter(0))
 	}
 	timers.Advance(2)
 	timers.EndWriteAccess()
 	if timers.Control(0) != controlEnable || timers.Reload(0) != 0xffff || timers.Counter(0) != 0xffff {
-		t.Fatalf("timer start commit = control:%04x reload:%04x counter:%04x",
+		t.Fatalf("timer start events = control:%04x reload:%04x counter:%04x",
 			timers.Control(0), timers.Reload(0), timers.Counter(0))
 	}
 
-	// A running reload write is also bus-phase visible. If the timer overflows
-	// during that access, it reloads the new latch immediately.
+	// At an identical timestamp overflow has higher priority than reload write.
+	// The overflow therefore uses the old FFFF latch; the new 0000 latch is
+	// installed immediately afterward and is used by the following overflow.
 	timers.BeginWriteAccess()
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
 	timers.Advance(1)
@@ -153,12 +154,16 @@ func TestDeferredTimerControlButImmediateReloadLatch(t *testing.T) {
 	if got := timers.Reload(0); got != 0x0000 {
 		t.Fatalf("reload latch = %04x, want 0000", got)
 	}
+	if got := timers.Counter(0); got != 0xffff {
+		t.Fatalf("same-edge overflow counter = %04x, want old reload ffff", got)
+	}
+	timers.Advance(1)
 	if got := timers.Counter(0); got != 0x0000 {
-		t.Fatalf("reload write overflow counter = %04x, want 0000", got)
+		t.Fatalf("next overflow counter = %04x, want new reload 0000", got)
 	}
 	timers.Advance(1)
 	if got := timers.Counter(0); got != 0x0001 {
-		t.Fatalf("tick after reload write = %04x, want 0001", got)
+		t.Fatalf("tick after new reload = %04x, want 0001", got)
 	}
 }
 
@@ -211,7 +216,7 @@ func TestCounterForCPUReadSamplesPreCascadePhase(t *testing.T) {
 	}
 }
 
-func TestDeferredTimerDisableCommitsAtEndOfWriteBusPhase(t *testing.T) {
+func TestTimestampedTimerDisableCommitsOneCycleLater(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xff00, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -226,20 +231,20 @@ func TestDeferredTimerDisableCommitsAtEndOfWriteBusPhase(t *testing.T) {
 		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 
-	// The store's bus cycles still belong to the running timer. The disable
-	// becomes visible at the transfer-completion edge, before the next CPU phase.
+	// The running timer receives exactly the one cycle before the delayed
+	// control event. It is frozen for the rest of this four-cycle interval.
 	timers.Advance(4)
-	if got := timers.Counter(0); got != 0xff07 {
-		t.Fatalf("timer did not advance through disable bus phase: %04x, want ff07", got)
+	if got := timers.Counter(0); got != 0xff04 {
+		t.Fatalf("timer did not stop on delayed control edge: %04x, want ff04", got)
+	}
+	if got := timers.Control(0); got != 0 {
+		t.Fatalf("timer disable event not visible: control=%04x", got)
 	}
 	timers.EndWriteBusAccess()
-	if got := timers.Control(0); got != 0 {
-		t.Fatalf("timer disable not visible at bus completion: control=%04x", got)
-	}
 	timers.EndWriteAccess()
 	timers.Advance(1)
-	if got := timers.Counter(0); got != 0xff07 {
-		t.Fatalf("timer advanced after disable bus phase: %04x, want ff07", got)
+	if got := timers.Counter(0); got != 0xff04 {
+		t.Fatalf("timer advanced after disable event: %04x, want ff04", got)
 	}
 }
 
