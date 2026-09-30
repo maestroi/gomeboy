@@ -167,7 +167,7 @@ func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 	}
 }
 
-func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
+func TestCounterForCPUReadUsesMaterializedOverflowPhase(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xfffe, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -176,8 +176,8 @@ func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 	if got := timers.Counter(0); got != 0xffff {
 		t.Fatalf("live counter before overflow = %04x, want ffff", got)
 	}
-	if got := timers.CounterForCPURead(0); got != 0xfffe {
-		t.Fatalf("CPU read before overflow = %04x, want pre-tick fffe", got)
+	if got := timers.CounterForCPURead(0); got != 0xffff {
+		t.Fatalf("CPU read before overflow = %04x, want materialized ffff", got)
 	}
 
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
@@ -190,7 +190,7 @@ func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 	}
 }
 
-func TestCounterForCPUReadSamplesPreCascadePhase(t *testing.T) {
+func TestCounterForCPUReadUsesMaterializedCascadePhase(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xffff, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -201,12 +201,12 @@ func TestCounterForCPUReadSamplesPreCascadePhase(t *testing.T) {
 	if got := timers.Counter(1); got != 0x1235 {
 		t.Fatalf("live cascaded counter = %04x, want 1235", got)
 	}
-	if got := timers.CounterForCPURead(1); got != 0x1234 {
-		t.Fatalf("CPU read on cascade edge = %04x, want pre-tick 1234", got)
+	if got := timers.CounterForCPURead(1); got != 0x1235 {
+		t.Fatalf("CPU read on cascade edge = %04x, want materialized 1235", got)
 	}
 
-	// If the cascaded timer itself overflows on that parent edge, the CPU still
-	// observes ffff rather than the freshly reloaded value.
+	// If the cascaded timer itself overflows on that parent edge, the event has
+	// already reloaded the child before the CPU-visible read.
 	b.Write16(timerHigh(1), 0, bus.Access{})
 	b.Write16(timerLow(1), 0xffff, bus.Access{})
 	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
