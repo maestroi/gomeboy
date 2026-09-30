@@ -16,7 +16,12 @@ import (
 )
 
 // imageTest is a test that compares the output of a rom to an expected image
-const (\n\tScreenWidthForTest = 160\n\tScreenHeightForTest = 144\n)\n\ntype imageTest struct {
+const (
+	ScreenWidthForTest  = 160
+	ScreenHeightForTest = 144
+)
+
+type imageTest struct {
 	emulatedSeconds int
 	expectedImage   string
 	expectedTransform func(image.Image) image.Image
