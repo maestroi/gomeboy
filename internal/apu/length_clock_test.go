@@ -29,6 +29,8 @@ func TestEarlyCGBExtraLengthClockWithoutEnableTransition(t *testing.T) {
 			}{
 				{name: "channel1", ch: 0, reg: types.NR14},
 				{name: "channel2", ch: 1, reg: types.NR24},
+				{name: "channel3", ch: 2, reg: types.NR34},
+				{name: "channel4", ch: 3, reg: types.NR44},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					a.channels[tc.ch].lengthCounter = 1
