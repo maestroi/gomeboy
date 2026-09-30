@@ -275,6 +275,7 @@ func (t *Timers) onOverflow(index int) {
 	if s.control&controlEnable == 0 { return }
 	s.counter = s.reload
 	s.phase = 0
+	s.timestampStarted = t.scheduler.Now()
 	s.lastTickOverflow = true
 	if t.hooks.Overflow != nil { t.hooks.Overflow(index, 1) }
 	if s.control&controlIRQ != 0 && t.irq != nil { t.irq.Request(irqSources[index]) }
