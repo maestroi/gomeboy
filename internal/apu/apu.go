@@ -73,7 +73,9 @@ type APU struct {
 		volumeCode          uint8
 		waveRAMPosition     uint8
 		waveRAMSampleBuffer uint8
-		waveRAMLastPosition uint8
+		waveRAMLastPosition        uint8
+		sampleReady                bool
+		swallowNextExtraLengthClock bool
 	}
 	channel4 struct {
 		clockShift     uint8
@@ -181,9 +183,11 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			a.channel3.waveRAMLastRead = a.s.Cycle()
 			a.channel3.waveRAMLastPosition = a.channel3.waveRAMPosition >> 1
 			a.channel3.waveRAMSampleBuffer = a.waveRAM[a.channel3.waveRAMLastPosition]
+			a.channel3.sampleReady = true
 			a.s.ScheduleEvent(scheduler.APUChannel3, uint64((2048-a.channels[2].frequency)<<1))
 		} else {
 			a.channel3.waveRAMSampleBuffer = 0
+			a.channel3.sampleReady = false
 		}
 	})
 
@@ -255,18 +259,18 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		})
 		b.ReserveLazyReader(types.PCM34, func() byte {
 			pcm := uint8(0)
-			sampleLength := (uint64(2048-a.channels[2].frequency) * 2) + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-			if a.channels[2].enabled && (a.s.Cycle()-a.channels[2].enableTime > sampleLength) {
+			// Channel 3 frequency writes affect the next sample period, not the
+			// sample that is already in flight. The scheduled channel event is the
+			// hardware-visible fetch boundary, so expose PCM only after that fetch
+			// has happened rather than recomputing a delay from the live frequency.
+			if a.channels[2].enabled && a.channel3.sampleReady {
 				shift := 0
 				if a.channel3.waveRAMPosition&1 == 0 {
 					shift = 4
 				}
 				pcm |= (((a.channel3.waveRAMSampleBuffer) >> shift) & 0x0f) >> a.channel3.volumeCode
 			}
-			sampleLength = uint64(a.channel4.frequencyTimer) + 4
+			sampleLength := uint64(a.channel4.frequencyTimer) + 4
 			if a.s.DoubleSpeed() {
 				sampleLength *= 2
 			}
@@ -412,7 +416,7 @@ func (a *APU) sample() {
 		output := (duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1
 		samples[1] = digitalAnalog[output*(channels[1].currentVolume)]
 	}
-	if channels[2].isEnabled() && !a.Debug.Wave {
+	if channels[2].isEnabled() && a.channel3.sampleReady && !a.Debug.Wave {
 		samples[2] = digitalAnalog[((a.channel3.waveRAMSampleBuffer>>((a.channel3.waveRAMPosition&1)<<2))&0x0f)>>a.channel3.volumeCode]
 	}
 	if channels[3].isEnabled() && !a.Debug.Noise {
@@ -545,11 +549,26 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 			a.channels[ch].frequency = (a.channels[ch].frequency & 0x00ff) | uint16(v&0x7)<<8
 		}
 		lengthCounterEnabled := v&types.Bit6 > 0
-		if a.shouldExtraClockLength(ch, lengthCounterEnabled) {
+		extraLengthClocked := a.shouldExtraClockLength(ch, lengthCounterEnabled)
+		if ch == 2 && extraLengthClocked && a.channel3.swallowNextExtraLengthClock {
+			// SameSuite's hardware measurements show that CGB B CH3 needs one
+			// additional NRx4 write versus CGB0 before the same length value
+			// expires. The ROM cannot distinguish a counter loaded one higher
+			// from the first post-trigger extra clock being swallowed; model the
+			// latter because it leaves ordinary NR31 length loading unchanged.
+			a.channel3.swallowNextExtraLengthClock = false
+			extraLengthClocked = false
+		}
+		if extraLengthClocked {
 			a.channels[ch].lengthCounter--
 			a.channels[ch].enabled = a.channels[ch].lengthCounter > 0
 		}
 		a.channels[ch].lengthCounterEnabled = lengthCounterEnabled
+
+		// Capture whether a wave sample was already live before a retrigger.
+		// A retrigger keeps that old sample audible until the phantom first
+		// period completes; a fresh trigger remains silent until its first fetch.
+		wasChannelEnabled := a.channels[ch].isEnabled()
 
 		// handle trigger
 		if v&types.Bit7 > 0 {
@@ -614,6 +633,10 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.DescheduleEvent(scheduler.APUChannel2)
 				a.s.ScheduleEvent(scheduler.APUChannel2, t)
 			case 2: // Wave
+				if !wasChannelEnabled {
+					a.channel3.sampleReady = false
+				}
+				a.channel3.swallowNextExtraLengthClock = a.b.Model() == types.CGBBC
 				if a.channels[2].isEnabled() && a.s.Until(scheduler.APUChannel3) == 2 && !a.b.Model().IsCGB() {
 					newPos := (a.channel3.waveRAMPosition + 1) & 31
 					pos := newPos >> 1
@@ -626,9 +649,16 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				}
 
 				if a.channels[2].lengthCounter == 0 {
-					a.channels[2].lengthCounter = 0x100
-					if a.channels[2].lengthCounterEnabled && a.frameSequencerStep&1 == 1 {
-						a.channels[2].lengthCounter--
+					// If this same NRx4 trigger performed the extra length clock
+					// that expired the counter, hardware reloads CH3 to 0xFF rather
+					// than 0x100. This is observable on early CGB revisions.
+					if extraLengthClocked {
+						a.channels[2].lengthCounter = 0xff
+					} else {
+						a.channels[2].lengthCounter = 0x100
+						if a.channels[2].lengthCounterEnabled && a.frameSequencerStep&1 == 1 {
+							a.channels[2].lengthCounter--
+						}
 					}
 				}
 
@@ -675,6 +705,8 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		a.channels[2].dacEnabled = v&types.Bit7 != 0
 		if !a.channels[2].dacEnabled {
 			a.channels[2].enabled = false
+			a.channel3.sampleReady = false
+			a.channel3.swallowNextExtraLengthClock = false
 		}
 	case types.NR31:
 		if a.b.Model().IsCGB() {

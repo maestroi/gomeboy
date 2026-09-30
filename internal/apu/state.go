@@ -49,6 +49,8 @@ type State struct {
 		WaveRAMPosition     uint8
 		WaveRAMSampleBuffer uint8
 		WaveRAMLastPosition uint8
+		SampleReady                 bool
+		SwallowNextExtraLengthClock bool
 	}
 	Channel4 struct {
 		ClockShift     uint8
@@ -135,6 +137,8 @@ func (a *APU) Snapshot() State {
 	st.Channel3.WaveRAMPosition = a.channel3.waveRAMPosition
 	st.Channel3.WaveRAMSampleBuffer = a.channel3.waveRAMSampleBuffer
 	st.Channel3.WaveRAMLastPosition = a.channel3.waveRAMLastPosition
+	st.Channel3.SampleReady = a.channel3.sampleReady
+	st.Channel3.SwallowNextExtraLengthClock = a.channel3.swallowNextExtraLengthClock
 	st.Channel4.ClockShift = a.channel4.clockShift
 	st.Channel4.DivisorCode = a.channel4.divisorCode
 	st.Channel4.WidthMask = a.channel4.widthMask
@@ -238,6 +242,8 @@ func (a *APU) Restore(s State) {
 	a.channel3.waveRAMPosition = s.Channel3.WaveRAMPosition
 	a.channel3.waveRAMSampleBuffer = s.Channel3.WaveRAMSampleBuffer
 	a.channel3.waveRAMLastPosition = s.Channel3.WaveRAMLastPosition
+	a.channel3.sampleReady = s.Channel3.SampleReady
+	a.channel3.swallowNextExtraLengthClock = s.Channel3.SwallowNextExtraLengthClock
 	a.channel4.clockShift = s.Channel4.ClockShift
 	a.channel4.divisorCode = s.Channel4.DivisorCode
 	a.channel4.widthMask = s.Channel4.WidthMask
