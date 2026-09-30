@@ -129,12 +129,10 @@ func (t *Timers) EndWriteAccess() {
 func (t *Timers) writeReload(index int, value uint16) {
 	s := &t.timer[index]
 	s.pendingReload = value
-	if t.deferWrites {
-		t.scheduler.Schedule(1, gbascheduler.PriorityNormal, func() {
-			s.reload = s.pendingReload
-		})
-		return
-	}
+	// TMxCNT_L is a reload latch, not a start/stop control. In GomeBoy's CPU
+	// memory callback ordering the I/O write is sampled before the bus phase is
+	// consumed, so make the latch visible here. If an overflow lands during the
+	// same transfer it must see the newly written reload value.
 	s.reload = value
 }
 
