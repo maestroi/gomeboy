@@ -48,19 +48,11 @@ func TestSGBMLTREQModes(t *testing.T) {
 		t.Run(model.String(), func(t *testing.T) {
 			b := newSGBTestBus(t, model)
 
-			for _, tc := range []struct {
-				mode byte
-				want uint8
-			}{
-				{0, 1},
-				{1, 2},
-				{2, 4},
-				{3, 4},
-			} {
+			for _, mode := range []byte{0, 1, 2, 3} {
 				sendMLTREQ(b, 0)
-				sendMLTREQ(b, tc.mode)
-				if got := b.sgb.PlayerCount; got != tc.want {
-					t.Fatalf("MLT_REQ %d player count = %d, want %d", tc.mode, got, tc.want)
+				sendMLTREQ(b, mode)
+				if got := b.sgb.ControllerMask; got != mode {
+					t.Fatalf("MLT_REQ %d controller mask = %d, want %d", mode, got, mode)
 				}
 			}
 		})
@@ -145,6 +137,88 @@ func TestSGBMLTREQOnePlayerIncrementEdges(t *testing.T) {
 	}
 }
 
+func TestSGBMLTREQSameSuiteSequence(t *testing.T) {
+	b := newSGBTestBus(t, types.SGB)
+	var got []byte
+	record := func() { got = append(got, b.Read(types.P1)) }
+
+	sendMLTREQ(b, 1)
+	record()
+	incrementSGBController(b)
+	record()
+
+	sendMLTREQ(b, 0)
+	sendMLTREQ(b, 1)
+	record()
+
+	sendMLTREQ(b, 0)
+	sendMLTREQ(b, 2)
+	record()
+	incrementSGBController(b)
+	record()
+
+	sendMLTREQ(b, 0)
+	sendMLTREQ(b, 3)
+	record()
+	incrementSGBController(b)
+	record()
+	incrementSGBController(b)
+	record()
+	incrementSGBController(b)
+	record()
+
+	for increments := 0; increments < 4; increments++ {
+		sendMLTREQ(b, 0)
+		sendMLTREQ(b, 3)
+		for i := 0; i < increments; i++ {
+			incrementSGBController(b)
+		}
+		sendMLTREQ(b, 1)
+		record()
+	}
+
+	sendMLTREQ(b, 0)
+	sendMLTREQ(b, 3)
+	record()
+	sendMLTREQ(b, 3)
+	record()
+
+	for increments := 0; increments < 4; increments++ {
+		sendMLTREQ(b, 0)
+		sendMLTREQ(b, 3)
+		for i := 0; i < increments; i++ {
+			incrementSGBController(b)
+		}
+		sendMLTREQ(b, 2)
+		record()
+	}
+
+	for increments := 0; increments < 3; increments++ {
+		sendMLTREQ(b, 0)
+		sendMLTREQ(b, 3)
+		for i := 0; i < increments; i++ {
+			incrementSGBController(b)
+		}
+		sendMLTREQ(b, 2)
+		incrementSGBController(b)
+		record()
+		incrementSGBController(b)
+		record()
+	}
+	got = got[:24]
+
+	want := []byte{
+		0xFF, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0xFD,
+		0xFC, 0xFE, 0xFF, 0xFE, 0xFF, 0xFF, 0xFD, 0xFD,
+		0xFD, 0xFF, 0xFF, 0xFD, 0xFD, 0xFD, 0xFD, 0xFF,
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("sample %d = %#02x, want %#02x", i, got[i], want[i])
+		}
+	}
+}
+
 func TestSGBStateSurvivesSnapshot(t *testing.T) {
 	b := newSGBTestBus(t, types.SGB)
 	sendMLTREQ(b, 3)
@@ -152,11 +226,11 @@ func TestSGBStateSurvivesSnapshot(t *testing.T) {
 	incrementSGBController(b)
 
 	state := b.Snapshot()
-	b.sgb = SGBState{PlayerCount: 1}
+	b.sgb = SGBState{}
 	b.Restore(state)
 
-	if b.sgb.PlayerCount != 4 || b.sgb.CurrentPlayer != 2 {
-		t.Fatalf("restored SGB state = players %d current %d, want 4/2", b.sgb.PlayerCount, b.sgb.CurrentPlayer)
+	if b.sgb.ControllerMask != 3 || b.sgb.CurrentPlayer != 2 {
+		t.Fatalf("restored SGB state = mask %d current %d, want 3/2", b.sgb.ControllerMask, b.sgb.CurrentPlayer)
 	}
 }
 
