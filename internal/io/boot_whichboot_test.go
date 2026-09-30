@@ -35,7 +35,9 @@ func newWhichbootBootBus(t *testing.T, model types.Model) *Bus {
 }
 
 func TestBootVRAMMatchesWhichbootHardwareFingerprint(t *testing.T) {
-	// whichboot.gb v1.1 classifies the official boot ROMs using four VRAM
+	// Reference: nitro2k01/whichboot.gb v1.1, source revision
+	// 545436fb485f9006d47e0f26f0ceec76cd8e3a07.
+	// whichboot.gb classifies the official boot ROMs using four VRAM
 	// properties: Nintendo logo tiles, BG-map residue, the registered-symbol
 	// tile, and whether all unrelated bytes are zero.
 	const expectedLogoSHA256 = "41c946a2a92c09642f2b659de8b73c7af83c7842f093fe3e66559141b45b8497"
