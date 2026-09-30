@@ -14,39 +14,43 @@ const (
 )
 
 // ageModelsForName returns the hardware families encoded in an AGE ROM
-// filename. AGE distinguishes several CGB revisions and native/compatibility
-// modes more finely than GomeBoy currently does, so all CGB variants collapse
-// to the CGB model until the core exposes those revisions separately.
+// filename. AGE's B/C and D/E suffix families map to explicit emulator
+// revision profiles so results are attributed to the intended hardware rather
+// than collapsed into the generic CGB profile.
 func ageModelsForName(name string) []types.Model {
 	name = strings.TrimSuffix(name, filepath.Ext(name))
 
 	switch {
-	case strings.HasSuffix(name, "dmgC-cgbBCE"), strings.HasSuffix(name, "dmgC-cgbBC"):
-		return []types.Model{types.DMGABC, types.CGBABC}
+	case strings.HasSuffix(name, "dmgC-cgbBCE"):
+		return []types.Model{types.DMGABC, types.CGBBC, types.CGBDE}
+	case strings.HasSuffix(name, "dmgC-cgbBC"):
+		return []types.Model{types.DMGABC, types.CGBBC}
 	case strings.HasSuffix(name, "cgbBCE"),
-		strings.HasSuffix(name, "cgbBC"),
-		strings.HasSuffix(name, "cgbE"),
-		strings.HasSuffix(name, "ncmBCE"),
-		strings.HasSuffix(name, "ncmBC"),
+		strings.HasSuffix(name, "ncmBCE"):
+		return []types.Model{types.CGBBC, types.CGBDE}
+	case strings.HasSuffix(name, "cgbBC"),
+		strings.HasSuffix(name, "ncmBC"):
+		return []types.Model{types.CGBBC}
+	case strings.HasSuffix(name, "cgbE"),
 		strings.HasSuffix(name, "ncmE"):
-		return []types.Model{types.CGBABC}
+		return []types.Model{types.CGBDE}
 	case strings.HasSuffix(name, "dmgC"):
 		return []types.Model{types.DMGABC}
 	default:
 		return []types.Model{types.DMGABC}
 	}
 }
-
 func TestAgeModelsForName(t *testing.T) {
 	cases := []struct {
 		name string
 		want []types.Model
 	}{
-		{"ei-halt-dmgC-cgbBCE.gb", []types.Model{types.DMGABC, types.CGBABC}},
-		{"ly-dmgC-cgbBC.gb", []types.Model{types.DMGABC, types.CGBABC}},
-		{"oam-write-cgbBCE.gb", []types.Model{types.CGBABC}},
-		{"stat-mode-sprites-ds-cgbBCE.gb", []types.Model{types.CGBABC}},
-		{"oam-write-ncmBCE.gb", []types.Model{types.CGBABC}},
+		{"ei-halt-dmgC-cgbBCE.gb", []types.Model{types.DMGABC, types.CGBBC, types.CGBDE}},
+		{"ly-dmgC-cgbBC.gb", []types.Model{types.DMGABC, types.CGBBC}},
+		{"oam-write-cgbBCE.gb", []types.Model{types.CGBBC, types.CGBDE}},
+		{"stat-mode-sprites-ds-cgbBCE.gb", []types.Model{types.CGBBC, types.CGBDE}},
+		{"oam-write-ncmBCE.gb", []types.Model{types.CGBBC, types.CGBDE}},
+		{"ly-cgbE.gb", []types.Model{types.CGBDE}},
 		{"oam-write-dmgC.gb", []types.Model{types.DMGABC}},
 	}
 	for _, tc := range cases {
@@ -55,7 +59,6 @@ func TestAgeModelsForName(t *testing.T) {
 		}
 	}
 }
-
 func newAgeTestCollectionFromDir(suite *TestSuite, dir string) *TestCollection {
 	romDir := filepath.Join(ageROMPath, dir)
 	tc := suite.NewTestCollection(dir)

@@ -68,8 +68,10 @@ const (
 	ModelAuto Model = "auto" // infer the model from the loaded cartridge
 	ModelDMG0 Model = "DMG0" // early Game Boy (Japan)
 	ModelDMG  Model = "DMG"  // Game Boy
-	ModelCGB0 Model = "CGB0" // early Game Boy Color (Japan)
-	ModelCGB  Model = "CGB"  // Game Boy Color
+	ModelCGB0  Model = "CGB0"  // early Game Boy Color (Japan)
+	ModelCGB   Model = "CGB"   // generic production CGB profile (stable default)
+	ModelCGBBC Model = "CGBBC" // Game Boy Color B/C revision family
+	ModelCGBDE Model = "CGBDE" // Game Boy Color D/E revision family
 	ModelMGB  Model = "MGB"  // Pocket Game Boy
 	ModelSGB  Model = "SGB"  // Super Game Boy
 	ModelSGB2 Model = "SGB2" // Super Game Boy 2
@@ -81,8 +83,10 @@ const (
 var modelMap = map[Model]types.Model{
 	ModelDMG0: types.DMG0,
 	ModelDMG:  types.DMGABC,
-	ModelCGB0: types.CGB0,
-	ModelCGB:  types.CGBABC,
+	ModelCGB0:  types.CGB0,
+	ModelCGB:   types.CGBABC,
+	ModelCGBBC: types.CGBBC,
+	ModelCGBDE: types.CGBDE,
 	ModelMGB:  types.MGB,
 	ModelSGB:  types.SGB,
 	ModelSGB2: types.SGB2,
@@ -95,6 +99,8 @@ var publicModelMap = map[types.Model]Model{
 	types.DMGABC: ModelDMG,
 	types.CGB0:   ModelCGB0,
 	types.CGBABC: ModelCGB,
+	types.CGBBC:  ModelCGBBC,
+	types.CGBDE:  ModelCGBDE,
 	types.MGB:    ModelMGB,
 	types.SGB:    ModelSGB,
 	types.SGB2:   ModelSGB2,

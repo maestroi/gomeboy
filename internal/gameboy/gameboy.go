@@ -218,7 +218,7 @@ func (g *GameBoy) Init() {
 //
 // For non-CGB models, a greyscale palette is applied to the PPU.
 func (g *GameBoy) Colourise() {
-	if !g.Bus.Cartridge().IsCGBCartridge() && (g.model == types.CGBABC || g.model == types.CGB0) {
+	if !g.Bus.Cartridge().IsCGBCartridge() && g.model.IsCGB() {
 		var pal = ppu.ColourisationPalettes[0]
 		if g.Bus.Cartridge().Licensee() == "Nintendo" {
 			// compute title hash

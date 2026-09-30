@@ -1368,7 +1368,7 @@ func (p *PPU) statUpdate() {
 	}
 
 	// update LYC_EQ_LY flag
-	if p.lyForComparison != 0xffff || p.b.Model() <= types.CGBABC && !p.s.DoubleSpeed() {
+	if p.lyForComparison != 0xffff || (p.b.Model() <= types.DMGABC || p.b.Model().IsCGB()) && !p.s.DoubleSpeed() {
 		if uint8(p.lyForComparison) == p.lyCompare {
 			p.lycInt = true
 			p.status |= types.Bit2
