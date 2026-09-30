@@ -42,6 +42,10 @@ type State struct {
 		Negate          bool
 		DidNegate       bool
 		SweepEnabled    bool
+		SweepCheckAt    uint64
+		SweepStopAt     uint64
+		SweepLoadAt     uint64
+		SweepLoadValue  uint16
 	}
 	Channel2 SquareChannelState
 	Channel3 struct {
@@ -128,6 +132,10 @@ func (a *APU) Snapshot() State {
 	st.Channel1.Negate = a.channel1.negate
 	st.Channel1.DidNegate = a.channel1.didNegate
 	st.Channel1.SweepEnabled = a.channel1.sweepEnabled
+	st.Channel1.SweepCheckAt = a.channel1.sweepCheckAt
+	st.Channel1.SweepStopAt = a.channel1.sweepStopAt
+	st.Channel1.SweepLoadAt = a.channel1.sweepLoadAt
+	st.Channel1.SweepLoadValue = a.channel1.sweepLoadValue
 	st.Channel2 = SquareChannelState{
 		Duty:             a.channel2.duty,
 		LockedDuty:       a.channel2.lockedDuty,
@@ -237,6 +245,10 @@ func (a *APU) Restore(s State) {
 	a.channel1.negate = s.Channel1.Negate
 	a.channel1.didNegate = s.Channel1.DidNegate
 	a.channel1.sweepEnabled = s.Channel1.SweepEnabled
+	a.channel1.sweepCheckAt = s.Channel1.SweepCheckAt
+	a.channel1.sweepStopAt = s.Channel1.SweepStopAt
+	a.channel1.sweepLoadAt = s.Channel1.SweepLoadAt
+	a.channel1.sweepLoadValue = s.Channel1.SweepLoadValue
 	a.channel2.duty = s.Channel2.Duty
 	a.channel2.lockedDuty = s.Channel2.LockedDuty
 	a.channel2.waveDutyPosition = s.Channel2.WaveDutyPosition
