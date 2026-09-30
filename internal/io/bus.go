@@ -510,7 +510,6 @@ func (b *Bus) LazyRead(addr uint16) byte {
 
 func (b *Bus) ClearBit(addr uint16, bit byte) { b.data[addr] &^= bit } // clear bit at address
 func (b *Bus) Get(addr uint16) byte           { return b.data[addr] }  // get value at address
-func (b *Bus) DebugOAMDMAState() (bool, uint16) { return b.dmaActive, b.dmaDestination }
 func (b *Bus) Set(addr uint16, value byte)    { b.data[addr] = value } // set value at address
 func (b *Bus) SetBit(addr uint16, bit byte)   { b.data[addr] |= bit }  // set bit at address
 
@@ -683,16 +682,18 @@ func (b *Bus) PPUReadOAM(address uint16) byte {
 	return next | incoming
 }
 
-// PPUReadOAMScan returns the OAM byte visible to the Mode 2 object scanner.
-//
-// Once OAM DMA is actively copying, the DMA controller owns the OAM port and
-// ordinary PPU revisions observe an idle-high value during the scan. The MGB
-// halted-DMA path is a measured exception and is already modelled by
-// PPUReadOAM.
+// PPUOAMScanBlockedByDMA reports whether active OAM DMA prevents Mode 2 from
+// refreshing its Y/X bus latches. The PPU keeps the previous latch values in
+// that case rather than sampling an artificial 0xff byte. The measured MGB
+// halted-DMA path remains readable through PPUReadOAM.
+func (b *Bus) PPUOAMScanBlockedByDMA() bool {
+	return b.dmaActive && !(b.model == types.MGB && b.s.Halted)
+}
+
+// PPUReadOAMScan returns an OAM byte for a Mode 2 bus-latch refresh. Callers
+// must first check PPUOAMScanBlockedByDMA; while blocked, hardware retains the
+// existing Mode 2 bus values instead of performing a new OAM read.
 func (b *Bus) PPUReadOAMScan(address uint16) byte {
-	if b.dmaActive && !(b.model == types.MGB && b.s.Halted) {
-		return 0xff
-	}
 	return b.PPUReadOAM(address)
 }
 
