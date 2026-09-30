@@ -34,7 +34,9 @@ func newSamesuiteTestCollectionFromDir(suite *TestSuite, dir string) *TestCollec
 			},
 			emulatedSeconds: 5,
 		}
-		if strings.Contains(file.Name(), "volume") || strings.Contains(dir, "apu/channel") || file.Name() == "blocking_bgpi_increase.gb" || strings.Contains(file.Name(), "dma") {
+		if dir == "sgb" {
+			t.model = types.SGB
+		} else if strings.Contains(file.Name(), "volume") || strings.Contains(dir, "apu/channel") || file.Name() == "blocking_bgpi_increase.gb" || strings.Contains(file.Name(), "dma") {
 			t.model = types.CGBABC
 		}
 		tc.AddTests(t)
