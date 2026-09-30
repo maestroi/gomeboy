@@ -640,6 +640,9 @@ func (p *PPU) scanOAMEntry() {
 	base := uint16(0xfe00) + uint16(p.oamScanIndex)*4
 	y := p.b.PPUReadOAMScan(base)
 	x := p.b.PPUReadOAMScan(base + 1)
+	if active, dest := p.b.DebugOAMDMAState(); p.ly == 68 {
+		fmt.Printf("STRIKETHROUGH_SCAN cycle=%d idx=%d dma=%t dest=%#04x y=%#02x x=%#02x\n", p.s.Cycle(), p.oamScanIndex, active, dest, y, x)
+	}
 
 	if p.ly+16 < y || p.ly+16 >= y+p.objSize {
 		return
