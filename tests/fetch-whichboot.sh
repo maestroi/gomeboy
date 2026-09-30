@@ -8,7 +8,7 @@ SOURCE_REVISION="545436fb485f9006d47e0f26f0ceec76cd8e3a07"
 ARCHIVE_NAME="whichboot-v1_1.zip"
 ARCHIVE_URL="https://github.com/nitro2k01/whichboot.gb/releases/download/${VERSION}/${ARCHIVE_NAME}"
 # Filled after the first CI fetch; the script prints the observed digest.
-EXPECTED_ARCHIVE_SHA256=""
+EXPECTED_ARCHIVE_SHA256="c2d1d064ce8871c476043f486be51f478650709943dbfab5052c77b34ce48569"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST_DIR="${ROOT_DIR}/tests/roms/whichboot"
