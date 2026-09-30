@@ -545,7 +545,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 			a.channels[ch].frequency = (a.channels[ch].frequency & 0x00ff) | uint16(v&0x7)<<8
 		}
 		lengthCounterEnabled := v&types.Bit6 > 0
-		if a.frameSequencerStep&1 == 1 && !a.channels[ch].lengthCounterEnabled && lengthCounterEnabled && a.channels[ch].lengthCounter > 0 {
+		if a.shouldExtraClockLength(ch, lengthCounterEnabled) {
 			a.channels[ch].lengthCounter--
 			a.channels[ch].enabled = a.channels[ch].lengthCounter > 0
 		}
@@ -964,6 +964,28 @@ func (a *APU) freqCalc(update bool) {
 	} else if a.channel1.shift > 0 && update {
 		a.channel1.frequencyShadow = newFreq
 		a.channels[0].frequency = newFreq
+	}
+}
+
+// shouldExtraClockLength implements the NRx4 length-enable edge clock.
+//
+// On normal hardware, when the next frame-sequencer step does not clock length,
+// a 0->1 transition of the length-enable bit clocks the counter immediately.
+// CGB0 and the early CGB B-family additionally clock on any NRx4 write while
+// length was previously disabled, even if the new write leaves it disabled.
+// SameSuite covers this hardware bug on channels 1 and 2.
+func (a *APU) shouldExtraClockLength(ch uint16, newEnabled bool) bool {
+	if a.frameSequencerStep&1 == 0 || a.channels[ch].lengthCounterEnabled || a.channels[ch].lengthCounter == 0 {
+		return false
+	}
+	if newEnabled {
+		return true
+	}
+	switch a.b.Model() {
+	case types.CGB0, types.CGBBC:
+		return true
+	default:
+		return false
 	}
 }
 
