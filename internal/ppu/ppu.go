@@ -1332,6 +1332,9 @@ func (p *PPU) stepObjectFetcher() {
 		p.stepPixelFetcher()
 	case OBJGetTileNoT2:
 		base := uint16(0xfe00) + uint16(p.fetchingObj.index)*4
+		if active, dest := p.b.DebugOAMDMAState(); active && p.ly == 68 {
+			fmt.Printf("STRIKETHROUGH_TRACE cycle=%d lx=%d obj=%d x=%d dma=%#04x\n", p.s.Cycle(), p.lx, p.fetchingObj.index, p.fetchingObj.x, dest)
+		}
 		p.objFetcherTileNo = p.b.PPUReadOAMFetch(base + 2)
 		p.objFetcherTileAttr = p.b.PPUReadOAMFetch(base + 3)
 		p.fetchingObj.id = p.objFetcherTileNo
