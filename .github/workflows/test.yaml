@@ -27,7 +27,7 @@ jobs:
       - name: extract test ROMs
         run: go test -tags test ./tests -run '^$'
       - name: test library, HLE boot, and agent tooling packages
-        run: go test ./internal/apu ./internal/cpu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+        run: go test ./internal/apu ./internal/cpu ./internal/gb/... ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream ./cmd/gb-compat
       - name: benchmark optimized GBA whole-frame performance
         run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfGBAStepFrame(Headless|Audio)$' -benchmem -benchtime=250ms -count=2
 
@@ -120,11 +120,11 @@ jobs:
       - name: race detector
         env:
           GOMEBOY_MEMORY_STABILITY_FRAMES: '400'
-        run: go test -race ./internal/gba/... ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+        run: go test -race ./internal/gba/... ./internal/gb/... ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream ./cmd/gb-compat
       - name: strict pointer checks
         env:
           GOMEBOY_MEMORY_STABILITY_FRAMES: '400'
-        run: go test -gcflags=all=-d=checkptr=2 ./internal/gba/... ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
+        run: go test -gcflags=all=-d=checkptr=2 ./internal/gba/... ./internal/gb/... ./internal/apu ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream ./cmd/gb-compat
 
   test_regressions:
     runs-on: ubuntu-latest
@@ -145,6 +145,10 @@ jobs:
         run: go test -tags test ./tests -run '^$'
       - name: fetch pinned AGE conformance corpus
         run: bash tests/fetch-age.sh
+      - name: build pinned GB/GBC compatibility fixtures
+        run: bash tests/gb/compatibility/build-fixtures.sh
+      - name: run GB/GBC compatibility smoke
+        run: go run ./cmd/gb-compat -manifest tests/gb/compatibility/smoke.json -output gb-gbc-compatibility.json -markdown gb-gbc-compatibility.md -commit "$GITHUB_SHA"
       - name: tests
         run: go test -tags test -v ./tests -run Test_Regressions
       - name: upload GB/GBC regression report
@@ -156,6 +160,8 @@ jobs:
             tests/regression-results.json
             tests/README.md
             tests/external-corpus.json
+            gb-gbc-compatibility.json
+            gb-gbc-compatibility.md
           if-no-files-found: ignore
 
   test_desktop_glfw:
