@@ -443,6 +443,7 @@ func (t *Timers) Counter(index int) uint16 { t.syncCounter(index); return t.time
 // current bus edge. An ordinary timer increment on that same edge is observed
 // after the read sample, while an overflow/reload edge is already visible.
 func (t *Timers) CounterForCPURead(index int) uint16 {
+	t.syncCounter(index)
 	s := &t.timer[index]
 	if s.control&controlEnable == 0 {
 		return s.counter
