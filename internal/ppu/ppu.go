@@ -66,6 +66,12 @@ type TileSelectDebugStats struct {
 	ResetByState [16]uint64
 	SetReadDelta   [9]uint64
 	ResetReadDelta [9]uint64
+	LCDCWrites      uint64
+	CGBModeWrites   uint64
+	Value80         uint64
+	ValueE1         uint64
+	ValueE3         uint64
+	ValueF3         uint64
 }
 
 func (p *PPU) TileSelectDebugStats() TileSelectDebugStats {
@@ -224,6 +230,14 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 
 	b.ReserveAddress(types.LCDC, func(v byte) byte {
+		p.tileSelectDebug.LCDCWrites++
+		if p.cgbMode { p.tileSelectDebug.CGBModeWrites++ }
+		switch v {
+		case 0x80: p.tileSelectDebug.Value80++
+		case 0xe1: p.tileSelectDebug.ValueE1++
+		case 0xe3: p.tileSelectDebug.ValueE3++
+		case 0xf3: p.tileSelectDebug.ValueF3++
+		}
 		oldLCDC := b.Get(types.LCDC)
 		oldTileSel := oldLCDC&types.Bit4 != 0
 		newTileSel := v&types.Bit4 != 0
