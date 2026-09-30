@@ -249,6 +249,9 @@ func (b *Bus) Map(m types.Model) {
 		})
 		b.ReserveAddress(types.FF72, func(v byte) byte { return v })
 		b.ReserveAddress(types.FF73, func(v byte) byte { return v })
+		// FF74 is an undocumented CGB scratch register. Unlike an unimplemented
+		// I/O address it powers up as 0 and retains all eight written bits.
+		b.ReserveAddress(types.FF74, func(v byte) byte { return v })
 		b.ReserveAddress(types.FF75, func(v byte) byte { return v&0x70 | 0x8F })
 		b.Set(types.FF75, 0x8F)
 
