@@ -299,6 +299,21 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	b.ReserveAddress(types.LY, func(v byte) byte {
 		if b.IsBooting() {
 			p.ly = v
+
+			// CGB/AGB boot ROMs hand CGB-compatible cartridges off while the
+			// LCD is already in VBlank (LY=144). Bus.Boot applies LCDC before
+			// LY, so the ordinary LCD-enable path has already scheduled a
+			// visible-line event. Re-home the PPU state machine in VBlank when
+			// the HLE boot profile writes that hardware-visible LY value.
+			if b.IsGBCCart() && v >= 144 && v <= 153 &&
+				(b.Model().IsCGB() || b.Model() == types.AGB) {
+				p.s.DescheduleEvent(scheduler.PPUHandleVisualLine)
+				p.s.DescheduleEvent(scheduler.PPUHandleGlitchedLine0)
+				p.s.DescheduleEvent(scheduler.PPUHandleOffscreenLine)
+				p.mode, p.modeToInt = ModeVBlank, ModeVBlank
+				p.offscreenLineState = StartVBlank
+				p.handleOffscreenLine()
+			}
 			return v
 		}
 		return p.b.Get(types.LY)
