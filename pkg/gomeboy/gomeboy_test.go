@@ -249,7 +249,7 @@ func TestHeadlessDoesNotLeak(t *testing.T) {
 // intended internal hardware model: the effective model reported by Model()
 // must round-trip the value passed to WithModel.
 func TestWithModel(t *testing.T) {
-	models := []Model{ModelDMG0, ModelDMG, ModelCGB0, ModelCGB, ModelMGB, ModelSGB, ModelSGB2, ModelAGB}
+	models := []Model{ModelDMG0, ModelDMG, ModelCGB0, ModelCGB, ModelCGBBC, ModelCGBDE, ModelMGB, ModelSGB, ModelSGB2, ModelAGB}
 	for _, m := range models {
 		t.Run(string(m), func(t *testing.T) {
 			e, err := New(WithROM(testROM), WithModel(m))
