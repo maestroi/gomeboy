@@ -61,6 +61,17 @@ const (
 //   - [Pan Docs](https://gbdev.io/pandocs/Graphics.html)
 //   - [Hacktix GBEDG](https://hacktix.github.io/GBEDG/ppu/)
 //   - [Mooneye test suite](https://github.com/Gekkio/mooneye-test-suite)
+type TileSelectDebugStats struct {
+	SetByState   [16]uint64
+	ResetByState [16]uint64
+	SetReadDelta   [9]uint64
+	ResetReadDelta [9]uint64
+}
+
+func (p *PPU) TileSelectDebugStats() TileSelectDebugStats {
+	return p.tileSelectDebug
+}
+
 type PPU struct {
 	// LCDC register
 	enabled     bool  // LCDC.7 - LCD Enable
@@ -128,6 +139,7 @@ type PPU struct {
 	lastTileDataReadAt   uint64                 // Scheduler cycle of the most recent BG/window bitplane read
 	lastTileDataReadPlane uint8                 // Bitplane (0=low, 1=high) read at lastTileDataReadAt
 	lastTileDataReadValid bool                  // Whether lastTileDataReadAt identifies a real fetch
+	tileSelectDebug       TileSelectDebugStats   // temporary diagnostic counters for LCDC.4 timing work
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -215,6 +227,26 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		oldLCDC := b.Get(types.LCDC)
 		oldTileSel := oldLCDC&types.Bit4 != 0
 		newTileSel := v&types.Bit4 != 0
+		if p.cgbMode && oldTileSel != newTileSel {
+			state := int(p.fetcherState)
+			if state >= len(p.tileSelectDebug.SetByState) {
+				state = len(p.tileSelectDebug.SetByState) - 1
+			}
+			delta := 8
+			if p.lastTileDataReadValid && p.s.Cycle() >= p.lastTileDataReadAt {
+				d := p.s.Cycle() - p.lastTileDataReadAt
+				if d < 8 {
+					delta = int(d)
+				}
+			}
+			if newTileSel {
+				p.tileSelectDebug.SetByState[state]++
+				p.tileSelectDebug.SetReadDelta[delta]++
+			} else {
+				p.tileSelectDebug.ResetByState[state]++
+				p.tileSelectDebug.ResetReadDelta[delta]++
+			}
+		}
 		if p.cgbMode && oldTileSel && !newTileSel &&
 			p.lastTileDataReadValid && p.lastTileDataReadAt == p.s.Cycle() {
 			// On CGB hardware (except the D-only variant), resetting LCDC.4 on
