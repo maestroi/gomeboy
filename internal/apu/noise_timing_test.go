@@ -100,3 +100,19 @@ func TestNoiseFrequencyWritePreservesInFlightDivisorCountdown(t *testing.T) {
 		t.Fatalf("post-increment countdown=%d, want 32", got)
 	}
 }
+
+func TestNoiseDoubleSpeedTriggerPhase(t *testing.T) {
+	a, _, s := newWaveTimingTestAPU(t, types.CGBABC)
+	s.ChangeSpeed(true)
+	a.Write(types.NR52, 0x00)
+	a.Write(types.NR52, 0x80)
+	a.Write(types.NR42, 0xf0)
+	a.Write(types.NR43, 0x08)
+
+	// In double speed, one CPU NOP is half of an APU tick. NR44 is observed
+	// by the noise divider half a tick before the register callback, which is
+	// the phase bracketed by SameSuite channel_4_align.
+	if got := a.noiseTriggerDeadline(false) - s.Cycle(); got != 20 {
+		t.Fatalf("double-speed first noise shift in %d cycles, want 20", got)
+	}
+}
