@@ -146,6 +146,7 @@ type State struct {
 	VRAM         [2][0x2000]byte
 	Cartridge    CartridgeState
 	ButtonState  uint8
+	SGB          SGBState
 	IME          bool
 	BootROMDone  bool
 	VRAMBankMask uint8
@@ -173,6 +174,7 @@ func (b *Bus) Snapshot() State {
 		VRAM:            b.VRAM,
 		Cartridge:       b.c.Snapshot(),
 		ButtonState:     b.buttonState,
+		SGB:             b.sgb,
 		IME:             b.ime,
 		BootROMDone:     b.bootROMDone,
 		VRAMBankMask:    b.vRAMBankMask,
@@ -203,6 +205,7 @@ func (b *Bus) Restore(s State) {
 	b.VRAM = s.VRAM
 	b.c.Restore(s.Cartridge)
 	b.buttonState = s.ButtonState
+	b.sgb = s.SGB
 	b.ime = s.IME
 	b.bootROMDone = s.BootROMDone
 	b.vRAMBankMask = s.VRAMBankMask
