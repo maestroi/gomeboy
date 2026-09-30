@@ -70,6 +70,7 @@ type Bus struct {
 	// various IO
 	buttonState  uint8
 	ime          bool
+	sgb          SGBState
 	bootROMDone  bool
 	vRAMBankMask uint8
 	debug        bool
@@ -129,6 +130,9 @@ func (b *Bus) syncWRAMEcho() {
 func (b *Bus) Map(m types.Model) {
 	b.model = m
 	b.isGBC = m == types.CGBABC || m == types.CGB0
+	if b.isSGB() {
+		b.initSGB()
+	}
 
 	// setup CGB only registers
 	if b.isGBC && b.c.IsCGBCartridge() {
@@ -341,19 +345,23 @@ func (b *Bus) Write(addr uint16, value byte) {
 	case addr >= 0xFF00:
 		switch addr {
 		case types.P1:
-			d := uint8(0xC0)
-			if value&types.Bit4 == 0 {
-				d |= b.buttonState >> 4 & 0xf
-				d |= types.Bit4
-			}
-			if value&types.Bit5 == 0 {
-				d |= b.buttonState & 0xf
-				d |= types.Bit5
-			}
+			if b.isSGB() {
+				value = b.writeSGBP1(value)
+			} else {
+				d := uint8(0xC0)
+				if value&types.Bit4 == 0 {
+					d |= b.buttonState >> 4 & 0xf
+					d |= types.Bit4
+				}
+				if value&types.Bit5 == 0 {
+					d |= b.buttonState & 0xf
+					d |= types.Bit5
+				}
 
-			d ^= 0xf
+				d ^= 0xf
 
-			value = d
+				value = d
+			}
 		case types.BDIS:
 			if b.bootROMDone {
 				return

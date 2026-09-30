@@ -2114,16 +2114,16 @@
       "suite": "samesuite",
       "collection": "sgb",
       "name": "command_mlt_req",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass",
+      "model": "SGB"
     },
     {
       "id": "samesuite/sgb/command_mlt_req_1_incrementing",
       "suite": "samesuite",
       "collection": "sgb",
       "name": "command_mlt_req_1_incrementing",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass",
+      "model": "SGB"
     },
     {
       "id": "scribbltests/scribbltests/lycscx",
