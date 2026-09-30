@@ -139,7 +139,7 @@ func testMooneye(roms *TestTable) {
 
 	// madness
 	madness := tS.NewTestCollection("madness")
-	madness.AddTests(newImageTest("mgb_oam_dma_halt_sprites", withEmulatedSeconds(2), asModel(types.MGB)))
+	madness.AddTests(newImageTest("mgb_oam_dma_halt_sprites", withEmulatedSeconds(2), asModel(types.MGB), normalizeExpectedDMGGreyscale()))
 
 	// misc
 	misc := newMooneyeTestCollectionFromDir(tS, "misc")
