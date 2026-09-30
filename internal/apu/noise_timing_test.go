@@ -88,15 +88,15 @@ func TestNoiseFrequencyWritePreservesInFlightDivisorCountdown(t *testing.T) {
 
 	// Switch to a much longer divisor. The current four-cycle countdown must
 	// finish first; only the subsequent reload uses the new divisor.
-	a.Write(types.NR43, 0x38)
+	a.Write(types.NR43, 0x3c)
 	if got := a.channel4.divCountdown; got != 4 {
 		t.Fatalf("NR43 restarted in-flight countdown: got %d, want 4", got)
 	}
 
 	a.s.Tick(4)
 	a.catchupLFSR()
-	if got := a.channel4.divCountdown; got != 4 {
-		// The write changed to divisor code 0, so the next reload is four T-cycles.
-		t.Fatalf("post-increment countdown=%d, want 4", got)
+	if got := a.channel4.divCountdown; got != 32 {
+		// The completed increment reloads from the new divisor code (4 => 32 T-cycles).
+		t.Fatalf("post-increment countdown=%d, want 32", got)
 	}
 }
