@@ -93,6 +93,14 @@ func (m *mooneyeTest) Run(t *testing.T) {
 			t.Errorf("failed to run gameboy: %s", err)
 		}
 
+		if strings.Contains(m.name, "channel_4_align") {
+			result := make([]byte, 64)
+			for i := range result {
+				result[i] = g.Bus.Get(uint16(0xc000 + i))
+			}
+			t.Logf("%s results: % x", m.name, result)
+		}
+
 		expectedRegisters := []uint8{3, 5, 8, 13, 21, 34}
 		for i, r := range []uint8{g.CPU.B, g.CPU.C, g.CPU.D, g.CPU.E, g.CPU.H, g.CPU.L} {
 			if r != expectedRegisters[i] {
