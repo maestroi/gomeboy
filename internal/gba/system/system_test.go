@@ -341,9 +341,9 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fff9", got)
 	}
 
-	// If the instruction fetch itself crosses the overflow edge, the overflow
-	// event runs first at that timestamp. The following data read therefore sees
-	// the freshly reloaded latch.
+	// If the instruction fetch itself crosses the overflow edge, internal state
+	// reloads at that timestamp but the CPU data phase still samples the pre-edge
+	// FFFF value.
 	m2 := New(nil, nil)
 	if err := m2.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
@@ -377,8 +377,8 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 	if _, err := m2.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if got := m2.CPU.ReadRegister(0); got != 0x0000 {
-		t.Fatalf("Timer0 overflow-edge sample = %04x, want reloaded 0000", got)
+	if got := m2.CPU.ReadRegister(0); got != 0xffff {
+		t.Fatalf("Timer0 overflow-edge sample = %04x, want pre-edge ffff", got)
 	}
 }
 
