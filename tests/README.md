@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20228,%20failing%2024&width=500)
+![progress](https://progress-bar.xyz/91/?scale=100&title=passing%20230,%20failing%2022&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 228 |
-| XFAIL | 24 |
+| PASS | 230 |
+| XFAIL | 22 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -52,7 +52,7 @@ is compared against a reference image from a known good emulator.
 | mooneye | 99% | 113 | 1 | 114 |
 | samesuite | 75% | 59 | 19 | 78 |
 | scribbltests | 100% | 5 | 0 | 5 |
-| strikethrough | 0% | 0 | 2 | 2 |
+| strikethrough | 100% | 2 | 0 | 2 |
 
 ## Per-test results
 
@@ -469,5 +469,5 @@ is compared against a reference image from a known good emulator.
 #### strikethrough
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| strikethrough (CGB) | fail | fail | xfail | Known failure imported from tests/README.md |
-| strikethrough (DMG) | fail | fail | xfail | Known failure imported from tests/README.md |
+| strikethrough (CGB) | pass | pass | pass |  |
+| strikethrough (DMG) | pass | pass | pass |  |
