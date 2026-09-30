@@ -224,20 +224,7 @@ func (t *Timers) applyControl(index int, value uint16) {
 	}
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
-		// GBA timer prescalers are driven from the global master-clock phase;
-		// enabling a prescaled timer does not restart the divider. Align the
-		// local remainder with the scheduler timestamp so the first increment
-		// lands on the next global prescaler edge.
-		if index == 0 || s.control&controlCountUp == 0 {
-			divisor := uint64(prescalers[s.control&controlPrescalerMask])
-			if divisor > 1 {
-				s.phase = uint32(t.scheduler.Now() % divisor)
-			} else {
-				s.phase = 0
-			}
-		} else {
-			s.phase = 0
-		}
+		s.phase = 0
 		s.timestampStarted = t.scheduler.Now()
 		t.scheduleOverflow(index)
 		return
