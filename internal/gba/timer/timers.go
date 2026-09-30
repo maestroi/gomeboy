@@ -215,16 +215,23 @@ func (t *Timers) applyControlWithStartDelay(index int, value uint16, startDelay 
 	}
 
 	if !oldEnabled && newEnabled {
+		stoppedCounter := s.counter
 		s.counter = s.reload
 		s.phase = 0
 		if index > 0 && s.control&controlCountUp != 0 {
 			s.timestampStarted = t.scheduler.Now()
 		} else {
-			// A CPU enable write first loads the reload latch into the counter.
-			// Independently clocked timers begin counting on the following
-			// master cycle; direct/debug writes keep their existing immediate
-			// semantics by passing a zero startDelay.
-			s.timestampStarted = t.scheduler.Now() + startDelay
+			// Enabling normally spends one cycle loading the reload value before
+			// counting starts. ARM7/GBA has a special edge when the stopped
+			// counter is already FFFF: with the prescaler on an increment edge,
+			// the loaded timer starts immediately instead.
+			effectiveDelay := startDelay
+			divisor := uint64(prescalers[s.control&controlPrescalerMask])
+			prescalerOffset := t.scheduler.Now() % divisor
+			if startDelay != 0 && stoppedCounter == 0xffff && prescalerOffset == 0 {
+				effectiveDelay = 0
+			}
+			s.timestampStarted = t.scheduler.Now() + effectiveDelay
 		}
 		t.scheduleOverflow(index)
 		return
@@ -455,10 +462,30 @@ func (t *Timers) Counter(index int) uint16 { t.syncCounter(index); return t.time
 // after the read sample, while an overflow/reload edge is already visible.
 func (t *Timers) CounterForCPURead(index int) uint16 {
 	t.syncCounter(index)
-	// Timer reads observe the counter materialized at the current scheduler
-	// timestamp. Overflow/cascade events have already run according to their
-	// event priority, so no pre-edge subtraction is needed here.
-	return t.timer[index].counter
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 {
+		return s.counter
+	}
+	if index > 0 && s.control&controlCountUp != 0 {
+		parent := &t.timer[index-1]
+		if !parent.lastTickOverflow {
+			return s.counter
+		}
+		if s.lastTickOverflow {
+			return 0xffff
+		}
+		return s.counter - 1
+	}
+	divisor := prescalers[s.control&controlPrescalerMask]
+	if divisor == 0 || s.phase != 0 {
+		return s.counter
+	}
+	if s.lastTickOverflow {
+		// Overflow is an early-priority event. If it has already executed before
+		// this CPU data phase, expose the reloaded counter.
+		return s.counter
+	}
+	return s.counter - 1
 }
 
 // Reload returns the programmed reload latch.
