@@ -129,7 +129,7 @@ func (b *Bus) syncWRAMEcho() {
 
 func (b *Bus) Map(m types.Model) {
 	b.model = m
-	b.isGBC = m == types.CGBABC || m == types.CGB0
+	b.isGBC = m.IsCGB()
 	if b.isSGB() {
 		b.initSGB()
 	}
@@ -236,7 +236,7 @@ func (b *Bus) Map(m types.Model) {
 	}
 
 	// setup cgb model registers
-	if b.model == types.CGBABC || b.model == types.CGB0 {
+	if b.model.IsCGB() {
 		b.vRAMBankMask = 1
 		b.ReserveAddress(types.VBK, func(v byte) byte {
 			if b.IsGBCCart() || b.IsBooting() { // CGB boot ROM makes use of both banks
