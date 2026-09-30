@@ -7,8 +7,7 @@
       "collection": "cgb-acid2",
       "name": "cgb-acid-hell",
       "model": "CGB",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "acid2/cgb-acid2/cgb-acid2",

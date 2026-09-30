@@ -490,6 +490,19 @@ func (b *Bus) Write(addr uint16, value byte) {
 			if (b.regionLocks<<8)&OAM > 0 || b.isDMATransferring() {
 				return
 			}
+		// 0xFEA0-0xFEFF extra/unusable OAM. CGB 0-A/B/C revisions expose
+		// a small aliased RAM here; later hardware ignores writes.
+		case addr <= 0xFEFF:
+			if (b.regionLocks<<8)&OAM > 0 || b.isDMATransferring() {
+				return
+			}
+			switch b.model {
+			case types.CGB0, types.CGBABC, types.CGBBC:
+				// CGB 0/A/B/C clear address bits 3 and 4, so e.g. FEA0
+				// and FEB8 refer to the same backing byte.
+				b.data[addr&^0x18] = value
+			}
+			return
 		}
 	}
 
@@ -595,10 +608,26 @@ func (b *Bus) Read(addr uint16) byte {
 		if f := b.lazyReaders[addr&0xff]; f != nil {
 			return f()
 		}
-	// OAM can be read locked by the PPU and a DMA transfer
+	// OAM and the extra/unusable OAM range share the PPU bus lock.
 	case addr <= 0xFE9F:
 		if b.regionLocks&OAM > 0 || b.isDMATransferring() {
 			return 0xff
+		}
+	case addr <= 0xFEFF:
+		if b.regionLocks&OAM > 0 || b.isDMATransferring() {
+			return 0xff
+		}
+		switch b.model {
+		case types.CGB0, types.CGBABC, types.CGBBC:
+			return b.data[addr&^0x18]
+		case types.CGBDE, types.AGB:
+			// The grouped D/E profile follows the later E-style open-bus
+			// pattern: repeat the high nibble of the low address byte.
+			n := byte(addr >> 4 & 0x0f)
+			return n<<4 | n
+		default:
+			// DMG-family hardware reads zero here outside the OAM lock.
+			return 0x00
 		}
 	}
 

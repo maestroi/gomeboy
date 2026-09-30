@@ -125,6 +125,7 @@ type PPU struct {
 	fetcherTileAttr      uint8                  // Current attributes
 	fetcherData          [2]uint8               // Tile pattern data (low + high bytes)
 	fetcherTileNoAddress uint16                 // VRAM address of current tile map entry
+	tileSelectGlitch bool // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -209,6 +210,16 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 
 	b.ReserveAddress(types.LCDC, func(v byte) byte {
+		oldLCDC := b.Get(types.LCDC)
+		oldTileSel := oldLCDC&types.Bit4 != 0
+		newTileSel := v&types.Bit4 != 0
+		if p.cgbMode && p.mode == ModeVRAM && oldTileSel && !newTileSel {
+			// CPU writes become visible after the scheduler has advanced the
+			// current machine cycle. Carry the CGB TILE_SEL reset conflict into
+			// the next high-bitplane fetch, where the tile ID can appear on the
+			// data bus instead of VRAM data.
+			p.tileSelectGlitch = true
+		}
 		p.winTileMap = v >> 6 & 1
 		p.winEnabled = v&types.Bit5 > 0
 		p.addressMode = 1 &^ (v >> 4 & 1)
@@ -1186,7 +1197,15 @@ func (p *PPU) stepPixelFetcher() {
 	case BGGetTileDataLowT2:
 		p.fetcherData[0] = p.b.GetVRAM(p.getBGTileAddress(), p.fetcherTileAttr&types.Bit3>>3)
 	case BGWinGetTileDataHighT2:
-		p.fetcherData[1] = p.b.GetVRAM(p.getBGTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
+		tileNo := p.b.GetVRAM(p.fetcherTileNoAddress, 0)
+		if p.cgbMode && p.tileSelectGlitch && tileNo&types.Bit7 == 0 {
+			// On CGB hardware, an LCDC.4 1->0 transition racing the high
+			// bitplane fetch can put the unsigned tile ID itself on the data bus.
+			p.fetcherData[1] = tileNo
+		} else {
+			p.fetcherData[1] = p.b.GetVRAM(p.getBGTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
+		}
+		p.tileSelectGlitch = false
 		if p.fetcherTileAttr&types.Bit5 > 0 {
 			p.fetcherData[0] = bits.Reverse8(p.fetcherData[0])
 			p.fetcherData[1] = bits.Reverse8(p.fetcherData[1])
@@ -1535,5 +1554,6 @@ func (p *PPU) resetFetcher() {
 	p.winTriggerWx = false
 
 	p.fetcherState = BGWinActivating
+	p.tileSelectGlitch = false
 	p.lx = 0
 }

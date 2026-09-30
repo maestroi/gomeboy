@@ -9,7 +9,6 @@ import "testing"
 // under the "test" build tag (used by CI's Test_Regressions) they remain
 // failures so the regression table stays honest.
 var knownFailures = map[string]bool{
-	"cgb-acid-hell":                         true,
 	"bully (CGB)":                           true,
 	"tellinglys (DMG)":                      true,
 	"tellinglys (CGB)":                      true,
