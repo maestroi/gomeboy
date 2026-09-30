@@ -35,11 +35,19 @@
       "expected": "pass"
     },
     {
-      "id": "age/halt/ei-halt-dmgC-cgbBCE@CGB",
+      "id": "age/halt/ei-halt-dmgC-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "halt",
-      "name": "ei-halt-dmgC-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "ei-halt-dmgC-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "pass"
+    },
+    {
+      "id": "age/halt/ei-halt-dmgC-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "halt",
+      "name": "ei-halt-dmgC-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "pass"
     },
     {
@@ -51,11 +59,20 @@
       "expected": "pass"
     },
     {
-      "id": "age/halt/halt-m0-interrupt-dmgC-cgbBCE@CGB",
+      "id": "age/halt/halt-m0-interrupt-dmgC-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "halt",
-      "name": "halt-m0-interrupt-dmgC-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "halt-m0-interrupt-dmgC-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/halt/halt-m0-interrupt-dmgC-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "halt",
+      "name": "halt-m0-interrupt-dmgC-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -68,11 +85,19 @@
       "expected": "pass"
     },
     {
-      "id": "age/halt/halt-prefetch-dmgC-cgbBCE@CGB",
+      "id": "age/halt/halt-prefetch-dmgC-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "halt",
-      "name": "halt-prefetch-dmgC-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "halt-prefetch-dmgC-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "pass"
+    },
+    {
+      "id": "age/halt/halt-prefetch-dmgC-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "halt",
+      "name": "halt-prefetch-dmgC-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "pass"
     },
     {
@@ -84,38 +109,38 @@
       "expected": "pass"
     },
     {
-      "id": "age/lcd-align-ly/lcd-align-ly-cgbBC@CGB",
+      "id": "age/lcd-align-ly/lcd-align-ly-cgbBC@CGBBC",
       "suite": "age",
       "collection": "lcd-align-ly",
-      "name": "lcd-align-ly-cgbBC@CGB",
-      "model": "CGB",
+      "name": "lcd-align-ly-cgbBC@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/lcd-align-ly/lcd-align-ly-cgbE@CGB",
+      "id": "age/lcd-align-ly/lcd-align-ly-cgbE@CGBDE",
       "suite": "age",
       "collection": "lcd-align-ly",
-      "name": "lcd-align-ly-cgbE@CGB",
-      "model": "CGB",
+      "name": "lcd-align-ly-cgbE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/ly/ly-cgbE@CGB",
+      "id": "age/ly/ly-cgbE@CGBDE",
       "suite": "age",
       "collection": "ly",
-      "name": "ly-cgbE@CGB",
-      "model": "CGB",
+      "name": "ly-cgbE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/ly/ly-dmgC-cgbBC@CGB",
+      "id": "age/ly/ly-dmgC-cgbBC@CGBBC",
       "suite": "age",
       "collection": "ly",
-      "name": "ly-dmgC-cgbBC@CGB",
-      "model": "CGB",
+      "name": "ly-dmgC-cgbBC@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -128,37 +153,37 @@
       "expected": "pass"
     },
     {
-      "id": "age/ly/ly-ncmBC@CGB",
+      "id": "age/ly/ly-ncmBC@CGBBC",
       "suite": "age",
       "collection": "ly",
-      "name": "ly-ncmBC@CGB",
-      "model": "CGB",
+      "name": "ly-ncmBC@CGBBC",
+      "model": "CGBBC",
       "expected": "pass"
     },
     {
-      "id": "age/ly/ly-ncmE@CGB",
+      "id": "age/ly/ly-ncmE@CGBDE",
       "suite": "age",
       "collection": "ly",
-      "name": "ly-ncmE@CGB",
-      "model": "CGB",
+      "name": "ly-ncmE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/oam/oam-read-cgbE@CGB",
+      "id": "age/oam/oam-read-cgbE@CGBDE",
       "suite": "age",
       "collection": "oam",
-      "name": "oam-read-cgbE@CGB",
-      "model": "CGB",
+      "name": "oam-read-cgbE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/oam/oam-read-dmgC-cgbBC@CGB",
+      "id": "age/oam/oam-read-dmgC-cgbBC@CGBBC",
       "suite": "age",
       "collection": "oam",
-      "name": "oam-read-dmgC-cgbBC@CGB",
-      "model": "CGB",
+      "name": "oam-read-dmgC-cgbBC@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -172,29 +197,38 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/oam/oam-read-ncmBC@CGB",
+      "id": "age/oam/oam-read-ncmBC@CGBBC",
       "suite": "age",
       "collection": "oam",
-      "name": "oam-read-ncmBC@CGB",
-      "model": "CGB",
+      "name": "oam-read-ncmBC@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/oam/oam-read-ncmE@CGB",
+      "id": "age/oam/oam-read-ncmE@CGBDE",
       "suite": "age",
       "collection": "oam",
-      "name": "oam-read-ncmE@CGB",
-      "model": "CGB",
+      "name": "oam-read-ncmE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/oam/oam-write-cgbBCE@CGB",
+      "id": "age/oam/oam-write-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "oam",
-      "name": "oam-write-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "oam-write-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/oam/oam-write-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "oam",
+      "name": "oam-write-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -208,20 +242,38 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/oam/oam-write-ncmBCE@CGB",
+      "id": "age/oam/oam-write-ncmBCE@CGBBC",
       "suite": "age",
       "collection": "oam",
-      "name": "oam-write-ncmBCE@CGB",
-      "model": "CGB",
+      "name": "oam-write-ncmBCE@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-interrupt/stat-int-dmgC-cgbBCE@CGB",
+      "id": "age/oam/oam-write-ncmBCE@CGBDE",
+      "suite": "age",
+      "collection": "oam",
+      "name": "oam-write-ncmBCE@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-interrupt/stat-int-dmgC-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "stat-interrupt",
-      "name": "stat-int-dmgC-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "stat-int-dmgC-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-interrupt/stat-int-dmgC-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "stat-interrupt",
+      "name": "stat-int-dmgC-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -235,20 +287,38 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-interrupt/stat-int-ncmBCE@CGB",
+      "id": "age/stat-interrupt/stat-int-ncmBCE@CGBBC",
       "suite": "age",
       "collection": "stat-interrupt",
-      "name": "stat-int-ncmBCE@CGB",
-      "model": "CGB",
+      "name": "stat-int-ncmBCE@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE@CGB",
+      "id": "age/stat-interrupt/stat-int-ncmBCE@CGBDE",
+      "suite": "age",
+      "collection": "stat-interrupt",
+      "name": "stat-int-ncmBCE@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "stat-mode-sprites",
-      "name": "stat-mode-sprites-dmgC-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-sprites-dmgC-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "stat-mode-sprites",
+      "name": "stat-mode-sprites-dmgC-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -262,20 +332,38 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode-sprites/stat-mode-sprites-ds-cgbBCE@CGB",
+      "id": "age/stat-mode-sprites/stat-mode-sprites-ds-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "stat-mode-sprites",
-      "name": "stat-mode-sprites-ds-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-sprites-ds-cgbBCE@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode-window/stat-mode-window-cgbBCE@CGB",
+      "id": "age/stat-mode-sprites/stat-mode-sprites-ds-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "stat-mode-sprites",
+      "name": "stat-mode-sprites-ds-cgbBCE@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-mode-window/stat-mode-window-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "stat-mode-window",
-      "name": "stat-mode-window-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-window-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-mode-window/stat-mode-window-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "stat-mode-window",
+      "name": "stat-mode-window-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -289,38 +377,56 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode-window/stat-mode-window-ds-cgbBCE@CGB",
+      "id": "age/stat-mode-window/stat-mode-window-ds-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "stat-mode-window",
-      "name": "stat-mode-window-ds-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-window-ds-cgbBCE@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode-window/stat-mode-window-ncmBCE@CGB",
+      "id": "age/stat-mode-window/stat-mode-window-ds-cgbBCE@CGBDE",
       "suite": "age",
       "collection": "stat-mode-window",
-      "name": "stat-mode-window-ncmBCE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-window-ds-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode/stat-mode-cgbE@CGB",
+      "id": "age/stat-mode-window/stat-mode-window-ncmBCE@CGBBC",
       "suite": "age",
-      "collection": "stat-mode",
-      "name": "stat-mode-cgbE@CGB",
-      "model": "CGB",
+      "collection": "stat-mode-window",
+      "name": "stat-mode-window-ncmBCE@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode/stat-mode-dmgC-cgbBC@CGB",
+      "id": "age/stat-mode-window/stat-mode-window-ncmBCE@CGBDE",
+      "suite": "age",
+      "collection": "stat-mode-window",
+      "name": "stat-mode-window-ncmBCE@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-mode/stat-mode-cgbE@CGBDE",
       "suite": "age",
       "collection": "stat-mode",
-      "name": "stat-mode-dmgC-cgbBC@CGB",
-      "model": "CGB",
+      "name": "stat-mode-cgbE@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/stat-mode/stat-mode-dmgC-cgbBC@CGBBC",
+      "suite": "age",
+      "collection": "stat-mode",
+      "name": "stat-mode-dmgC-cgbBC@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -334,38 +440,56 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode/stat-mode-ds-cgbBCE@CGB",
+      "id": "age/stat-mode/stat-mode-ds-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "stat-mode",
-      "name": "stat-mode-ds-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-ds-cgbBCE@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode/stat-mode-ncmBC@CGB",
+      "id": "age/stat-mode/stat-mode-ds-cgbBCE@CGBDE",
       "suite": "age",
       "collection": "stat-mode",
-      "name": "stat-mode-ncmBC@CGB",
-      "model": "CGB",
+      "name": "stat-mode-ds-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/stat-mode/stat-mode-ncmE@CGB",
+      "id": "age/stat-mode/stat-mode-ncmBC@CGBBC",
       "suite": "age",
       "collection": "stat-mode",
-      "name": "stat-mode-ncmE@CGB",
-      "model": "CGB",
+      "name": "stat-mode-ncmBC@CGBBC",
+      "model": "CGBBC",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/vram/vram-read-cgbBCE@CGB",
+      "id": "age/stat-mode/stat-mode-ncmE@CGBDE",
+      "suite": "age",
+      "collection": "stat-mode",
+      "name": "stat-mode-ncmE@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/vram/vram-read-cgbBCE@CGBBC",
       "suite": "age",
       "collection": "vram",
-      "name": "vram-read-cgbBCE@CGB",
-      "model": "CGB",
+      "name": "vram-read-cgbBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/vram/vram-read-cgbBCE@CGBDE",
+      "suite": "age",
+      "collection": "vram",
+      "name": "vram-read-cgbBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -379,11 +503,20 @@
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
     {
-      "id": "age/vram/vram-read-ncmBCE@CGB",
+      "id": "age/vram/vram-read-ncmBCE@CGBBC",
       "suite": "age",
       "collection": "vram",
-      "name": "vram-read-ncmBCE@CGB",
-      "model": "CGB",
+      "name": "vram-read-ncmBCE@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+    },
+    {
+      "id": "age/vram/vram-read-ncmBCE@CGBDE",
+      "suite": "age",
+      "collection": "vram",
+      "name": "vram-read-ncmBCE@CGBDE",
+      "model": "CGBDE",
       "expected": "fail",
       "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
     },
@@ -1595,12 +1728,22 @@
       "expected": "pass"
     },
     {
-      "id": "samesuite/apu/channel_1/channel_1_extra_length_clocking-cgb0B",
+      "id": "samesuite/apu/channel_1/channel_1_extra_length_clocking-cgb0B@CGB0",
       "suite": "samesuite",
       "collection": "apu/channel_1",
-      "name": "channel_1_extra_length_clocking-cgb0B",
+      "name": "channel_1_extra_length_clocking-cgb0B@CGB0",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGB0"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_extra_length_clocking-cgb0B@CGBBC",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_extra_length_clocking-cgb0B@CGBBC",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGBBC"
     },
     {
       "id": "samesuite/apu/channel_1/channel_1_freq_change",
@@ -1615,15 +1758,26 @@
       "collection": "apu/channel_1",
       "name": "channel_1_freq_change_timing-A",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "AGB"
     },
     {
-      "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-cgb0BC",
+      "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-cgb0BC@CGB0",
       "suite": "samesuite",
       "collection": "apu/channel_1",
-      "name": "channel_1_freq_change_timing-cgb0BC",
+      "name": "channel_1_freq_change_timing-cgb0BC@CGB0",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGB0"
+    },
+    {
+      "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-cgb0BC@CGBBC",
+      "suite": "samesuite",
+      "collection": "apu/channel_1",
+      "name": "channel_1_freq_change_timing-cgb0BC@CGBBC",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGBBC"
     },
     {
       "id": "samesuite/apu/channel_1/channel_1_freq_change_timing-cgbDE",
@@ -1631,7 +1785,8 @@
       "collection": "apu/channel_1",
       "name": "channel_1_freq_change_timing-cgbDE",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGBDE"
     },
     {
       "id": "samesuite/apu/channel_1/channel_1_nrx2_glitch",
@@ -1749,12 +1904,22 @@
       "expected": "pass"
     },
     {
-      "id": "samesuite/apu/channel_2/channel_2_extra_length_clocking-cgb0B",
+      "id": "samesuite/apu/channel_2/channel_2_extra_length_clocking-cgb0B@CGB0",
       "suite": "samesuite",
       "collection": "apu/channel_2",
-      "name": "channel_2_extra_length_clocking-cgb0B",
+      "name": "channel_2_extra_length_clocking-cgb0B@CGB0",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGB0"
+    },
+    {
+      "id": "samesuite/apu/channel_2/channel_2_extra_length_clocking-cgb0B@CGBBC",
+      "suite": "samesuite",
+      "collection": "apu/channel_2",
+      "name": "channel_2_extra_length_clocking-cgb0B@CGBBC",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGBBC"
     },
     {
       "id": "samesuite/apu/channel_2/channel_2_freq_change",
@@ -1839,7 +2004,8 @@
       "collection": "apu/channel_3",
       "name": "channel_3_extra_length_clocking-cgb0",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGB0"
     },
     {
       "id": "samesuite/apu/channel_3/channel_3_extra_length_clocking-cgbB",
@@ -1847,7 +2013,8 @@
       "collection": "apu/channel_3",
       "name": "channel_3_extra_length_clocking-cgbB",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGBBC"
     },
     {
       "id": "samesuite/apu/channel_3/channel_3_first_sample",
@@ -1959,12 +2126,22 @@
       "reason": "Known failure imported from tests/README.md"
     },
     {
-      "id": "samesuite/apu/channel_4/channel_4_extra_length_clocking-cgb0B",
+      "id": "samesuite/apu/channel_4/channel_4_extra_length_clocking-cgb0B@CGB0",
       "suite": "samesuite",
       "collection": "apu/channel_4",
-      "name": "channel_4_extra_length_clocking-cgb0B",
+      "name": "channel_4_extra_length_clocking-cgb0B@CGB0",
       "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGB0"
+    },
+    {
+      "id": "samesuite/apu/channel_4/channel_4_extra_length_clocking-cgb0B@CGBBC",
+      "suite": "samesuite",
+      "collection": "apu/channel_4",
+      "name": "channel_4_extra_length_clocking-cgb0B@CGBBC",
+      "expected": "fail",
+      "reason": "Known failure imported from tests/README.md",
+      "model": "CGBBC"
     },
     {
       "id": "samesuite/apu/channel_4/channel_4_freq_change",
