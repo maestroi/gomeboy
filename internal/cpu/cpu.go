@@ -7,6 +7,15 @@ import (
 )
 
 // CPU represents the Game Boy's 8-bit CPU (sm83).
+type LDHLDebugStats struct {
+	Total    uint64
+	FF40     uint64
+	LastAddr uint16
+	LastPC   uint16
+}
+
+func (c *CPU) LDHLDebugStats() LDHLDebugStats { return c.ldhlDebug }
+
 type CPU struct {
 	PC, SP uint16 // (P)rogram (C)ounter, (S)tack (P)ointer
 	Registers
@@ -18,7 +27,8 @@ type CPU struct {
 
 	b       *io.Bus
 	s       *scheduler.Scheduler
-	haltBug bool
+	haltBug   bool
+	ldhlDebug LDHLDebugStats
 }
 
 // State is a snapshot of the CPU's execution state.
