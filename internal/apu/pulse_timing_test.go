@@ -88,3 +88,110 @@ func TestEarlyCGBPCM12ZeroGlitchOnDutyEdge(t *testing.T) {
 		t.Fatalf("early-CGB PCM12 after edge=%x, want f", got)
 	}
 }
+
+func setupSweepOverflowTest(a *APU) {
+	a.channels[0].enabled = true
+	a.channels[0].dacEnabled = true
+	a.channels[0].frequency = 0x7f0
+	a.channel1.frequencyShadow = 0x7f0
+	a.channel1.sweepPeriod = 2
+	a.channel1.sweepTimer = 6 // next 128 Hz sweep tick performs the calculation
+	a.channel1.shift = 7
+	a.channel1.sweepEnabled = true
+	a.channel1.sweepCheckAt = ^uint64(0)
+	a.channel1.sweepStopAt = ^uint64(0)
+	a.channel1.sweepLoadAt = ^uint64(0)
+}
+
+func TestSweepSecondOverflowCheckIsDelayed(t *testing.T) {
+	a, _, s := newWaveTimingTestAPU(t, types.CGBABC)
+	setupSweepOverflowTest(a)
+
+	a.clockSweep()
+	if got := a.channel1.frequencyShadow; got != 0x7ff {
+		t.Fatalf("first sweep writeback shadow=%#x, want 0x7ff", got)
+	}
+	if got := a.channels[0].frequency; got != 0x7ff {
+		t.Fatalf("first sweep writeback frequency=%#x, want 0x7ff", got)
+	}
+	if got := a.channel1.sweepCheckAt - s.Cycle(); got != 28 {
+		t.Fatalf("second overflow check in %d cycles, want 28", got)
+	}
+
+	s.Tick(27)
+	a.runSweepDue()
+	if !a.channels[0].enabled {
+		t.Fatal("channel stopped before delayed overflow check")
+	}
+
+	s.Tick(1)
+	a.runSweepDue()
+	if !a.channels[0].enabled {
+		t.Fatal("overflow stop became visible on check cycle; want one APU tick delay")
+	}
+	if got := a.channel1.sweepStopAt - s.Cycle(); got != 4 {
+		t.Fatalf("overflow stop in %d cycles, want 4", got)
+	}
+
+	s.Tick(4)
+	a.runSweepDue()
+	if a.channels[0].enabled {
+		t.Fatal("channel stayed enabled after delayed sweep overflow stop")
+	}
+}
+
+func TestSweepDelayedCheckRereadsNR10(t *testing.T) {
+	a, _, s := newWaveTimingTestAPU(t, types.CGBABC)
+	setupSweepOverflowTest(a)
+	a.clockSweep()
+
+	// Disable the shift before the trailing check. Hardware re-reads NR10 at
+	// the delayed check, so the otherwise-overflowing second calculation is
+	// cancelled.
+	s.Tick(24)
+	a.Write(types.NR10, 0x00)
+	s.Tick(12)
+	a.runSweepDue()
+	if !a.channels[0].enabled {
+		t.Fatal("delayed sweep check ignored updated NR10")
+	}
+}
+
+func TestSweepTriggerShadowLoadIsDelayed(t *testing.T) {
+	a, _, s := newWaveTimingTestAPU(t, types.CGBABC)
+	a.Write(types.NR10, 0x11) // period 1, shift 1
+	a.Write(types.NR11, 0x00)
+	a.Write(types.NR12, 0xf8)
+	a.Write(types.NR13, 0x34)
+	a.Write(types.NR14, 0x82)
+
+	if a.channel1.frequencyShadow == 0x234 {
+		t.Fatal("sweep shadow loaded immediately on trigger")
+	}
+	loadAt := a.channel1.sweepLoadAt
+	if loadAt == ^uint64(0) || loadAt <= s.Cycle() {
+		t.Fatalf("invalid delayed sweep load deadline %d at cycle %d", loadAt, s.Cycle())
+	}
+	s.Tick(loadAt - s.Cycle())
+	a.runSweepDue()
+	if got := a.channel1.frequencyShadow; got != 0x234 {
+		t.Fatalf("delayed sweep shadow=%#x, want 0x234", got)
+	}
+}
+
+func TestPulseRetriggerCancelsPendingSweepStop(t *testing.T) {
+	a, _, s := newWaveTimingTestAPU(t, types.CGBABC)
+	configurePulse1TestChannel(a, 0x7ff)
+	a.channel1.sweepStopAt = s.Cycle() + 4
+
+	// A restart reloads the sweep unit and cancels a pending delayed stop.
+	a.Write(types.NR14, 0x87)
+	if a.channel1.sweepStopAt != ^uint64(0) {
+		t.Fatalf("pending sweep stop survived retrigger: %d", a.channel1.sweepStopAt)
+	}
+	s.Tick(8)
+	a.runSweepDue()
+	if !a.channels[0].enabled {
+		t.Fatal("retriggered channel stopped from stale sweep deadline")
+	}
+}
