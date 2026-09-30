@@ -578,6 +578,10 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		}
 		if ch != 3 {
 			oldFrequency := a.channels[ch].frequency
+			if ch == 0 && a.b.Model() == types.AGB && a.s.DoubleSpeed() &&
+				v&types.Bit7 == 0 && oldFrequency&0x700 == 0x700 && uint16(v&7)<<8 != 0x700 {
+				println("AGB pulse NR14", a.s.Cycle(), a.s.Until(scheduler.APUChannel1), a.channel1.lastStepAt, a.channel1.waveDutyPosition)
+			}
 			// CGB D/E has one extra half-APU-tick window after a CH1 duty step:
 			// lowering NR14's high frequency bits there backs the duty position up
 			// once, while the already-latched PCM sample remains visible.
