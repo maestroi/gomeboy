@@ -685,6 +685,41 @@ func (b *Bus) PPUReadOAM(address uint16) byte {
 	return next | incoming
 }
 
+// PPUReadOAMScan returns the OAM byte visible to the Mode 2 object scanner.
+//
+// Once OAM DMA is actively copying, the DMA controller owns the OAM port and
+// ordinary PPU revisions observe an idle-high value during the scan. The MGB
+// halted-DMA path is a measured exception and is already modelled by
+// PPUReadOAM.
+func (b *Bus) PPUReadOAMScan(address uint16) byte {
+	if b.dmaActive && !(b.model == types.MGB && b.s.Halted) {
+		return 0xff
+	}
+	return b.PPUReadOAM(address)
+}
+
+// PPUReadOAMFetch returns the byte visible when Mode 3 fetches an object's
+// tile/attribute word. During active OAM DMA, the PPU sees the 16-bit OAM word
+// currently being updated by DMA rather than the selected object's stored word.
+// The requested address is used only for its low/high-byte parity.
+func (b *Bus) PPUReadOAMFetch(address uint16) byte {
+	if !b.dmaActive || (b.model == types.MGB && b.s.Halted) {
+		return b.PPUReadOAM(address)
+	}
+
+	// dmaDestination points at the next byte to be copied, so the most recently
+	// touched OAM byte is one behind it. OAM is internally word-oriented here;
+	// expose the current word while preserving the tile/attribute byte parity.
+	if b.dmaDestination <= 0xfe00 {
+		return 0xff
+	}
+	wordBase := (b.dmaDestination - 1) &^ 1
+	if wordBase < 0xfe00 || wordBase+1 >= 0xfea0 {
+		return 0xff
+	}
+	return b.data[wordBase+address&1]
+}
+
 // startDMATransfer initiates a DMA transfer.
 func (b *Bus) startDMATransfer() {
 	b.dmaActive = true
