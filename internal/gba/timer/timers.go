@@ -461,14 +461,13 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 		}
 		return s.counter - 1
 	}
-	divisor := prescalers[s.control&controlPrescalerMask]
-	if divisor == 0 || s.phase != 0 {
-		return s.counter
-	}
+	// Reads happen at the I/O data phase, after scheduler time for that bus
+	// access has already been materialized. Only an overflow edge needs the
+	// pre-edge value; ordinary ticks are directly observable here.
 	if s.lastTickOverflow {
 		return 0xffff
 	}
-	return s.counter - 1
+	return s.counter
 }
 
 // Reload returns the programmed reload latch.
