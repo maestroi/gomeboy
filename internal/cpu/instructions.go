@@ -258,10 +258,10 @@ var InstructionSet = [256]Instruction{
 	0x6D: {"LD L, L", func(c *CPU) {}},
 	0x6E: {"LD L, (HL)", func(c *CPU) { c.L = c.b.ClockedRead(c.HL.Uint16()) }},
 	0x6F: {"LD L, A", func(c *CPU) { c.L = c.A }},
-	0x70: {"LD (HL), B", func(c *CPU) { c.debugLDHLWrite(c.B) }},
-	0x71: {"LD (HL), C", func(c *CPU) { c.debugLDHLWrite(c.C) }},
-	0x72: {"LD (HL), D", func(c *CPU) { c.debugLDHLWrite(c.D) }},
-	0x73: {"LD (HL), E", func(c *CPU) { c.debugLDHLWrite(c.E) }},
+	0x70: {"LD (HL), B", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.B) }},
+	0x71: {"LD (HL), C", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.C) }},
+	0x72: {"LD (HL), D", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.D) }},
+	0x73: {"LD (HL), E", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.E) }},
 	0x74: {"LD (HL), H", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.H) }},
 	0x75: {"LD (HL), L", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.L) }},
 	0x76: {"HALT", func(c *CPU) {
@@ -996,18 +996,4 @@ var InstructionSetCB = [256]Instruction{
 	0xFD: {"SET 7, L", func(c *CPU) { c.L |= types.Bit7 }},
 	0xFE: {"SET 7, (HL)", func(c *CPU) { c.b.ClockedWrite(c.HL.Uint16(), c.b.ClockedRead(c.HL.Uint16())|types.Bit7) }},
 	0xFF: {"SET 7, A", func(c *CPU) { c.A |= types.Bit7 }},
-}
-
-
-func (c *CPU) debugLDHLWrite(v byte) {
-	addr := c.HL.Uint16()
-	c.ldhlDebug.Total++
-	if addr == 0xff40 {
-		c.ldhlDebug.FF40++
-	}
-	c.ldhlDebug.LastAddr = addr
-	if c.PC > 0 {
-		c.ldhlDebug.LastPC = c.PC - 1
-	}
-	c.b.ClockedWrite(addr, v)
 }
