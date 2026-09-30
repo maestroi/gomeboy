@@ -185,6 +185,19 @@ handleInterrupt:
 // event triggering an interrupt occurs. This is used when
 // the CPU is in HALT mode and the IME is enabled.
 func (c *CPU) skipHALT() {
+	// MGB hardware performs one final opcode-prefetch M-cycle before the
+	// core clock is gated by HALT. This is observable when OAM DMA is active:
+	// the DMA engine gets that last machine cycle, then freezes on the following
+	// byte while the PPU keeps running. Mooneye's MGB HALT/OAM-DMA test pins
+	// this phase exactly.
+	//
+	// The older core does not model the SM83 prefetch pipeline generally, so
+	// keep this correction scoped to the MGB profile that has a hardware image
+	// oracle rather than shifting the already-conformant DMG/CGB HALT timing.
+	if c.b.Model() == types.MGB && !c.Halted {
+		c.s.Tick(4)
+	}
+
 	c.s.Halted = true
 	c.Halted = true
 	for !c.hasFrame && !c.b.HasInterrupts() {
