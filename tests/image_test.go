@@ -216,6 +216,9 @@ func (i *imageTest) Run(t *testing.T) {
 
 		if diff > 0 {
 			i.passed = false
+			if i.name == "cgb-acid-hell" {
+				logImageMismatchStats(t, i.expectedImage, g)
+			}
 			skipKnownFailure(t, i.name)
 			t.Errorf("Test %s failed. Difference: %d", i.name, diff)
 
@@ -370,4 +373,41 @@ func compareImageWithTransform(expectedImage string, gb *gameboy.GameBoy, transf
 	// TODO output results?
 
 	return ImgCompare(img2, img3)
+}
+
+
+func logImageMismatchStats(t *testing.T, expectedImage string, gb *gameboy.GameBoy) {
+	t.Helper()
+	expected, err := imageFromFilename(expectedImage)
+	if err != nil {
+		t.Logf("image mismatch diagnostics: %v", err)
+		return
+	}
+
+	minX, minY, maxX, maxY := 160, 144, -1, -1
+	count := 0
+	samples := make([]string, 0, 24)
+	for y := 0; y < 144; y++ {
+		for x := 0; x < 160; x++ {
+			er, eg, eb, _ := expected.At(x, y).RGBA()
+			ar := uint32(gb.PPU.PreparedFrame[y][x][0]) * 0x101
+			ag := uint32(gb.PPU.PreparedFrame[y][x][1]) * 0x101
+			ab := uint32(gb.PPU.PreparedFrame[y][x][2]) * 0x101
+			if er == ar && eg == ag && eb == ab {
+				continue
+			}
+			count++
+			if x < minX { minX = x }
+			if y < minY { minY = y }
+			if x > maxX { maxX = x }
+			if y > maxY { maxY = y }
+			if len(samples) < cap(samples) {
+				samples = append(samples, fmt.Sprintf("(%d,%d) exp=%04x/%04x/%04x got=%04x/%04x/%04x", x, y, er, eg, eb, ar, ag, ab))
+			}
+		}
+	}
+	t.Logf("cgb-acid-hell mismatch pixels=%d bbox=(%d,%d)-(%d,%d)", count, minX, minY, maxX, maxY)
+	for _, sample := range samples {
+		t.Log(sample)
+	}
 }
