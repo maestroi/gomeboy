@@ -16,7 +16,7 @@ import (
 )
 
 // imageTest is a test that compares the output of a rom to an expected image
-type imageTest struct {
+const (\n\tScreenWidthForTest = 160\n\tScreenHeightForTest = 144\n)\n\ntype imageTest struct {
 	emulatedSeconds int
 	expectedImage   string
 	expectedTransform func(image.Image) image.Image
@@ -230,6 +230,29 @@ func (i *imageTest) Run(t *testing.T) {
 			defer outFile.Close()
 
 			if err := png.Encode(outFile, diffImg); err != nil {
+				t.Fatal(err)
+			}
+
+			// Keep the unmodified emulator frame alongside the mismatch overlay.
+			// The overlay answers where pixels differ; the raw frame answers what
+			// hardware behavior the emulator actually produced at those pixels.
+			actual := image.NewNRGBA(image.Rect(0, 0, ScreenWidthForTest, ScreenHeightForTest))
+			for y := 0; y < ScreenHeightForTest; y++ {
+				for x := 0; x < ScreenWidthForTest; x++ {
+					actual.SetNRGBA(x, y, color.NRGBA{
+						R: g.PPU.PreparedFrame[y][x][0],
+						G: g.PPU.PreparedFrame[y][x][1],
+						B: g.PPU.PreparedFrame[y][x][2],
+						A: 255,
+					})
+				}
+			}
+			actualFile, err := os.Create(fmt.Sprintf("results/%s_actual.png", i.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer actualFile.Close()
+			if err := png.Encode(actualFile, actual); err != nil {
 				t.Fatal(err)
 			}
 		}
