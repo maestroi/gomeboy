@@ -45,6 +45,7 @@ type state struct {
 	counter           uint16
 	control           uint16
 	phase             uint32
+	timestampStarted  uint64
 	lastTickOverflow  bool
 	overflowEvent     gbascheduler.Handle
 }
@@ -224,6 +225,7 @@ func (t *Timers) applyControl(index int, value uint16) {
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
+		s.timestampStarted = t.scheduler.Now()
 		t.scheduleOverflow(index)
 		return
 	}
@@ -293,7 +295,19 @@ func (t *Timers) cascade(index int) {
 }
 
 func (t *Timers) syncCounter(index int) {
-	// Event-backed timers are synchronized whenever the shared scheduler advances.
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
+		return
+	}
+	elapsed := t.scheduler.Now() - s.timestampStarted
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	total := uint64(s.phase) + elapsed
+	ticks := total / divisor
+	s.phase = uint32(total % divisor)
+	if ticks != 0 {
+		s.counter += uint16(ticks)
+	}
+	s.timestampStarted = t.scheduler.Now()
 }
 
 // CyclesUntilEvent returns the master-clock distance to the next overflow of
@@ -329,9 +343,14 @@ func (t *Timers) CyclesUntilEvent() uint32 {
 // Normal timers derive ticks from their prescaler. Count-up timers 1-3 ignore
 // the prescaler and receive one tick per overflow of the previous timer.
 func (t *Timers) Advance(cycles uint32) {
-	if t.active == 0 || cycles == 0 {
-		return
-	}
+	if cycles == 0 { return }
+	// The event scheduler is now authoritative for timer time. Overflow events
+	// split long advances at their exact master-clock timestamp.
+	t.scheduler.Advance(uint64(cycles))
+	for index := range t.timer { t.syncCounter(index) }
+	return
+
+	/* legacy chunk progression retained temporarily during migration
 	var overflows [4]uint32
 
 	for index := 0; index < 4; index++ {
@@ -369,6 +388,7 @@ func (t *Timers) Advance(cycles uint32) {
 			t.irq.Request(irqSources[index])
 		}
 	}
+	*/
 }
 
 func finalTickOverflows(counter, reload uint16, ticks uint64) bool {
@@ -416,7 +436,7 @@ func (t *Timers) Reset() {
 func (t *Timers) Active() bool { return t.active != 0 }
 
 // Counter returns the current live/frozen counter for tests/debugging.
-func (t *Timers) Counter(index int) uint16 { return t.timer[index].counter }
+func (t *Timers) Counter(index int) uint16 { t.syncCounter(index); return t.timer[index].counter }
 
 // CounterForCPURead returns the timer value visible to a CPU data read at the
 // current bus edge. An ordinary timer increment on that same edge is observed
