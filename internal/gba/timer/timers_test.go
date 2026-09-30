@@ -231,11 +231,12 @@ func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 
-	// The control write commits one cycle later. The timer receives that final
-	// running tick, then remains frozen for the rest of this interval.
+	// In the CPU callback ordering the disable is sampled after the write bus
+	// phase, two scheduler cycles from the callback. The timer receives those
+	// final running ticks, then remains frozen for the rest of this interval.
 	timers.Advance(4)
-	if got := timers.Counter(0); got != 0xff04 {
-		t.Fatalf("timer did not stop on control event: %04x, want ff04", got)
+	if got := timers.Counter(0); got != 0xff05 {
+		t.Fatalf("timer did not stop on delayed control edge: %04x, want ff05", got)
 	}
 	if got := timers.Control(0); got != 0 {
 		t.Fatalf("timer disable event not visible: control=%04x", got)
@@ -243,8 +244,8 @@ func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 	timers.EndWriteBusAccess()
 	timers.EndWriteAccess()
 	timers.Advance(1)
-	if got := timers.Counter(0); got != 0xff04 {
-		t.Fatalf("timer advanced after disable event: %04x, want ff04", got)
+	if got := timers.Counter(0); got != 0xff05 {
+		t.Fatalf("timer advanced after disable event: %04x, want ff05", got)
 	}
 }
 
