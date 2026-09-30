@@ -719,7 +719,6 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		// countdown except when the write lands exactly on a reload edge.
 		a.catchupLFSR()
 		oldInc := a.noiseDivisorIncrement()
-		_ = oldInc
 		onReload := a.channel4.divRunning && a.channel4.divReloaded
 
 		a.channel4.widthMask = 0x4000 | uint16(v&types.Bit3)<<3
@@ -983,10 +982,19 @@ func (a *APU) noiseTriggerDeadline(restarting bool) uint64 {
 	}
 
 	period := a.noisePeriod() * scale
+	deadline := edge + period/2 + extra
 	if restarting {
-		return edge + period + extra
+		deadline = edge + period + extra
 	}
-	return edge + period/2 + extra
+
+	// In double speed the CPU write callback occurs one half APU tick after
+	// the hardware data phase that feeds the noise divider. SameSuite's
+	// channel_4_align brackets this by one NOP; preserve that bus/APU phase
+	// relationship instead of delaying the whole divider by a full tick.
+	if a.s.DoubleSpeed() {
+		deadline -= 4
+	}
+	return deadline
 }
 
 func (a *APU) startNoiseDivider(restarting bool) {
