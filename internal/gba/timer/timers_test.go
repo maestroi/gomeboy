@@ -129,12 +129,12 @@ func TestTimerReloadByteWritesMergeAgainstReloadNotCounter(t *testing.T) {
 func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
-	// CPU writes become visible one master cycle later. A 32-bit TMxCNT
-	// write schedules reload before control at the same timestamp.
+	// The reload latch is visible in the CPU I/O write phase, while control is
+	// still a timestamped edge one master cycle later.
 	timers.BeginWriteAccess()
 	b.Write32(timerLow(0), uint32(controlEnable)<<16|0xffff, bus.Access{})
-	if timers.Control(0) != 0 || timers.Reload(0) != 0 || timers.Counter(0) != 0 {
-		t.Fatalf("timer write visible too early = control:%04x reload:%04x counter:%04x",
+	if timers.Control(0) != 0 || timers.Reload(0) != 0xffff || timers.Counter(0) != 0 {
+		t.Fatalf("timer write phase = control:%04x reload:%04x counter:%04x",
 			timers.Control(0), timers.Reload(0), timers.Counter(0))
 	}
 	timers.Advance(2)
@@ -144,9 +144,8 @@ func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 			timers.Control(0), timers.Reload(0), timers.Counter(0))
 	}
 
-	// At an identical timestamp overflow has higher priority than reload write.
-	// The overflow therefore uses the old FFFF latch; the new 0000 latch is
-	// installed immediately afterward and is used by the following overflow.
+	// A reload write in the bus phase precedes an overflow that lands during
+	// that transfer, so the same-edge overflow uses the new 0000 latch.
 	timers.BeginWriteAccess()
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
 	timers.Advance(1)
@@ -154,12 +153,8 @@ func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 	if got := timers.Reload(0); got != 0x0000 {
 		t.Fatalf("reload latch = %04x, want 0000", got)
 	}
-	if got := timers.Counter(0); got != 0xffff {
-		t.Fatalf("same-edge overflow counter = %04x, want old reload ffff", got)
-	}
-	timers.Advance(1)
 	if got := timers.Counter(0); got != 0x0000 {
-		t.Fatalf("next overflow counter = %04x, want new reload 0000", got)
+		t.Fatalf("same-edge overflow counter = %04x, want new reload 0000", got)
 	}
 	timers.Advance(1)
 	if got := timers.Counter(0); got != 0x0001 {
