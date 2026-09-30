@@ -156,8 +156,6 @@ jobs:
             tests/regression-results.json
             tests/README.md
             tests/external-corpus.json
-            tests/results/mgb_oam_dma_halt_sprites_output.png
-            tests/roms/mooneye/madness/mgb_oam_dma_halt_sprites_expected.png
           if-no-files-found: ignore
 
   test_desktop_glfw:
