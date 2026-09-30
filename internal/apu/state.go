@@ -60,6 +60,7 @@ type State struct {
 		DivCounter   uint16
 		DivCountdown uint64
 		DivRunning   bool
+		DivReloaded  bool
 	}
 
 	Enabled                 bool
@@ -145,6 +146,7 @@ func (a *APU) Snapshot() State {
 	st.Channel4.DivCounter = a.channel4.divCounter
 	st.Channel4.DivCountdown = a.channel4.divCountdown
 	st.Channel4.DivRunning = a.channel4.divRunning
+	st.Channel4.DivReloaded = a.channel4.divReloaded
 
 	for i := 0; i < 4; i++ {
 		st.Channels[i] = ChannelState{
@@ -249,6 +251,7 @@ func (a *APU) Restore(s State) {
 	a.channel4.divCounter = s.Channel4.DivCounter
 	a.channel4.divCountdown = s.Channel4.DivCountdown
 	a.channel4.divRunning = s.Channel4.DivRunning
+	a.channel4.divReloaded = s.Channel4.DivReloaded
 
 	for i := 0; i < 4; i++ {
 		a.channels[i].enableTime = s.Channels[i].EnableTime
