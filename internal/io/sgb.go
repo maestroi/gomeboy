@@ -14,8 +14,13 @@ type SGBState struct {
 	ReadyForPulse     bool
 	ReadyForWrite     bool
 	ReadyForStop      bool
-	PlayerCount       uint8
+
+	// ControllerMask is the raw two-bit MLT_REQ value. Hardware uses it as a
+	// mask, not a conventional player count: 0, 1 and 3 represent one, two and
+	// four controllers, while 2 exposes the documented glitched mode.
+	ControllerMask    uint8
 	CurrentPlayer     uint8
+	IncrementPending  bool
 }
 
 func (b *Bus) isSGB() bool {
@@ -27,7 +32,6 @@ func (b *Bus) initSGB() {
 		// P1 is idle with both select lines high. Treat that high state as the
 		// pulse that arms the first $00 packet-reset write.
 		ReadyForPulse: true,
-		PlayerCount:   1,
 	}
 }
 
@@ -35,13 +39,14 @@ func (b *Bus) writeSGBP1(value byte) byte {
 	previous := b.data[types.P1]
 	selectBits := value & 0x30
 
-	b.handleSGBWrite(selectBits, previous)
+	b.handleSGBControllerTransition(selectBits, previous)
+	b.handleSGBPacketWrite(selectBits)
 
 	result := uint8(0xC0) | selectBits
 	if selectBits == 0x30 {
 		// With neither key group selected the SGB exposes the active controller
 		// number on P10-P13. Controller 1 is $F, 2 is $E, 3 is $D, 4 is $C.
-		if b.sgb.PlayerCount > 1 {
+		if b.sgb.ControllerMask != 0 {
 			result |= 0x0F - b.sgb.CurrentPlayer
 		} else {
 			result |= 0x0F
@@ -60,15 +65,36 @@ func (b *Bus) writeSGBP1(value byte) byte {
 	return result
 }
 
-func (b *Bus) handleSGBWrite(value, previous byte) {
+// handleSGBControllerTransition models the SGB's P15 transition latch.
+//
+// A high->low transition toggles a pending increment, and a later transition
+// back high consumes it. This is subtly different from incrementing on every
+// low->high edge: intermediate P14/P15 states can cancel the latch, which is
+// observable in SameSuite. The selected controller wraps by ANDing with the
+// raw MLT_REQ mask.
+func (b *Bus) handleSGBControllerTransition(value, previous byte) {
 	s := &b.sgb
-
-	// On SGB multiplayer hardware, raising P15 advances the controller. Only
-	// the even player-count modes (2 and 4 players) multiplex inputs.
-	if value&types.Bit5 != 0 && previous&types.Bit5 == 0 && s.PlayerCount&1 == 0 {
-		s.CurrentPlayer++
-		s.CurrentPlayer &= s.PlayerCount - 1
+	bits := value >> 4 & 3
+	previousBits := previous >> 4 & 3
+	if bits == previousBits {
+		return
 	}
+
+	if bits&2 != 0 {
+		if s.IncrementPending {
+			s.IncrementPending = false
+			s.CurrentPlayer = (s.CurrentPlayer + 1) & s.ControllerMask
+		}
+		return
+	}
+
+	if previousBits&2 != 0 {
+		s.IncrementPending = !s.IncrementPending
+	}
+}
+
+func (b *Bus) handleSGBPacketWrite(value byte) {
+	s := &b.sgb
 
 	packetCount := int(s.Command[0] & 7)
 	if packetCount == 0 {
@@ -76,7 +102,7 @@ func (b *Bus) handleSGBWrite(value, previous byte) {
 	}
 	commandBits := uint16(packetCount * 16 * 8)
 
-	switch (value >> 4 & 3) {
+	switch (value >> 4) & 3 {
 	case 3:
 		s.ReadyForPulse = true
 
@@ -147,12 +173,13 @@ func (b *Bus) runSGBCommand() {
 
 	switch s.Command[0] >> 3 {
 	case 0x11: // MLT_REQ
-		s.PlayerCount = (s.Command[1] & 3) + 1
-		if s.PlayerCount == 3 {
-			// MLT_REQ 2 is an unsupported/glitched mode that behaves as four
-			// players for controller sequencing.
-			s.PlayerCount = 4
+		mask := s.Command[1] & 3
+		if mask == 2 {
+			// Real SGB hardware increments once before applying the mode-2
+			// mask. This oddity is visible as the "glitched player 3" state.
+			s.CurrentPlayer++
 		}
-		s.CurrentPlayer &= s.PlayerCount - 1
+		s.ControllerMask = mask
+		s.CurrentPlayer &= s.ControllerMask
 	}
 }
