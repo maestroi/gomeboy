@@ -2005,8 +2005,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_3",
       "name": "channel_3_extra_length_clocking-cgbB",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGBBC"
     },
     {
@@ -2021,16 +2020,14 @@
       "suite": "samesuite",
       "collection": "apu/channel_3",
       "name": "channel_3_freq_change_delay",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_3/channel_3_restart_delay",
       "suite": "samesuite",
       "collection": "apu/channel_3",
       "name": "channel_3_restart_delay",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_3/channel_3_restart_during_delay",
