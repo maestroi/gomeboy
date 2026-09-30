@@ -681,7 +681,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 			if a.enabled {
 				a.channels[2].lengthCounter = 0x100 - uint16(v)
 			}
-		default:
+		} else {
 			a.channels[2].lengthCounter = 0x100 - uint16(v)
 		}
 	case types.NR32:
@@ -792,7 +792,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 	default:
 		if address >= 0xff30 && address <= 0xff3f {
 			if a.channels[2].isEnabled() {
-				if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model() == types.CGBABC || a.b.Model() == types.CGB0 {
+				if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model().IsCGB() {
 					a.waveRAM[a.channel3.waveRAMLastPosition] = v
 				}
 			} else {
@@ -968,14 +968,13 @@ func (a *APU) freqCalc(update bool) {
 }
 
 func (a *APU) writeNRx1(ch int, v uint8) {
-	switch a.b.Model() {
-	case types.CGBABC, types.CGB0:
+	if a.b.Model().IsCGB() {
 		if a.enabled {
 			a.channels[ch].lengthCounter = uint16(0x40 - (v & 0x3f))
 		}
-	default:
-		a.channels[ch].lengthCounter = uint16(0x40 - (v & 0x3f))
+		return
 	}
+	a.channels[ch].lengthCounter = uint16(0x40 - (v & 0x3f))
 }
 
 func (a *APU) ToggleMute() {
