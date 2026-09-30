@@ -143,21 +143,31 @@ func TestMGBHaltedDMAUsesExactInFlightOAMByte(t *testing.T) {
 }
 
 
-func TestActiveOAMDMAHidesEntriesFromPPUScan(t *testing.T) {
+func TestActiveOAMDMABlocksMode2BusRefresh(t *testing.T) {
 	s := scheduler.NewScheduler()
 	b := NewBus(s, make([]byte, 0x8000))
 	b.Map(types.DMGABC)
 
-	b.data[0xfe00] = 0x54
 	b.dmaActive = true
-
-	if got := b.PPUReadOAMScan(0xfe00); got != 0xff {
-		t.Fatalf("Mode 2 OAM read during active DMA = %#02x, want 0xff", got)
+	if !b.PPUOAMScanBlockedByDMA() {
+		t.Fatal("active OAM DMA did not block Mode 2 bus refresh")
 	}
 
 	b.dmaActive = false
-	if got := b.PPUReadOAMScan(0xfe00); got != 0x54 {
-		t.Fatalf("Mode 2 OAM read after DMA = %#02x, want 0x54", got)
+	if b.PPUOAMScanBlockedByDMA() {
+		t.Fatal("inactive OAM DMA still blocked Mode 2 bus refresh")
+	}
+}
+
+func TestMGBHaltedDMAKeepsMode2BusReadable(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.MGB)
+
+	b.dmaActive = true
+	s.Halted = true
+	if b.PPUOAMScanBlockedByDMA() {
+		t.Fatal("MGB halted-DMA profile unexpectedly blocked Mode 2 bus refresh")
 	}
 }
 
