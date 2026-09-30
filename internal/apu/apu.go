@@ -614,7 +614,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.DescheduleEvent(scheduler.APUChannel2)
 				a.s.ScheduleEvent(scheduler.APUChannel2, t)
 			case 2: // Wave
-				if a.channels[2].isEnabled() && a.s.Until(scheduler.APUChannel3) == 2 && (a.b.Model() != types.CGBABC && a.b.Model() != types.CGB0) {
+				if a.channels[2].isEnabled() && a.s.Until(scheduler.APUChannel3) == 2 && !a.b.Model().IsCGB() {
 					newPos := (a.channel3.waveRAMPosition + 1) & 31
 					pos := newPos >> 1
 					if pos < 4 {
@@ -677,8 +677,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 			a.channels[2].enabled = false
 		}
 	case types.NR31:
-		switch a.b.Model() {
-		case types.CGBABC, types.CGB0:
+		if a.b.Model().IsCGB() {
 			if a.enabled {
 				a.channels[2].lengthCounter = 0x100 - uint16(v)
 			}
