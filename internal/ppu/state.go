@@ -66,6 +66,8 @@ type State struct {
 	GlitchedLineState  GlitchedLineState
 	ObjBuffer          []Object
 	OAMScanIndex       uint8
+	OAMScanYBus        uint8
+	OAMScanXBus        uint8
 
 	// Timing counters
 	LineDot  uint64
@@ -141,6 +143,8 @@ func (p *PPU) Snapshot() State {
 		GlitchedLineState:        p.glitchedLineState,
 		ObjBuffer:                append([]Object(nil), p.objBuffer...),
 		OAMScanIndex:             p.oamScanIndex,
+		OAMScanYBus:              p.oamScanYBus,
+		OAMScanXBus:              p.oamScanXBus,
 		LineDot:                  p.lineDot,
 		FrameDot:                 p.frameDot,
 		CGBMode:                  p.cgbMode,
@@ -209,6 +213,8 @@ func (p *PPU) Restore(s State) {
 	p.glitchedLineState = s.GlitchedLineState
 	p.objBuffer = append(p.objBuffer[:0], s.ObjBuffer...)
 	p.oamScanIndex = s.OAMScanIndex
+	p.oamScanYBus = s.OAMScanYBus
+	p.oamScanXBus = s.OAMScanXBus
 	p.lineDot = s.LineDot
 	p.frameDot = s.FrameDot
 	p.cgbMode = s.CGBMode
