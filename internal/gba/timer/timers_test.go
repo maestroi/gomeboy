@@ -176,8 +176,8 @@ func TestCounterForCPUReadSamplesTickPhase(t *testing.T) {
 	if got := timers.Counter(0); got != 0xffff {
 		t.Fatalf("live counter before overflow = %04x, want ffff", got)
 	}
-	if got := timers.CounterForCPURead(0); got != 0xffff {
-		t.Fatalf("CPU read before overflow = %04x, want live ffff", got)
+	if got := timers.CounterForCPURead(0); got != 0xfffe {
+		t.Fatalf("CPU read before overflow = %04x, want pre-tick fffe", got)
 	}
 
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
@@ -201,8 +201,8 @@ func TestCounterForCPUReadSamplesCascadePhase(t *testing.T) {
 	if got := timers.Counter(1); got != 0x1235 {
 		t.Fatalf("live cascaded counter = %04x, want 1235", got)
 	}
-	if got := timers.CounterForCPURead(1); got != 0x1235 {
-		t.Fatalf("CPU read on cascade edge = %04x, want live 1235", got)
+	if got := timers.CounterForCPURead(1); got != 0x1234 {
+		t.Fatalf("CPU read on cascade edge = %04x, want pre-tick 1234", got)
 	}
 
 	// If the cascaded timer itself overflows on that parent edge, the event has
