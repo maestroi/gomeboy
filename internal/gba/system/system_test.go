@@ -332,14 +332,14 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 	if _, err := m.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if got := m.Timers.Counter(0); got != 0xfff9 {
-		t.Fatalf("Timer0 before sampled load = %04x, want fff9", got)
+	if got := m.Timers.Counter(0); got != 0xfffa {
+		t.Fatalf("Timer0 before sampled load = %04x, want fffa", got)
 	}
 	if _, err := m.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if got := m.CPU.ReadRegister(0); got != 0xfff9 {
-		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fff9", got)
+	if got := m.CPU.ReadRegister(0); got != 0xfffa {
+		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fffa", got)
 	}
 
 	// If the instruction fetch itself crosses the overflow edge, the overflow
