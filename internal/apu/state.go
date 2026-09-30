@@ -24,6 +24,7 @@ type SquareChannelState struct {
 	LockedDuty       uint8
 	WaveDutyPosition uint8
 	HasLockedDuty    bool
+	LastStepAt       uint64
 }
 
 // State is a snapshot of the APU's execution state, including all four
@@ -118,6 +119,7 @@ func (a *APU) Snapshot() State {
 		LockedDuty:       a.channel1.lockedDuty,
 		WaveDutyPosition: a.channel1.waveDutyPosition,
 		HasLockedDuty:    a.channel1.hasLockedDuty,
+		LastStepAt:       a.channel1.lastStepAt,
 	}
 	st.Channel1.FrequencyShadow = a.channel1.frequencyShadow
 	st.Channel1.SweepPeriod = a.channel1.sweepPeriod
@@ -131,6 +133,7 @@ func (a *APU) Snapshot() State {
 		LockedDuty:       a.channel2.lockedDuty,
 		WaveDutyPosition: a.channel2.waveDutyPosition,
 		HasLockedDuty:    a.channel2.hasLockedDuty,
+		LastStepAt:       a.channel2.lastStepAt,
 	}
 	st.Channel3.WaveRAMLastRead = a.channel3.waveRAMLastRead
 	st.Channel3.VolumeCode = a.channel3.volumeCode
@@ -226,6 +229,7 @@ func (a *APU) Restore(s State) {
 	a.channel1.lockedDuty = s.Channel1.Square.LockedDuty
 	a.channel1.waveDutyPosition = s.Channel1.Square.WaveDutyPosition
 	a.channel1.hasLockedDuty = s.Channel1.Square.HasLockedDuty
+	a.channel1.lastStepAt = s.Channel1.Square.LastStepAt
 	a.channel1.frequencyShadow = s.Channel1.FrequencyShadow
 	a.channel1.sweepPeriod = s.Channel1.SweepPeriod
 	a.channel1.sweepTimer = s.Channel1.SweepTimer
@@ -237,6 +241,7 @@ func (a *APU) Restore(s State) {
 	a.channel2.lockedDuty = s.Channel2.LockedDuty
 	a.channel2.waveDutyPosition = s.Channel2.WaveDutyPosition
 	a.channel2.hasLockedDuty = s.Channel2.HasLockedDuty
+	a.channel2.lastStepAt = s.Channel2.LastStepAt
 	a.channel3.waveRAMLastRead = s.Channel3.WaveRAMLastRead
 	a.channel3.volumeCode = s.Channel3.VolumeCode
 	a.channel3.waveRAMPosition = s.Channel3.WaveRAMPosition
