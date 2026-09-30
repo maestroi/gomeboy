@@ -51,6 +51,7 @@ type squareChannel struct {
 	waveDutyPosition uint8
 	hasLockedDuty    bool
 	lastStepAt       uint64
+	sampleReady      bool
 }
 
 func (c channel) isEnabled() bool {
@@ -166,6 +167,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		if a.channels[0].isEnabled() {
 			a.channel1.waveDutyPosition = (a.channel1.waveDutyPosition + 1) & 7
 			a.channel1.lastStepAt = a.s.Cycle()
+			a.channel1.sampleReady = true
 			s.ScheduleEvent(scheduler.APUChannel1, uint64((2048-a.channels[0].frequency)<<2))
 		}
 
@@ -181,6 +183,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		if a.channels[1].isEnabled() {
 			a.channel2.waveDutyPosition = (a.channel2.waveDutyPosition + 1) & 7
 			a.channel2.lastStepAt = a.s.Cycle()
+			a.channel2.sampleReady = true
 			s.ScheduleEvent(scheduler.APUChannel2, uint64((2048-a.channels[1].frequency)<<2))
 		}
 
@@ -247,18 +250,10 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 	b.RegisterGBCHandler(func() {
 		b.ReserveLazyReader(types.PCM12, func() byte {
 			a.runSweepDue()
-			// warning to any who read
-			// this is not accurate to hardware in the slightest, this is many botch jobs and timing hacks to work around
-			// botch jobs. even these PCM readers are hacked together
 			pcm := uint8(0)
 
-			sampleLength := (uint64(2048-a.channels[0].frequency) * 4) + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-
-			if a.channels[0].enabled && a.s.Cycle()-a.channels[0].enableTime >= sampleLength {
-				sample := (duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1 * a.channels[0].currentVolume
+			if a.channels[0].enabled && a.channel1.sampleReady {
+				sample := ((duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1) * a.channels[0].currentVolume
 				// CGB 0/B/C PCM12 can read zero on the exact duty-step cycle when
 				// the sample being replaced was zero. SameSuite's revision-specific
 				// frequency-write timing rows observe this bus/APU race directly.
@@ -271,16 +266,19 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 				}
 				pcm |= sample
 			}
-			sampleLength = uint64(2048-a.channels[1].frequency)*4 + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-			if a.channels[1].enabled && a.s.Cycle()-a.channels[1].enableTime >= sampleLength {
-				pcm |= (((duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1 * a.channels[1].currentVolume) & 0xf) << 4
-			}
 
+			if a.channels[1].enabled && a.channel2.sampleReady {
+				sample := ((duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1) * a.channels[1].currentVolume
+				if (a.b.Model() == types.CGB0 || a.b.Model() == types.CGBBC) &&
+					a.channel2.lastStepAt == a.s.Cycle() {
+					previousPos := (a.channel2.waveDutyPosition + 7) & 7
+					if ((duties[a.channel2.duty] >> previousPos) & 1) == 0 {
+						sample = 0
+					}
+				}
+				pcm |= (sample & 0x0f) << 4
+			}
 			return pcm
-
 		})
 		b.ReserveLazyReader(types.PCM34, func() byte {
 			pcm := uint8(0)
@@ -422,11 +420,11 @@ func (a *APU) sample() {
 
 	// read samples from channel DACs
 	samples := [4]float32{}
-	if channels[0].isEnabled() && !a.Debug.Square1 {
+	if channels[0].isEnabled() && a.channel1.sampleReady && !a.Debug.Square1 {
 		output := (duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1
 		samples[0] = digitalAnalog[output*(channels[0].currentVolume)]
 	}
-	if channels[1].isEnabled() && !a.Debug.Square2 {
+	if channels[1].isEnabled() && a.channel2.sampleReady && !a.Debug.Square2 {
 		output := (duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1
 		samples[1] = digitalAnalog[output*(channels[1].currentVolume)]
 	}
@@ -637,6 +635,9 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 
 			switch ch {
 			case 0: // Square 1
+				if !wasChannelEnabled {
+					a.channel1.sampleReady = false
+				}
 				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_1/channel_1_delay.asm
 				offset := uint64(8)
 				if a.s.Until(scheduler.APUChannel1) != 0 {
@@ -672,6 +673,9 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 					a.channel1.sweepCheckAt = math.MaxUint64
 				}
 			case 1: // Square 2
+				if !wasChannelEnabled {
+					a.channel2.sampleReady = false
+				}
 				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_2/channel_2_delay.asm
 				offset := uint64(8)
 				if a.s.Until(scheduler.APUChannel2) != 0 {
