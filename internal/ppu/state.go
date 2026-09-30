@@ -49,8 +49,11 @@ type State struct {
 	FetcherState         FetcherState
 	FetcherTileNo        uint8
 	FetcherTileAttr      uint8
-	FetcherData          [2]uint8
-	FetcherTileNoAddress uint16
+	FetcherData           [2]uint8
+	FetcherTileNoAddress  uint16
+	LastTileDataReadAt    uint64
+	LastTileDataReadPlane uint8
+	LastTileDataReadValid bool
 
 	// Object fetcher
 	ObjectFetcherState ObjectFetcherState
@@ -127,8 +130,11 @@ func (p *PPU) Snapshot() State {
 		FetcherState:             p.fetcherState,
 		FetcherTileNo:            p.fetcherTileNo,
 		FetcherTileAttr:          p.fetcherTileAttr,
-		FetcherData:              p.fetcherData,
-		FetcherTileNoAddress:     p.fetcherTileNoAddress,
+		FetcherData:               p.fetcherData,
+		FetcherTileNoAddress:      p.fetcherTileNoAddress,
+		LastTileDataReadAt:        p.lastTileDataReadAt,
+		LastTileDataReadPlane:     p.lastTileDataReadPlane,
+		LastTileDataReadValid:     p.lastTileDataReadValid,
 		ObjectFetcherState:       p.objectFetcherState,
 		ObjFetcherTileNo:         p.objFetcherTileNo,
 		ObjFetcherTileAttr:       p.objFetcherTileAttr,
@@ -196,6 +202,9 @@ func (p *PPU) Restore(s State) {
 	p.fetcherTileAttr = s.FetcherTileAttr
 	p.fetcherData = s.FetcherData
 	p.fetcherTileNoAddress = s.FetcherTileNoAddress
+	p.lastTileDataReadAt = s.LastTileDataReadAt
+	p.lastTileDataReadPlane = s.LastTileDataReadPlane
+	p.lastTileDataReadValid = s.LastTileDataReadValid
 	p.objectFetcherState = s.ObjectFetcherState
 	p.objFetcherTileNo = s.ObjFetcherTileNo
 	p.objFetcherTileAttr = s.ObjFetcherTileAttr
