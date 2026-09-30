@@ -95,7 +95,7 @@ func Which(rom []byte) Model {
 // ModelIO - model specific starting IO registers.
 var ModelIO = map[Model]map[HardwareAddress]interface{}{
 	Unset:  {DIV: uint16(0xABC9)},
-	DMG0:   {DIV: uint16(0x182F), LY: uint8(0x91)},
+	DMG0:   {DIV: uint16(0x182F), LY: uint8(0x92)},
 	DMGABC: {DIV: uint16(0xABC9)},
 	CGBABC: {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
 	CGBBC:  {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
