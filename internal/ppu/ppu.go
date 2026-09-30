@@ -140,6 +140,8 @@ type PPU struct {
 	glitchedLineState  GlitchedLineState  // First-line startup behaviour
 	objBuffer          []Object           // Scanline object buffer
 	oamScanIndex       uint8              // Next OAM entry inspected during Mode 2
+	oamScanYBus        uint8              // Last Y byte observed by the Mode 2 OAM bus
+	oamScanXBus        uint8              // Last X byte observed by the Mode 2 OAM bus
 
 	// Timing counters
 	lineDot  uint64 // Cycle at which the current line began
@@ -638,21 +640,25 @@ func (p *PPU) scanOAMEntry() {
 	}
 
 	base := uint16(0xfe00) + uint16(p.oamScanIndex)*4
-	y := p.b.PPUReadOAMScan(base)
-	x := p.b.PPUReadOAMScan(base + 1)
-	if active, dest := p.b.DebugOAMDMAState(); p.ly == 68 {
-		fmt.Printf("STRIKETHROUGH_SCAN cycle=%d idx=%d dma=%t dest=%#04x y=%#02x x=%#02x\n", p.s.Cycle(), p.oamScanIndex, active, dest, y, x)
+	// Mode 2 has dedicated Y/X bus latches. During ordinary active OAM DMA the
+	// PPU cannot refresh them, so each entry is tested using whatever values the
+	// previous readable scan left on the bus. This persistence across scanlines is
+	// observable in strikethrough.gb.
+	if !p.b.PPUOAMScanBlockedByDMA() {
+		p.oamScanYBus = p.b.PPUReadOAMScan(base)
+		p.oamScanXBus = p.b.PPUReadOAMScan(base + 1)
 	}
+	y, x := p.oamScanYBus, p.oamScanXBus
 
 	if p.ly+16 < y || p.ly+16 >= y+p.objSize {
 		return
 	}
 
+	// Mode 2 only selects objects from their Y/X coordinates. Tile number and
+	// attributes are sampled later by the Mode 3 object fetcher.
 	p.objBuffer = append(p.objBuffer, Object{
 		y:     y,
 		x:     x,
-		id:    p.b.PPUReadOAMScan(base + 2),
-		attr:  p.b.PPUReadOAMScan(base + 3),
 		index: p.oamScanIndex,
 	})
 }
@@ -1335,9 +1341,6 @@ func (p *PPU) stepObjectFetcher() {
 		p.stepPixelFetcher()
 	case OBJGetTileNoT2:
 		base := uint16(0xfe00) + uint16(p.fetchingObj.index)*4
-		if active, dest := p.b.DebugOAMDMAState(); active && p.ly == 68 {
-			fmt.Printf("STRIKETHROUGH_TRACE cycle=%d lx=%d obj=%d x=%d dma=%#04x\n", p.s.Cycle(), p.lx, p.fetchingObj.index, p.fetchingObj.x, dest)
-		}
 		p.objFetcherTileNo = p.b.PPUReadOAMFetch(base + 2)
 		p.objFetcherTileAttr = p.b.PPUReadOAMFetch(base + 3)
 		p.fetchingObj.id = p.objFetcherTileNo
