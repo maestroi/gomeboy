@@ -304,7 +304,8 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			return pcm
 
 		})
-	})	b.RegisterGBCHandler(registerPCMReaders)
+	}
+	b.RegisterGBCHandler(registerPCMReaders)
 	b.RegisterAGBHandler(registerPCMReaders)
 
 	for i := types.NR10; i <= types.NR44; i++ {
