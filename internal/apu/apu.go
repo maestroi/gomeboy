@@ -73,8 +73,9 @@ type APU struct {
 		volumeCode          uint8
 		waveRAMPosition     uint8
 		waveRAMSampleBuffer uint8
-		waveRAMLastPosition uint8
-		sampleReady         bool
+		waveRAMLastPosition        uint8
+		sampleReady                bool
+		swallowNextExtraLengthClock bool
 	}
 	channel4 struct {
 		clockShift     uint8
@@ -549,6 +550,15 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		}
 		lengthCounterEnabled := v&types.Bit6 > 0
 		extraLengthClocked := a.shouldExtraClockLength(ch, lengthCounterEnabled)
+		if ch == 2 && extraLengthClocked && a.channel3.swallowNextExtraLengthClock {
+			// SameSuite's hardware measurements show that CGB B CH3 needs one
+			// additional NRx4 write versus CGB0 before the same length value
+			// expires. The ROM cannot distinguish a counter loaded one higher
+			// from the first post-trigger extra clock being swallowed; model the
+			// latter because it leaves ordinary NR31 length loading unchanged.
+			a.channel3.swallowNextExtraLengthClock = false
+			extraLengthClocked = false
+		}
 		if extraLengthClocked {
 			a.channels[ch].lengthCounter--
 			a.channels[ch].enabled = a.channels[ch].lengthCounter > 0
@@ -626,6 +636,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				if !wasChannelEnabled {
 					a.channel3.sampleReady = false
 				}
+				a.channel3.swallowNextExtraLengthClock = a.b.Model() == types.CGBBC
 				if a.channels[2].isEnabled() && a.s.Until(scheduler.APUChannel3) == 2 && !a.b.Model().IsCGB() {
 					newPos := (a.channel3.waveRAMPosition + 1) & 31
 					pos := newPos >> 1
@@ -695,6 +706,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		if !a.channels[2].dacEnabled {
 			a.channels[2].enabled = false
 			a.channel3.sampleReady = false
+			a.channel3.swallowNextExtraLengthClock = false
 		}
 	case types.NR31:
 		if a.b.Model().IsCGB() {
