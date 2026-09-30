@@ -204,6 +204,17 @@ func (i *imageTest) Run(t *testing.T) {
 
 		if diff > 0 {
 			i.passed = false
+			if i.name == "mgb_oam_dma_halt_sprites" {
+				expected, loadErr := imageFromFilename(i.expectedImage)
+				if loadErr == nil {
+					for _, pt := range []image.Point{{0, 0}, {8, 0}, {80, 40}, {90, 48}} {
+						er, eg, eb, _ := expected.At(pt.X, pt.Y).RGBA()
+						actual := g.PPU.PreparedFrame[pt.Y][pt.X]
+						t.Logf("MGB image diagnostic (%d,%d): expected=%02x%02x%02x actual=%02x%02x%02x",
+							pt.X, pt.Y, uint8(er>>8), uint8(eg>>8), uint8(eb>>8), actual[0], actual[1], actual[2])
+					}
+				}
+			}
 			skipKnownFailure(t, i.name)
 			t.Errorf("Test %s failed. Difference: %d", i.name, diff)
 
