@@ -865,6 +865,35 @@ var offscreenLineCycles = []uint64{
 	Line153LYC0:         444,
 }
 
+// lateLine153LYZero reports whether the visible LY register remains 153 until
+// dot 8 of line 153. Hardware measurements used by AGE and SameBoy show two
+// production CGB paths:
+//   - CGB B/C, normal speed: LY becomes 0 at dot 6.
+//   - CGB D/E, and CGB double speed: LY remains 153 until dot 8.
+//
+// The generic CGB profile follows the established production behavior and
+// therefore takes the late path only in double speed.
+func (p *PPU) lateLine153LYZero() bool {
+	if p.b.Model() == types.CGBDE {
+		return true
+	}
+	return p.b.Model().IsCGB() && p.s.DoubleSpeed()
+}
+
+func (p *PPU) offscreenStateCycles(state OffscreenLineState) uint64 {
+	if !p.lateLine153LYZero() {
+		return offscreenLineCycles[state]
+	}
+	switch state {
+	case Line153LYUpdate:
+		return 2
+	case Line153LY0:
+		return 4
+	default:
+		return offscreenLineCycles[state]
+	}
+}
+
 // handleOffscreenLine manages the ModeVBlank period (LY = 144 - 153) maintaining
 // the 456 dots/line cadence. This also includes handling the erratic behaviour that
 // occurs on line 153 in regard to the LY/LYC register and STAT comparison checks.
@@ -919,11 +948,22 @@ func (p *PPU) handleOffscreenLine() {
 	case Line153LYUpdate:
 		p.b.Set(types.LY, 153)
 	case Line153LY0:
-		p.b.Set(types.LY, 0)
+		// B/C normal-speed hardware exposes LY=0 from dot 6. D/E and
+		// double-speed CGB retain LY=153 for two more dots.
+		if !p.lateLine153LYZero() {
+			p.b.Set(types.LY, 0)
+		}
 		p.lyForComparison = 153
 		p.statUpdate()
 	case Line153LYC:
-		p.lyForComparison = 0xffff
+		if p.lateLine153LYZero() {
+			p.b.Set(types.LY, 0)
+			// D/E (and double-speed CGB) keeps LY=153 as the comparison
+			// value until dot 12 even though the visible register is now 0.
+			p.lyForComparison = 153
+		} else {
+			p.lyForComparison = 0xffff
+		}
 		p.statUpdate()
 	case Line153LYC0:
 		p.lyForComparison = 0
@@ -938,7 +978,7 @@ func (p *PPU) handleOffscreenLine() {
 		return
 	}
 
-	p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, offscreenLineCycles[p.offscreenLineState])
+	p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, p.offscreenStateCycles(p.offscreenLineState))
 	p.offscreenLineState++
 }
 
