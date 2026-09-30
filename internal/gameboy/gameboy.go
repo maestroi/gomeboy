@@ -205,9 +205,13 @@ func (g *GameBoy) Init() {
 		g.rumbling = b
 	}
 
-	// schedule the frame sequencer event for the next 8192 ticks
-	g.Scheduler.ScheduleEvent(scheduler.APUFrameSequencer, uint64(8192-g.Scheduler.SysClock()&0x0fff))
-	g.Scheduler.ScheduleEvent(scheduler.APUFrameSequencer2, uint64(8192-g.Scheduler.SysClock()&0x0fff)+4096)
+	// Schedule from the falling edge of DIV bit 12. The full 13-bit
+	// phase matters: using only the low 12 bits is accidentally correct when
+	// bit 12 is clear, but delays the frame sequencer by 4096 ticks when boot
+	// hands off in the upper half of the divider cycle (as CGB-mode boot does).
+	apuEdge := uint64(8192 - (g.Scheduler.SysClock() & 0x1fff))
+	g.Scheduler.ScheduleEvent(scheduler.APUFrameSequencer, apuEdge)
+	g.Scheduler.ScheduleEvent(scheduler.APUFrameSequencer2, apuEdge+4096)
 	g.initialised = true
 }
 
