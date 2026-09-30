@@ -510,6 +510,7 @@ func (b *Bus) LazyRead(addr uint16) byte {
 
 func (b *Bus) ClearBit(addr uint16, bit byte) { b.data[addr] &^= bit } // clear bit at address
 func (b *Bus) Get(addr uint16) byte           { return b.data[addr] }  // get value at address
+func (b *Bus) DebugOAMDMAState() (bool, uint16) { return b.dmaActive, b.dmaDestination }
 func (b *Bus) Set(addr uint16, value byte)    { b.data[addr] = value } // set value at address
 func (b *Bus) SetBit(addr uint16, bit byte)   { b.data[addr] |= bit }  // set bit at address
 
