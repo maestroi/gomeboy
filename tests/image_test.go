@@ -19,6 +19,7 @@ import (
 type imageTest struct {
 	emulatedSeconds int
 	expectedImage   string
+	expectedTransform func(image.Image) image.Image
 
 	*basicTest
 }
@@ -40,6 +41,17 @@ func asModel(model types.Model) imageTestOption {
 func asName(name string) imageTestOption {
 	return func(t *imageTest) {
 		t.name = name
+	}
+}
+
+// normalizeExpectedDMGGreyscale compares legacy monochrome reference captures
+// by their four DMG shade indices instead of the exact analogue screenshot
+// luminance. This keeps image tests about rendered hardware pixels: for
+// example, the MGB HALT/OAM-DMA reference uses #B0/#68 for light/dark gray,
+// while GomeBoy's standard DMG palette uses #AA/#55 for those same shades.
+func normalizeExpectedDMGGreyscale() imageTestOption {
+	return func(t *imageTest) {
+		t.expectedTransform = normalizeDMGGreyscale
 	}
 }
 
@@ -196,7 +208,7 @@ func (i *imageTest) Run(t *testing.T) {
 		}
 
 		// compare the images
-		diff, diffImg, err := compareImage(i.expectedImage, g)
+		diff, diffImg, err := compareImageWithTransform(i.expectedImage, g, i.expectedTransform)
 		if err != nil {
 			i.passed = false
 			t.Fatal(err)
@@ -204,17 +216,6 @@ func (i *imageTest) Run(t *testing.T) {
 
 		if diff > 0 {
 			i.passed = false
-			if i.name == "mgb_oam_dma_halt_sprites" {
-				expected, loadErr := imageFromFilename(i.expectedImage)
-				if loadErr == nil {
-					for _, pt := range []image.Point{{0, 0}, {8, 0}, {80, 40}, {90, 48}} {
-						er, eg, eb, _ := expected.At(pt.X, pt.Y).RGBA()
-						actual := g.PPU.PreparedFrame[pt.Y][pt.X]
-						t.Logf("MGB image diagnostic (%d,%d): expected=%02x%02x%02x actual=%02x%02x%02x",
-							pt.X, pt.Y, uint8(er>>8), uint8(eg>>8), uint8(eb>>8), actual[0], actual[1], actual[2])
-					}
-				}
-			}
 			skipKnownFailure(t, i.name)
 			t.Errorf("Test %s failed. Difference: %d", i.name, diff)
 
@@ -233,6 +234,36 @@ func (i *imageTest) Run(t *testing.T) {
 			}
 		}
 	})
+}
+
+func normalizeDMGGreyscale(src image.Image) image.Image {
+	bounds := src.Bounds()
+	dst := image.NewNRGBA(bounds)
+	shades := [...]uint8{0x00, 0x55, 0xaa, 0xff}
+
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := src.At(x, y).RGBA()
+			r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
+			if r8 == g8 && g8 == b8 {
+				best := shades[0]
+				bestDistance := 256
+				for _, shade := range shades {
+					distance := int(r8) - int(shade)
+					if distance < 0 {
+						distance = -distance
+					}
+					if distance < bestDistance {
+						best, bestDistance = shade, distance
+					}
+				}
+				dst.SetNRGBA(x, y, color.NRGBA{R: best, G: best, B: best, A: uint8(a >> 8)})
+				continue
+			}
+			dst.SetNRGBA(x, y, color.NRGBA{R: r8, G: g8, B: b8, A: uint8(a >> 8)})
+		}
+	}
+	return dst
 }
 
 func ImgCompare(img1, img2 image.Image) (int64, image.Image, error) {
@@ -296,6 +327,10 @@ func imageFromFilename(filename string) (image.Image, error) {
 // compareImage compares an expected image with the output of the
 // provided gameboy.GameBoy.
 func compareImage(expectedImage string, gb *gameboy.GameBoy) (int64, image.Image, error) {
+	return compareImageWithTransform(expectedImage, gb, nil)
+}
+
+func compareImageWithTransform(expectedImage string, gb *gameboy.GameBoy, transform func(image.Image) image.Image) (int64, image.Image, error) {
 	// create image.Image from the byte array
 	img1 := image.NewNRGBA(image.Rect(0, 0, 160, 144))
 	var palette []color.Color
@@ -324,6 +359,9 @@ func compareImage(expectedImage string, gb *gameboy.GameBoy) (int64, image.Image
 	img2, err := imageFromFilename(expectedImage)
 	if err != nil {
 		return math.MaxInt64, nil, err
+	}
+	if transform != nil {
+		img2 = transform(img2)
 	}
 	// create a new paletted image
 	img3 := image.NewPaletted(img1.Bounds(), palette)
