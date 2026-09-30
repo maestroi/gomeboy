@@ -180,7 +180,7 @@ func (t *Timers) writeControl(index int, value uint16) {
 		// reload event. Late priority also keeps overflow edges ahead of control
 		// changes at identical timestamps.
 		t.scheduler.Schedule(1, gbascheduler.PriorityLate, func() {
-			t.applyControl(index, value)
+			t.applyControlWithStartDelay(index, value, 1)
 		})
 		return
 	}
@@ -188,6 +188,10 @@ func (t *Timers) writeControl(index int, value uint16) {
 }
 
 func (t *Timers) applyControl(index int, value uint16) {
+	t.applyControlWithStartDelay(index, value, 0)
+}
+
+func (t *Timers) applyControlWithStartDelay(index int, value uint16, startDelay uint64) {
 	s := &t.timer[index]
 	oldControl := s.control
 	newControl := value & controlMask(index)
@@ -213,7 +217,15 @@ func (t *Timers) applyControl(index int, value uint16) {
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
-		s.timestampStarted = t.scheduler.Now()
+		if index > 0 && s.control&controlCountUp != 0 {
+			s.timestampStarted = t.scheduler.Now()
+		} else {
+			// A CPU enable write first loads the reload latch into the counter.
+			// Independently clocked timers begin counting on the following
+			// master cycle; direct/debug writes keep their existing immediate
+			// semantics by passing a zero startDelay.
+			s.timestampStarted = t.scheduler.Now() + startDelay
+		}
 		t.scheduleOverflow(index)
 		return
 	}
@@ -248,6 +260,9 @@ func (t *Timers) scheduleOverflow(index int) {
 	divisor := uint64(prescalers[s.control&controlPrescalerMask])
 	ticks := uint64(0x10000 - uint32(s.counter))
 	delay := ticks*divisor - uint64(s.phase)
+	if s.timestampStarted > t.scheduler.Now() {
+		delay += s.timestampStarted - t.scheduler.Now()
+	}
 	s.overflowEvent = t.scheduler.Schedule(delay, gbascheduler.PriorityEarly, func() { t.onOverflow(index) })
 }
 
@@ -282,7 +297,14 @@ func (t *Timers) syncCounter(index int) {
 	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
 		return
 	}
-	elapsed := t.scheduler.Now() - s.timestampStarted
+	now := t.scheduler.Now()
+	if now <= s.timestampStarted {
+		if now < s.timestampStarted {
+			s.lastTickOverflow = false
+		}
+		return
+	}
+	elapsed := now - s.timestampStarted
 	// lastTickOverflow describes the exact master-clock edge on which an
 	// overflow occurred. Once scheduler time moves beyond that edge, CPU reads
 	// must no longer expose the pre-overflow FFFF value.
@@ -296,7 +318,7 @@ func (t *Timers) syncCounter(index int) {
 	if ticks != 0 {
 		s.counter += uint16(ticks)
 	}
-	s.timestampStarted = t.scheduler.Now()
+	s.timestampStarted = now
 }
 
 // NeedsAdvance reports whether timer-local master time must be advanced.
