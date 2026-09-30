@@ -49,6 +49,7 @@ func (p *PPU) SnapshotInto(dst *State) {
 		LastTileDataReadAt:        p.lastTileDataReadAt,
 		LastTileDataReadPlane:     p.lastTileDataReadPlane,
 		LastTileDataReadValid:     p.lastTileDataReadValid,
+		TileSelectGlitch:          p.tileSelectGlitch,
 		ObjectFetcherState:       p.objectFetcherState,
 		ObjFetcherTileNo:         p.objFetcherTileNo,
 		ObjFetcherTileAttr:       p.objFetcherTileAttr,
