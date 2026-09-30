@@ -55,7 +55,8 @@ The core is designed to keep hardware-visible behavior accurate while also expos
 
 ### Hardware and cartridge support
 
-- DMG and CGB hardware models, plus model selection for `DMG0`, `DMG`, `CGB0`, `CGB`, `MGB`, `SGB`, `SGB2`, and `AGB`
+- DMG and CGB hardware models, plus model selection for `DMG0`, `DMG`, `CGB0`, `CGB`, `CGBBC`, `CGBDE`, `MGB`, `SGB`, `SGB2`, and `AGB`
+- `CGB` remains the stable generic production profile; `CGBBC` and `CGBDE` expose revision-family selection for conformance and hardware-sensitive software
 - HLE boot process or optional boot ROM
 - DMG games with CGB colorization palettes
 - SRAM and RTC persistence
@@ -155,7 +156,7 @@ go run . -rom game.gb
 | --- | --- | --- |
 | `-rom` | | Path to a `.gb` / `.gbc` ROM |
 | `-boot` | | Optional boot ROM (`.gbr`) |
-| `-model` | `auto` | `auto`, `DMG0`, `DMG`, `CGB0`, `CGB`, `MGB`, `SGB`, `SGB2`, or `AGB` |
+| `-model` | `auto` | `auto`, `DMG0`, `DMG`, `CGB0`, `CGB`, `CGBBC`, `CGBDE`, `MGB`, `SGB`, `SGB2`, or `AGB` |
 | `-printer` | `false` | Attach the Game Boy Printer |
 | `-cheats` | | Explicit GameShark / Game Genie cheat file |
 | `-save-dir` | working directory | Directory for `.sav` / `.state` files |
