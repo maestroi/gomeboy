@@ -85,6 +85,7 @@ type APU struct {
 		divCounter   uint16
 		divCountdown uint64 // APU T-cycles until the next divisor-stage increment.
 		divRunning   bool
+		divReloaded  bool // the previous divisor increment landed on this exact cycle
 	}
 
 	waveformData [4][]float32
@@ -718,7 +719,8 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		// countdown except when the write lands exactly on a reload edge.
 		a.catchupLFSR()
 		oldInc := a.noiseDivisorIncrement()
-		onReload := a.channel4.divRunning && a.channel4.divCountdown == oldInc
+		_ = oldInc
+		onReload := a.channel4.divRunning && a.channel4.divReloaded
 
 		a.channel4.widthMask = 0x4000 | uint16(v&types.Bit3)<<3
 		a.channel4.clockShift = v >> 4
@@ -795,6 +797,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				divCounter   uint16
 				divCountdown uint64
 				divRunning   bool
+				divReloaded  bool
 			}{}
 			a.channel3.volumeCode = 4
 			a.lastCatchup = a.s.Cycle()
@@ -989,6 +992,7 @@ func (a *APU) noiseTriggerDeadline(restarting bool) uint64 {
 func (a *APU) startNoiseDivider(restarting bool) {
 	a.lastCatchup = a.s.Cycle()
 	a.channel4.divRunning = true
+	a.channel4.divReloaded = false
 
 	if a.channel4.clockShift >= 14 {
 		a.channel4.divCounter = 0
@@ -1022,6 +1026,7 @@ func (a *APU) reloadNoiseDivisorOnEdge() {
 	inc := a.noiseDivisorIncrement()
 	if a.channel4.divisorCode == 0 {
 		a.channel4.divCountdown = inc
+		a.channel4.divReloaded = true
 		return
 	}
 
@@ -1035,6 +1040,7 @@ func (a *APU) reloadNoiseDivisorOnEdge() {
 	noisePhase := a.enableTimer % halfGrid
 	adjust := (tick + noisePhase + halfGrid - target%halfGrid) % halfGrid
 	a.channel4.divCountdown = (target + adjust - now) / scale
+	a.channel4.divReloaded = true
 }
 
 func (a *APU) stepNoiseLFSR() {
@@ -1059,7 +1065,11 @@ func (a *APU) catchupLFSR() {
 	if a.s.DoubleSpeed() {
 		cyclesPassed >>= 1
 	}
+	if cyclesPassed == 0 {
+		return
+	}
 	a.lastCatchup = currentCycle
+	a.channel4.divReloaded = false
 
 	for cyclesPassed >= a.channel4.divCountdown {
 		cyclesPassed -= a.channel4.divCountdown
@@ -1081,6 +1091,9 @@ func (a *APU) catchupLFSR() {
 
 	if cyclesPassed > 0 {
 		a.channel4.divCountdown -= cyclesPassed
+		a.channel4.divReloaded = false
+	} else {
+		a.channel4.divReloaded = true
 	}
 }
 
