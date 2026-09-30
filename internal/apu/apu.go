@@ -1,6 +1,7 @@
 package apu
 
 import (
+	"math"
 	"github.com/maestroi/gomeboy/internal/io"
 	"github.com/maestroi/gomeboy/internal/scheduler"
 	"github.com/maestroi/gomeboy/internal/types"
@@ -49,6 +50,7 @@ type squareChannel struct {
 	lockedDuty       uint8
 	waveDutyPosition uint8
 	hasLockedDuty    bool
+	lastStepAt       uint64
 }
 
 func (c channel) isEnabled() bool {
@@ -149,11 +151,14 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		enabled: true,
 	}
 	a.channel3.volumeCode = 4
+	a.channel1.lastStepAt = math.MaxUint64
+	a.channel2.lastStepAt = math.MaxUint64
 
 	s.RegisterEvent(scheduler.APUChannel1, func() {
 		// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_1/channel_1_stop_restart.asm
 		if a.channels[0].isEnabled() {
 			a.channel1.waveDutyPosition = (a.channel1.waveDutyPosition + 1) & 7
+			a.channel1.lastStepAt = a.s.Cycle()
 			s.ScheduleEvent(scheduler.APUChannel1, uint64((2048-a.channels[0].frequency)<<2))
 		}
 
@@ -168,6 +173,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_2/channel_2_stop_restart.asm
 		if a.channels[1].isEnabled() {
 			a.channel2.waveDutyPosition = (a.channel2.waveDutyPosition + 1) & 7
+			a.channel2.lastStepAt = a.s.Cycle()
 			s.ScheduleEvent(scheduler.APUChannel2, uint64((2048-a.channels[1].frequency)<<2))
 		}
 
@@ -243,7 +249,18 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			}
 
 			if a.channels[0].enabled && a.s.Cycle()-a.channels[0].enableTime >= sampleLength {
-				pcm |= (duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1 * a.channels[0].currentVolume
+				sample := (duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1 * a.channels[0].currentVolume
+				// CGB 0/B/C PCM12 can read zero on the exact duty-step cycle when
+				// the sample being replaced was zero. SameSuite's revision-specific
+				// frequency-write timing rows observe this bus/APU race directly.
+				if (a.b.Model() == types.CGB0 || a.b.Model() == types.CGBBC) &&
+					a.channel1.lastStepAt == a.s.Cycle() {
+					previousPos := (a.channel1.waveDutyPosition + 7) & 7
+					if ((duties[a.channel1.duty] >> previousPos) & 1) == 0 {
+						sample = 0
+					}
+				}
+				pcm |= sample
 			}
 			sampleLength = uint64(2048-a.channels[1].frequency)*4 + 4
 			if a.s.DoubleSpeed() {
@@ -536,15 +553,44 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 	case types.NR13, types.NR23, types.NR33:
 		if a.enabled {
 			ch := ((address & 0x00ff) - 19) / 5
+			reloadNow := false
+			if ch == 0 {
+				reloadNow = a.channels[0].isEnabled() && a.channel1.lastStepAt == a.s.Cycle()
+			} else if ch == 1 {
+				reloadNow = a.channels[1].isEnabled() && a.channel2.lastStepAt == a.s.Cycle()
+			}
 			a.channels[ch].frequency = (a.channels[ch].frequency & 0x700) | uint16(v)
+			if reloadNow {
+				a.reschedulePulseAfterReload(ch)
+			}
 		}
 	case types.NR14, types.NR24, types.NR34, types.NR44:
 		if !a.enabled {
 			return 0
 		}
 		ch := ((address & 0x00ff) - 20) / 5
+		reloadNow := false
+		if ch == 0 {
+			reloadNow = a.channels[0].isEnabled() && a.channel1.lastStepAt == a.s.Cycle()
+		} else if ch == 1 {
+			reloadNow = a.channels[1].isEnabled() && a.channel2.lastStepAt == a.s.Cycle()
+		}
 		if ch != 3 {
-			a.channels[ch].frequency = (a.channels[ch].frequency & 0x00ff) | uint16(v&0x7)<<8
+			oldFrequency := a.channels[ch].frequency
+			// CGB D/E has one extra half-APU-tick window after a CH1 duty step:
+			// lowering NR14's high frequency bits there backs the duty position up
+			// once, while the already-latched PCM sample remains visible.
+			if ch == 0 && a.b.Model() == types.CGBDE && a.s.DoubleSpeed() &&
+				v&types.Bit7 == 0 && a.channels[0].isEnabled() &&
+				oldFrequency&0x700 == 0x700 && uint16(v&7)<<8 != 0x700 &&
+				!reloadNow && a.channel1.lastStepAt != math.MaxUint64 &&
+				a.s.Cycle()-a.channel1.lastStepAt == 4 {
+				a.channel1.waveDutyPosition = (a.channel1.waveDutyPosition + 7) & 7
+			}
+			a.channels[ch].frequency = (oldFrequency & 0x00ff) | uint16(v&0x7)<<8
+			if reloadNow && ch < 2 {
+				a.reschedulePulseAfterReload(ch)
+			}
 		}
 		lengthCounterEnabled := v&types.Bit6 > 0
 		extraLengthClocked := a.shouldExtraClockLength(ch, lengthCounterEnabled)
@@ -787,6 +833,8 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				sweepEnabled    bool
 			}{}
 			a.channel2 = squareChannel{}
+			a.channel1.lastStepAt = math.MaxUint64
+			a.channel2.lastStepAt = math.MaxUint64
 			a.channel4 = struct {
 				clockShift   uint8
 				divisorCode  uint8
@@ -821,6 +869,21 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 
 	return v
 }
+
+func (a *APU) reschedulePulseAfterReload(ch uint16) {
+	var event scheduler.EventType
+	switch ch {
+	case 0:
+		event = scheduler.APUChannel1
+	case 1:
+		event = scheduler.APUChannel2
+	default:
+		return
+	}
+	a.s.DescheduleEvent(event)
+	a.s.ScheduleEvent(event, uint64((2048-a.channels[ch].frequency)<<2))
+}
+
 
 func (a *APU) clockVolume(channel int) {
 	if a.channels[channel].clock {
