@@ -98,7 +98,7 @@ func TestMGBHaltedDMAExposesMeasuredOAMBusWord(t *testing.T) {
 func TestHaltedDMAConflictProfileIsMGBSpecific(t *testing.T) {
 	s := scheduler.NewScheduler()
 	b := NewBus(s, make([]byte, 0x8000))
-	b.Map(types.DMG)
+	b.Map(types.DMGABC)
 
 	b.dmaActive = true
 	b.dmaSource = 0x2002
@@ -117,7 +117,6 @@ func TestHaltedDMAConflictProfileIsMGBSpecific(t *testing.T) {
 		t.Fatalf("DMG inherited MGB halted-DMA profile: got %#02x, want raw OAM 0x12", got)
 	}
 }
-
 
 func TestMGBHaltedDMAUsesExactInFlightOAMByte(t *testing.T) {
 	s := scheduler.NewScheduler()

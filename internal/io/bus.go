@@ -272,6 +272,11 @@ func (b *Bus) Boot() {
 	for k, v := range types.ModelIO[b.model] {
 		ioRegs[k] = v
 	}
+	if b.IsGBCCart() {
+		for k, v := range types.ModelIOCGB[b.model] {
+			ioRegs[k] = v
+		}
+	}
 	for i := types.HardwareAddress(0xFF00); i < 0xFF80; i++ {
 		// has the model provided a value?
 		if ioRegs[i] != nil {
@@ -285,7 +290,8 @@ func (b *Bus) Boot() {
 		}
 	}
 
-	// unpack logo data
+	// Recreate the VRAM residue left by the selected boot ROM. whichboot.gb
+	// fingerprints this state independently of CPU registers/timing.
 	logoData := b.data[0x0104:0x0134]
 	var unpackedLogoData []byte
 	for i := 0; i < len(logoData); i++ {
@@ -298,16 +304,36 @@ func (b *Bus) Boot() {
 		currentData[2], currentData[6] = currentData[0], currentData[4] // double bytes
 		unpackedLogoData = append(unpackedLogoData, currentData[:]...)
 	}
-	copy(b.data[0x8010:], append(unpackedLogoData, 0x3C, 0, 0x42, 0, 0xB9, 0, 0xA5, 0, 0xB9, 0, 0xA5, 0, 0x42, 0, 0x3C))
-	copy(b.VRAM[0][0x0010:], append(unpackedLogoData, 0x3C, 0, 0x42, 0, 0xB9, 0, 0xA5, 0, 0xB9, 0, 0xA5, 0, 0x42, 0, 0x3C))
-	for i := uint8(0); i < 12; i++ {
-		b.data[0x9904+uint16(i)] = i + 1
-		b.VRAM[0][0x0904+uint16(i)] = i + 1
-		b.data[0x9924+uint16(i)] = i + 13
-		b.VRAM[0][0x0924+uint16(i)] = i + 13
+	copy(b.data[0x8010:], unpackedLogoData)
+	copy(b.VRAM[0][0x0010:], unpackedLogoData)
+
+	// DMG0 predates the registered-symbol addition, so tile $19 is blank.
+	// All later official boot ROMs represented here leave the standard ® tile.
+	if b.model != types.DMG0 {
+		copyright := [...]byte{0x3C, 0, 0x42, 0, 0xB9, 0, 0xA5, 0, 0xB9, 0, 0xA5, 0, 0x42, 0, 0x3C}
+		copy(b.data[0x8190:], copyright[:])
+		copy(b.VRAM[0][0x0190:], copyright[:])
 	}
-	b.data[0x9910] = 0x19
-	b.VRAM[0][0x0910] = 0x19
+
+	// The monochrome/SGB boot ROMs leave the Nintendo logo tile indices in the
+	// BG map. CGB/GBA boot ROMs do not leave that map residue behind.
+	leaveLogoMap := true
+	switch b.model {
+	case types.CGB0, types.CGBABC, types.CGBBC, types.CGBDE, types.AGB:
+		leaveLogoMap = false
+	}
+	if leaveLogoMap {
+		for i := uint8(0); i < 12; i++ {
+			b.data[0x9904+uint16(i)] = i + 1
+			b.VRAM[0][0x0904+uint16(i)] = i + 1
+			b.data[0x9924+uint16(i)] = i + 13
+			b.VRAM[0][0x0924+uint16(i)] = i + 13
+		}
+		if b.model != types.DMG0 {
+			b.data[0x9910] = 0x19
+			b.VRAM[0][0x0910] = 0x19
+		}
+	}
 
 	// wRAM is randomized on boot (not accurate to hardware, but random enough to pass most anti-emu checks).
 	// A fixed seed is used so that headless execution is deterministic across runs and instances.

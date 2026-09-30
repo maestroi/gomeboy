@@ -101,9 +101,25 @@ var ModelIO = map[Model]map[HardwareAddress]interface{}{
 	CGBBC:  {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
 	CGBDE:  {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
 	CGB0:   {DIV: uint16(0x2881)},
+	MGB:    {DIV: uint16(0xABC9)},
 	SGB:    {P1: uint8(0xFF), DIV: uint16(0xD85F), NR52: uint8(0xF0), STAT: uint8(0x85), LY: uint8(0x00)},
 	SGB2:   {DIV: uint16(0xD84F)},
 	AGB:    {DIV: uint16(0x267B)},
+}
+
+// ModelIOCGB contains post-boot I/O timing overrides for cartridges that
+// request CGB mode. The CGB boot ROM takes a different execution path for
+// CGB-compatible cartridges, so DIV/LY at entry differ from the compatibility
+// path measured by Mooneye's DMG-cartridge boot tests.
+//
+// The divider values include the hidden phase bits used by the scheduler.
+// They are pinned by whichboot.gb v1.1's DIV/fine hardware fingerprints.
+var ModelIOCGB = map[Model]map[HardwareAddress]interface{}{
+	CGB0:   {DIV: uint16(0x20A4), LY: uint8(0x90)},
+	CGBABC: {DIV: uint16(0x1E98), LY: uint8(0x90)},
+	CGBBC:  {DIV: uint16(0x1E98), LY: uint8(0x90)},
+	CGBDE:  {DIV: uint16(0x1E98), LY: uint8(0x90)},
+	AGB:    {DIV: uint16(0x1E9C), LY: uint8(0x90)},
 }
 
 // ModelRegisters - model specific starting CPU registers for a DMG-only
