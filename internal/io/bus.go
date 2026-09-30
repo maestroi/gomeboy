@@ -130,7 +130,7 @@ func (b *Bus) syncWRAMEcho() {
 
 func (b *Bus) Map(m types.Model) {
 	b.model = m
-	b.isGBC = m.IsCGB()
+	b.isGBC = m.IsCGB() || m == types.AGB
 	if b.isSGB() {
 		b.initSGB()
 	}
