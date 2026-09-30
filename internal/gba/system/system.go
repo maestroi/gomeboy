@@ -512,7 +512,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 	// edge, advance all hardware directly instead of entering the generic
 	// event-splitting loop. PPU hooks at an edge still observe the exact master
 	// cycle because m.cycles is advanced before PPU.Advance.
-	if !m.irqScheduled && !m.Timers.Active() && cycles <= m.PPU.CyclesUntilEvent() {
+	if !m.irqScheduled && !m.Timers.NeedsAdvance() && cycles <= m.PPU.CyclesUntilEvent() {
 		m.cycles += uint64(cycles)
 		m.Cartridge.Advance(cycles)
 		m.Audio.Advance(cycles)
@@ -528,8 +528,8 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
 			step = untilPPU
 		}
-		timersActive := m.Timers.Active()
-		if timersActive {
+		timersNeedAdvance := m.Timers.NeedsAdvance()
+		if timersNeedAdvance {
 			if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
 				step = untilTimer
 			}
@@ -546,7 +546,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		// end; timer overflow then updates the Direct Sound latch for the next
 		// interval.
 		m.Audio.Advance(step)
-		if timersActive {
+		if timersNeedAdvance {
 			m.Timers.Advance(step)
 		}
 		m.PPU.Advance(step)
