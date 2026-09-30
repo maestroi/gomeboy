@@ -477,7 +477,9 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 		return s.counter
 	}
 	if s.lastTickOverflow {
-		return 0xffff
+		// Overflow events have earlier same-timestamp priority than CPU-visible
+		// timer reads, so the reloaded counter is observable on this edge.
+		return s.counter
 	}
 	return s.counter - 1
 }
