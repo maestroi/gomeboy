@@ -190,16 +190,26 @@ func (t *Timers) writeControl(index int, value uint16) {
 func (t *Timers) applyControl(index int, value uint16) {
 	s := &t.timer[index]
 	oldControl := s.control
-	s.control = value & controlMask(index)
-
+	newControl := value & controlMask(index)
 	oldEnabled := oldControl&controlEnable != 0
-	newEnabled := s.control&controlEnable != 0
+	newEnabled := newControl&controlEnable != 0
+
+	// Materialize time under the old mode before changing enable, cascade, or
+	// prescaler bits. Doing this after assigning the new control loses the final
+	// running tick on disable and applies divisor changes retroactively.
+	if oldEnabled && oldControl != newControl {
+		t.syncCounter(index)
+		t.cancelOverflow(index)
+	}
+
+	s.control = newControl
 	bit := uint8(1 << index)
 	if newEnabled {
 		t.active |= bit
 	} else {
 		t.active &^= bit
 	}
+
 	if !oldEnabled && newEnabled {
 		s.counter = s.reload
 		s.phase = 0
@@ -208,24 +218,18 @@ func (t *Timers) applyControl(index int, value uint16) {
 		return
 	}
 	if oldEnabled && !newEnabled {
-		t.syncCounter(index)
-		t.cancelOverflow(index)
 		s.phase = 0
 		return
 	}
 
-	if newEnabled && oldControl != s.control {
-		t.syncCounter(index)
-		t.cancelOverflow(index)
-	}
-
 	// Keep the accumulated prescaler position valid when software changes the
 	// divisor while the timer remains enabled.
-	if newEnabled && s.control&controlCountUp == 0 {
+	if newEnabled && oldControl != newControl && s.control&controlCountUp == 0 {
 		divisor := prescalers[s.control&controlPrescalerMask]
 		if divisor != 0 {
 			s.phase %= divisor
 		}
+		s.timestampStarted = t.scheduler.Now()
 		t.scheduleOverflow(index)
 	}
 }
