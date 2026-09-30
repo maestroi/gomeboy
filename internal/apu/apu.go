@@ -78,14 +78,14 @@ type APU struct {
 		swallowNextExtraLengthClock bool
 	}
 	channel4 struct {
-		clockShift     uint8
-		divisorCode    uint8
-		widthMask      uint16
-		lfsr           uint16
-		delayedCycles  uint64
-		isTriggered    bool
-		cyclesIncurred uint64
-		frequencyTimer uint64
+		clockShift   uint8
+		divisorCode  uint8
+		widthMask    uint16
+		lfsr         uint16
+		divCounter   uint16
+		divCountdown uint64 // APU T-cycles until the next divisor-stage increment.
+		divRunning   bool
+		divReloaded  bool // the previous divisor increment landed on this exact cycle
 	}
 
 	waveformData [4][]float32
@@ -229,7 +229,6 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			return a.readWaveRAM(i)
 		})
 	}
-	a.channel4.frequencyTimer = 8
 
 	b.RegisterGBCHandler(func() {
 		b.ReserveLazyReader(types.PCM12, func() byte {
@@ -270,11 +269,10 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 				}
 				pcm |= (((a.channel3.waveRAMSampleBuffer) >> shift) & 0x0f) >> a.channel3.volumeCode
 			}
-			sampleLength := uint64(a.channel4.frequencyTimer) + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-			if a.channels[3].enabled && a.s.Cycle()-a.channels[3].enableTime > sampleLength {
+			if a.channels[3].enabled {
+				// PCM34 is an observation point for the free-running noise divider.
+				// Bring the two-stage counter/LFSR state to the read cycle before
+				// exposing the channel output.
 				a.catchupLFSR()
 				pcm |= ((uint8(a.channel4.lfsr) & 1 * a.channels[3].currentVolume) & 0x0f) << 4
 			}
@@ -669,25 +667,12 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.DescheduleEvent(scheduler.APUChannel3)
 				a.s.ScheduleEvent(scheduler.APUChannel3, t+6)
 			case 3: // Noise
+				// Channel 4 is a two-stage timer: NR43's divisor clocks a
+				// free-running counter, and a rising edge of counter bit
+				// clockShift clocks the LFSR. Trigger resets the LFSR but not the
+				// global 1 MHz / 512 kHz alignment used by the divisor stage.
 				a.channel4.lfsr = 0
-				a.lastCatchup = a.s.Cycle() // lfsr is reset so no need to step through
-
-				offset := uint64(4)
-				if a.channel4.isTriggered {
-					offset = 8
-				}
-
-				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_4/channel_4_align.asm
-				if a.s.DoubleSpeed() && (a.s.Cycle()-a.enableTimer)%8 != 0 {
-					offset += 4
-				}
-
-				if a.s.DoubleSpeed() {
-					offset /= 2
-				}
-				a.channel4.delayedCycles = offset
-				a.channel4.isTriggered = true
-				a.channel4.cyclesIncurred = 0
+				a.startNoiseDivider(wasChannelEnabled)
 			}
 		}
 	case types.NR21:
@@ -729,16 +714,18 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		if !a.enabled {
 			return 0
 		}
+		// Settle the old divisor/shift selection first. NR43 then reinterprets
+		// the counter already reached; it does not restart the current divisor
+		// countdown except when the write lands exactly on a reload edge.
 		a.catchupLFSR()
+		onReload := a.channel4.divRunning && a.channel4.divReloaded
+
 		a.channel4.widthMask = 0x4000 | uint16(v&types.Bit3)<<3
 		a.channel4.clockShift = v >> 4
-
 		a.channel4.divisorCode = v & 7
 
-		if a.channel4.divisorCode == 0 {
-			a.channel4.frequencyTimer = 8 << a.channel4.clockShift
-		} else {
-			a.channel4.frequencyTimer = uint64(a.channel4.divisorCode<<4) << a.channel4.clockShift
+		if onReload {
+			a.reloadNoiseDivisorOnEdge()
 		}
 	case types.NR50:
 		if !a.enabled && !a.b.IsBooting() {
@@ -801,19 +788,18 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 			}{}
 			a.channel2 = squareChannel{}
 			a.channel4 = struct {
-				clockShift     uint8
-				divisorCode    uint8
-				widthMask      uint16
-				lfsr           uint16
-				delayedCycles  uint64
-				isTriggered    bool
-				cyclesIncurred uint64
-				frequencyTimer uint64
+				clockShift   uint8
+				divisorCode  uint8
+				widthMask    uint16
+				lfsr         uint16
+				divCounter   uint16
+				divCountdown uint64
+				divRunning   bool
+				divReloaded  bool
 			}{}
 			a.channel3.volumeCode = 4
 			a.lastCatchup = a.s.Cycle()
 			a.channels = [4]channel{}
-			a.channel4.frequencyTimer = 8
 			a.enableTimer = a.s.Cycle()
 		}
 		if !a.b.IsGBC() && v&0x80 > 0 {
@@ -925,46 +911,197 @@ func (a *APU) readWaveRAM(address uint16) uint8 {
 	return a.waveRAM[address-0xff30]
 }
 
-func (a *APU) catchupLFSR() {
-	if a.lastCatchup > a.s.Cycle() {
-		a.lastCatchup = a.s.Cycle()
-	}
-	currentCycle := a.s.Cycle()
-	cyclesPassed := currentCycle - (a.lastCatchup)
+func (a *APU) noiseSpeedScale() uint64 {
 	if a.s.DoubleSpeed() {
-		cyclesPassed >>= 1
+		return 2
 	}
-	cyclesPassed += a.channel4.cyclesIncurred
+	return 1
+}
 
-	if cyclesPassed <= a.channel4.delayedCycles {
-		a.channel4.delayedCycles -= cyclesPassed
+// noiseDivisorIncrement is the first stage of channel 4's frequency timer,
+// expressed in normal-speed T-cycles. Divisor code 0 is the hardware carve-out
+// that ticks twice as fast as code 1.
+func (a *APU) noiseDivisorIncrement() uint64 {
+	if a.channel4.divisorCode == 0 {
+		return 4
+	}
+	return uint64(a.channel4.divisorCode) * 8
+}
+
+func (a *APU) noisePeriod() uint64 {
+	if a.channel4.clockShift >= 14 {
+		return 0
+	}
+	return a.noiseDivisorIncrement() << (a.channel4.clockShift + 1)
+}
+
+func noiseStepsToRise(counter uint16, shift uint8) uint64 {
+	if shift >= 14 {
+		return 0
+	}
+	m := uint32(1) << (shift + 1)
+	t := uint32(1) << shift
+	cc := uint32(counter) & (m - 1)
+	return uint64(((t + m - cc - 1) & (m - 1)) + 1)
+}
+
+func alignForward(now, phase, period uint64) uint64 {
+	if period == 0 {
+		return now
+	}
+	rem := (now + period - phase%period) % period
+	if rem == 0 {
+		return now
+	}
+	return now + period - rem
+}
+
+// noiseTriggerDeadline returns the absolute scheduler cycle of the first LFSR
+// shift after NR44 trigger. A fresh trigger clears the divide-by-two stage and
+// therefore waits half a noise period; a restart waits a full period. The
+// divisor stage is aligned to a 512 kHz grid whose odd 1 MHz ticks are anchored
+// at APU power-on.
+func (a *APU) noiseTriggerDeadline(restarting bool) uint64 {
+	scale := a.noiseSpeedScale()
+	tick := uint64(4) * scale
+	halfGrid := tick * 2
+	now := a.s.Cycle()
+	edge := alignForward(now, a.enableTimer, tick)
+
+	extra := uint64(8) * scale
+	if a.channel4.divisorCode != 0 {
+		noisePhase := a.enableTimer % halfGrid
+		if (edge+halfGrid-noisePhase)%halfGrid != tick {
+			if a.channel4.divisorCode == 1 {
+				extra += tick
+			} else {
+				extra -= tick
+			}
+		}
+	}
+
+	period := a.noisePeriod() * scale
+	deadline := edge + period/2 + extra
+	if restarting {
+		deadline = edge + period + extra
+	}
+
+	// In double speed the CPU write callback occurs one half APU tick after
+	// the hardware data phase that feeds the noise divider. SameSuite's
+	// channel_4_align brackets this by one NOP; preserve that bus/APU phase
+	// relationship instead of delaying the whole divider by a full tick.
+	if a.s.DoubleSpeed() {
+		deadline -= 4
+	}
+	return deadline
+}
+
+func (a *APU) startNoiseDivider(restarting bool) {
+	a.lastCatchup = a.s.Cycle()
+	a.channel4.divRunning = true
+	a.channel4.divReloaded = false
+
+	if a.channel4.clockShift >= 14 {
+		a.channel4.divCounter = 0
+		a.channel4.divCountdown = a.noiseDivisorIncrement()
+		return
+	}
+
+	if restarting {
+		a.channel4.divCounter = uint16(1) << a.channel4.clockShift
+	} else {
+		a.channel4.divCounter = 0
+	}
+
+	deadline := a.noiseTriggerDeadline(restarting)
+	scale := a.noiseSpeedScale()
+	untilRise := (deadline - a.s.Cycle()) / scale
+	steps := noiseStepsToRise(a.channel4.divCounter, a.channel4.clockShift)
+	inc := a.noiseDivisorIncrement()
+	prior := uint64(0)
+	if steps > 1 {
+		prior = (steps - 1) * inc
+	}
+	if untilRise > prior {
+		a.channel4.divCountdown = untilRise - prior
+	} else {
+		a.channel4.divCountdown = inc
+	}
+}
+
+func (a *APU) reloadNoiseDivisorOnEdge() {
+	inc := a.noiseDivisorIncrement()
+	if a.channel4.divisorCode == 0 {
+		a.channel4.divCountdown = inc
+		a.channel4.divReloaded = true
+		return
+	}
+
+	// Non-zero divisors reload only on the 512 kHz grid. Round the new
+	// countdown's absolute target forward to that grid.
+	scale := a.noiseSpeedScale()
+	tick := uint64(4) * scale
+	halfGrid := tick * 2
+	now := a.s.Cycle()
+	target := now + inc*scale
+	noisePhase := a.enableTimer % halfGrid
+	adjust := (tick + noisePhase + halfGrid - target%halfGrid) % halfGrid
+	a.channel4.divCountdown = (target + adjust - now) / scale
+	a.channel4.divReloaded = true
+}
+
+func (a *APU) stepNoiseLFSR() {
+	lfsr := a.channel4.lfsr
+	newHighBit := (lfsr ^ (lfsr >> 1) ^ 1) & 1
+	lfsr >>= 1
+	lfsr = (lfsr &^ a.channel4.widthMask) | (newHighBit * a.channel4.widthMask)
+	a.channel4.lfsr = lfsr
+}
+
+func (a *APU) catchupLFSR() {
+	currentCycle := a.s.Cycle()
+	if a.lastCatchup > currentCycle {
+		a.lastCatchup = currentCycle
+	}
+	if !a.channel4.divRunning {
 		a.lastCatchup = currentCycle
 		return
 	}
 
-	cyclesPassed -= a.channel4.delayedCycles
+	cyclesPassed := currentCycle - a.lastCatchup
+	if a.s.DoubleSpeed() {
+		cyclesPassed >>= 1
+	}
+	if cyclesPassed == 0 {
+		return
+	}
+	a.lastCatchup = currentCycle
+	a.channel4.divReloaded = false
 
-	freqTimer := a.channel4.frequencyTimer
-	steps := (cyclesPassed) / freqTimer
-
-	// step LFSR state
-	if steps > 0 {
-		lfsr := a.channel4.lfsr
-		bitMask := a.channel4.widthMask
-
-		for i := uint64(0); i < steps; i++ {
-			newHighBit := (lfsr ^ (lfsr >> 1) ^ 1) & 1
-			lfsr >>= 1
-			lfsr = (lfsr &^ bitMask) | (newHighBit * bitMask)
+	for cyclesPassed >= a.channel4.divCountdown {
+		cyclesPassed -= a.channel4.divCountdown
+		oldBit := uint16(0)
+		if a.channel4.clockShift < 14 {
+			oldBit = (a.channel4.divCounter >> a.channel4.clockShift) & 1
 		}
+		a.channel4.divCounter = (a.channel4.divCounter + 1) & 0x3fff
+		newBit := uint16(0)
+		if a.channel4.clockShift < 14 {
+			newBit = (a.channel4.divCounter >> a.channel4.clockShift) & 1
+		}
+		a.channel4.divCountdown = a.noiseDivisorIncrement()
 
-		a.channel4.lfsr = lfsr
+		if oldBit == 0 && newBit == 1 && a.channels[3].isEnabled() {
+			a.stepNoiseLFSR()
+		}
 	}
 
-	a.channel4.delayedCycles = 0
-	a.channel4.cyclesIncurred = cyclesPassed % freqTimer
-
-	a.lastCatchup = currentCycle
+	if cyclesPassed > 0 {
+		a.channel4.divCountdown -= cyclesPassed
+		a.channel4.divReloaded = false
+	} else {
+		a.channel4.divReloaded = true
+	}
 }
 
 func (a *APU) Samples() ([]float32, uint32) {

@@ -2104,16 +2104,14 @@
       "suite": "samesuite",
       "collection": "apu/channel_4",
       "name": "channel_4_delay",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_4/channel_4_equivalent_frequencies",
       "suite": "samesuite",
       "collection": "apu/channel_4",
       "name": "channel_4_equivalent_frequencies",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_4/channel_4_extra_length_clocking-cgb0B@CGB0",
@@ -2136,16 +2134,14 @@
       "suite": "samesuite",
       "collection": "apu/channel_4",
       "name": "channel_4_freq_change",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_4/channel_4_frequency_alignment",
       "suite": "samesuite",
       "collection": "apu/channel_4",
       "name": "channel_4_frequency_alignment",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "samesuite/apu/channel_4/channel_4_lfsr",

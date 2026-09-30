@@ -53,14 +53,14 @@ type State struct {
 		SwallowNextExtraLengthClock bool
 	}
 	Channel4 struct {
-		ClockShift     uint8
-		DivisorCode    uint8
-		WidthMask      uint16
-		LFSR           uint16
-		DelayedCycles  uint64
-		IsTriggered    bool
-		CyclesIncurred uint64
-		FrequencyTimer uint64
+		ClockShift   uint8
+		DivisorCode  uint8
+		WidthMask    uint16
+		LFSR         uint16
+		DivCounter   uint16
+		DivCountdown uint64
+		DivRunning   bool
+		DivReloaded  bool
 	}
 
 	Enabled                 bool
@@ -143,10 +143,10 @@ func (a *APU) Snapshot() State {
 	st.Channel4.DivisorCode = a.channel4.divisorCode
 	st.Channel4.WidthMask = a.channel4.widthMask
 	st.Channel4.LFSR = a.channel4.lfsr
-	st.Channel4.DelayedCycles = a.channel4.delayedCycles
-	st.Channel4.IsTriggered = a.channel4.isTriggered
-	st.Channel4.CyclesIncurred = a.channel4.cyclesIncurred
-	st.Channel4.FrequencyTimer = a.channel4.frequencyTimer
+	st.Channel4.DivCounter = a.channel4.divCounter
+	st.Channel4.DivCountdown = a.channel4.divCountdown
+	st.Channel4.DivRunning = a.channel4.divRunning
+	st.Channel4.DivReloaded = a.channel4.divReloaded
 
 	for i := 0; i < 4; i++ {
 		st.Channels[i] = ChannelState{
@@ -248,10 +248,10 @@ func (a *APU) Restore(s State) {
 	a.channel4.divisorCode = s.Channel4.DivisorCode
 	a.channel4.widthMask = s.Channel4.WidthMask
 	a.channel4.lfsr = s.Channel4.LFSR
-	a.channel4.delayedCycles = s.Channel4.DelayedCycles
-	a.channel4.isTriggered = s.Channel4.IsTriggered
-	a.channel4.cyclesIncurred = s.Channel4.CyclesIncurred
-	a.channel4.frequencyTimer = s.Channel4.FrequencyTimer
+	a.channel4.divCounter = s.Channel4.DivCounter
+	a.channel4.divCountdown = s.Channel4.DivCountdown
+	a.channel4.divRunning = s.Channel4.DivRunning
+	a.channel4.divReloaded = s.Channel4.DivReloaded
 
 	for i := 0; i < 4; i++ {
 		a.channels[i].enableTime = s.Channels[i].EnableTime
