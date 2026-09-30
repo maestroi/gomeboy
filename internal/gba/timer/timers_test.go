@@ -216,7 +216,7 @@ func TestCounterForCPUReadSamplesCascadePhase(t *testing.T) {
 	}
 }
 
-func TestTimestampedTimerDisableCommitsOneCycleLater(t *testing.T) {
+func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xff00, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -231,11 +231,11 @@ func TestTimestampedTimerDisableCommitsOneCycleLater(t *testing.T) {
 		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 
-	// The running timer receives exactly the one cycle before the delayed
-	// control event. It is frozen for the rest of this four-cycle interval.
+	// The running timer receives two cycles before the disable completion
+	// event. It is frozen for the rest of this four-cycle interval.
 	timers.Advance(4)
-	if got := timers.Counter(0); got != 0xff04 {
-		t.Fatalf("timer did not stop on delayed control edge: %04x, want ff04", got)
+	if got := timers.Counter(0); got != 0xff05 {
+		t.Fatalf("timer did not stop on delayed control edge: %04x, want ff05", got)
 	}
 	if got := timers.Control(0); got != 0 {
 		t.Fatalf("timer disable event not visible: control=%04x", got)
@@ -243,8 +243,8 @@ func TestTimestampedTimerDisableCommitsOneCycleLater(t *testing.T) {
 	timers.EndWriteBusAccess()
 	timers.EndWriteAccess()
 	timers.Advance(1)
-	if got := timers.Counter(0); got != 0xff04 {
-		t.Fatalf("timer advanced after disable event: %04x, want ff04", got)
+	if got := timers.Counter(0); got != 0xff05 {
+		t.Fatalf("timer advanced after disable event: %04x, want ff05", got)
 	}
 }
 
