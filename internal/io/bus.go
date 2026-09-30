@@ -320,7 +320,7 @@ func (b *Bus) Boot() {
 		}
 	}
 
-	if b.model == types.CGBABC || b.model == types.CGB0 {
+	if b.model.IsCGB() {
 		b.Set(types.VBK, 0xFE)
 
 		if !b.IsGBCCart() {
