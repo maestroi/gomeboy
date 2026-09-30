@@ -31,8 +31,6 @@ var knownFailures = map[string]bool{
 	"channel_4_extra_length_clocking-cgb0B": true,
 	"channel_4_freq_change":                 true,
 	"channel_4_frequency_alignment":         true,
-	"command_mlt_req":                       true,
-	"command_mlt_req_1_incrementing":        true,
 	"strikethrough (DMG)":                   true,
 	"strikethrough (CGB)":                   true,
 }
