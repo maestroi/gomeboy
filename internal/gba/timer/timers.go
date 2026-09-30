@@ -45,6 +45,8 @@ type state struct {
 	control          uint16
 	pendingControl   uint16
 	timestampStarted uint64
+	lastTickAt       uint64
+	lastOverflowAt   uint64
 	overflowEvent    gbascheduler.Handle
 }
 
@@ -277,6 +279,8 @@ func (t *Timers) onOverflow(index int) {
 
 	s.counter = s.reload
 	s.timestampStarted = t.scheduler.Now()
+	s.lastTickAt = t.scheduler.Now()
+	s.lastOverflowAt = t.scheduler.Now()
 	if t.hooks.Overflow != nil {
 		t.hooks.Overflow(index, 1)
 	}
@@ -296,12 +300,15 @@ func (t *Timers) cascade(index int) {
 		return
 	}
 
+	now := t.scheduler.Now()
+	s.lastTickAt = now
 	if s.counter != 0xffff {
 		s.counter++
 		return
 	}
 
 	s.counter = s.reload
+	s.lastOverflowAt = now
 	if t.hooks.Overflow != nil {
 		t.hooks.Overflow(index, 1)
 	}
@@ -330,6 +337,7 @@ func (t *Timers) syncCounter(index int) {
 
 	s.counter += uint16(ticks)
 	s.timestampStarted += ticks * divisor
+	s.lastTickAt = s.timestampStarted
 }
 
 // NeedsAdvance reports whether timer hardware has live state or queued events.
@@ -419,11 +427,34 @@ func (t *Timers) Counter(index int) uint16 {
 	return t.timer[index].counter
 }
 
-// CounterForCPURead returns the counter visible at the current master timestamp.
-// With timestamped bus phases, the caller samples before consuming the current
-// read access, so no synthetic one-tick rollback is needed.
+// CounterForCPURead returns the timer value at GomeBoy's CPU data-sampling
+// phase. The CPU core has already consumed the current instruction-fetch phase
+// before issuing this data callback, so an ordinary timer/cascade tick on that
+// exact timestamp is sampled one phase earlier. An overflow event is different:
+// overflow/reload has already won the same-cycle scheduler priority and is
+// visible to an ordinary timer read.
 func (t *Timers) CounterForCPURead(index int) uint16 {
-	return t.Counter(index)
+	t.syncCounter(index)
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 {
+		return s.counter
+	}
+
+	now := t.scheduler.Now()
+	if index > 0 && s.control&controlCountUp != 0 {
+		if s.lastTickAt != now {
+			return s.counter
+		}
+		if s.lastOverflowAt == now {
+			return 0xffff
+		}
+		return s.counter - 1
+	}
+
+	if s.lastTickAt == now && s.lastOverflowAt != now {
+		return s.counter - 1
+	}
+	return s.counter
 }
 
 // Reload returns the programmed reload latch.
