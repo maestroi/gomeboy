@@ -62,6 +62,7 @@ func (b *Bus) SnapshotInto(dst *State) {
 		WRAM:            b.wRAM,
 		VRAM:            b.VRAM,
 		ButtonState:     b.buttonState,
+		SGB:             b.sgb,
 		IME:             b.ime,
 		BootROMDone:     b.bootROMDone,
 		VRAMBankMask:    b.vRAMBankMask,
