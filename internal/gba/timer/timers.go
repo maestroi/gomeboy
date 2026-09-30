@@ -136,14 +136,8 @@ func (t *Timers) BeginWriteAccess() {
 // TMxCNT_H disable keeps the timer running through the store itself but is
 // visible before the next CPU phase.
 func (t *Timers) EndWriteBusAccess() {
-	if len(t.pendingBusWrites) == 0 {
-		return
-	}
-	pending := t.pendingBusWrites
-	t.pendingBusWrites = t.pendingBusWrites[:0]
-	for _, write := range pending {
-		t.applyControl(write.index, write.value)
-	}
+	// CPU timer writes are timestamped scheduler events. The bus access itself
+	// advances the scheduler and commits any +1-cycle write at the exact edge.
 }
 
 // EndWriteAccess commits control changes whose hardware effect is delayed until
@@ -153,37 +147,23 @@ func (t *Timers) EndWriteAccess() {
 	if !t.deferWrites {
 		return
 	}
-	// A caller that does not model individual bus completion still gets a
-	// deterministic final commit at the instruction edge.
-	t.EndWriteBusAccess()
 	t.deferWrites = false
-	pending := t.pendingWrites
-	t.pendingWrites = t.pendingWrites[:0]
-	for _, write := range pending {
-		switch write.kind {
-		case pendingReload:
-			t.timer[write.index].reload = write.value
-		case pendingControl:
-			t.applyControl(write.index, write.value)
-		}
-	}
 }
 
 func (t *Timers) writeReload(index int, value uint16) {
-	// TMxCNT_L is a reload latch rather than a start/stop control. CPU writes
-	// are visible at the I/O bus phase even while the timer is running, so an
-	// overflow during that same access can reload the newly written value.
-	// Enable/control transitions still commit at the instruction boundary.
+	if t.deferWrites {
+		// Timer register writes become visible one master-clock cycle after the
+		// CPU write. Reload commits before control when both halves of TMxCNT are
+		// written together, but after an overflow on the same timestamp.
+		t.scheduler.Schedule(1, gbascheduler.PriorityNormal, func() {
+			t.timer[index].reload = value
+		})
+		return
+	}
 	t.timer[index].reload = value
 }
 
 func (t *Timers) reloadForWrite(index int) uint16 {
-	for i := len(t.pendingWrites) - 1; i >= 0; i-- {
-		write := t.pendingWrites[i]
-		if write.index == index && write.kind == pendingReload {
-			return write.value
-		}
-	}
 	return t.timer[index].reload
 }
 
@@ -196,14 +176,12 @@ func controlMask(index int) uint16 {
 
 func (t *Timers) writeControl(index int, value uint16) {
 	if t.deferWrites {
-		// A disable is sampled by the I/O write but does not stop the timer until
-		// that transfer completes. Starts and other control changes remain
-		// deferred to the instruction boundary.
-		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
-			t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, kind: pendingControl, value: value})
-			return
-		}
-		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingControl, value: value})
+		// Control takes effect one cycle after the write and after a same-cycle
+		// reload event. Late priority also keeps overflow edges ahead of control
+		// changes at identical timestamps.
+		t.scheduler.Schedule(1, gbascheduler.PriorityLate, func() {
+			t.applyControl(index, value)
+		})
 		return
 	}
 	t.applyControl(index, value)
