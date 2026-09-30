@@ -1,8 +1,6 @@
 package tests
 
 import (
-	"bytes"
-	"crypto/md5"
 	"fmt"
 	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/types"
@@ -218,9 +216,6 @@ func (i *imageTest) Run(t *testing.T) {
 
 		if diff > 0 {
 			i.passed = false
-			if i.name == "cgb-acid-hell" {
-				logImageMismatchStats(t, i.expectedImage, g)
-			}
 			skipKnownFailure(t, i.name)
 			t.Errorf("Test %s failed. Difference: %d", i.name, diff)
 
@@ -375,55 +370,4 @@ func compareImageWithTransform(expectedImage string, gb *gameboy.GameBoy, transf
 	// TODO output results?
 
 	return ImgCompare(img2, img3)
-}
-
-
-func logImageMismatchStats(t *testing.T, expectedImage string, gb *gameboy.GameBoy) {
-	t.Helper()
-	expected, err := imageFromFilename(expectedImage)
-	if err != nil {
-		t.Logf("image mismatch diagnostics: %v", err)
-		return
-	}
-
-	minX, minY, maxX, maxY := 160, 144, -1, -1
-	count := 0
-	samples := make([]string, 0, 24)
-	for y := 0; y < 144; y++ {
-		for x := 0; x < 160; x++ {
-			er, eg, eb, _ := expected.At(x, y).RGBA()
-			ar := uint32(gb.PPU.PreparedFrame[y][x][0]) * 0x101
-			ag := uint32(gb.PPU.PreparedFrame[y][x][1]) * 0x101
-			ab := uint32(gb.PPU.PreparedFrame[y][x][2]) * 0x101
-			if er == ar && eg == ag && eb == ab {
-				continue
-			}
-			count++
-			if x < minX { minX = x }
-			if y < minY { minY = y }
-			if x > maxX { maxX = x }
-			if y > maxY { maxY = y }
-			if len(samples) < cap(samples) {
-				samples = append(samples, fmt.Sprintf("(%d,%d) exp=%04x/%04x/%04x got=%04x/%04x/%04x", x, y, er, eg, eb, ar, ag, ab))
-			}
-		}
-	}
-	t.Logf("cgb-acid-hell mismatch pixels=%d bbox=(%d,%d)-(%d,%d)", count, minX, minY, maxX, maxY)
-	t.Logf("cgb-acid-hell TILE_SEL stats: %+v", gb.PPU.TileSelectDebugStats())
-	st := gb.PPU.Snapshot()
-	t.Logf("cgb-acid-hell final cpu PC=%04x B=%02x C=%02x D=%02x E=%02x LCDC=%02x CGBMode=%v mode=%d ly=%d lx=%d",
-		gb.CPU.PC, gb.CPU.B, gb.CPU.C, gb.CPU.D, gb.CPU.E, gb.Bus.Get(types.LCDC), st.CGBMode, st.Mode, st.LY, st.LX)
-	t.Logf("cgb-acid-hell LD(HL),r stats: %+v", gb.CPU.LDHLDebugStats())
-	sum := md5.Sum(gb.ROM)
-	setup := []byte{0x21, 0x40, 0xff, 0x11, 0xe1, 0x80, 0x01, 0xf3, 0xe3}
-	setupAt := bytes.Index(gb.ROM, setup)
-	t.Logf("cgb-acid-hell ROM md5=%x setup-pattern-at=%04x", sum, setupAt)
-	if setupAt >= 0 {
-		end := setupAt + 96
-		if end > len(gb.ROM) { end = len(gb.ROM) }
-		t.Logf("cgb-acid-hell setup bytes: % x", gb.ROM[setupAt:end])
-	}
-	for _, sample := range samples {
-		t.Log(sample)
-	}
 }
