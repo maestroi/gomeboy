@@ -718,7 +718,6 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		// the counter already reached; it does not restart the current divisor
 		// countdown except when the write lands exactly on a reload edge.
 		a.catchupLFSR()
-		oldInc := a.noiseDivisorIncrement()
 		onReload := a.channel4.divRunning && a.channel4.divReloaded
 
 		a.channel4.widthMask = 0x4000 | uint16(v&types.Bit3)<<3
