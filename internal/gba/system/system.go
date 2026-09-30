@@ -612,7 +612,11 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 	value, cycles := t.m.Bus.Read32(addr, access)
 	if !access.Instruction {
 		if timer, ok := timerCounterIndex(addr); ok {
-			value = value&0xffff0000 | uint32(t.m.Timers.CounterForCPURead(timer))
+			// A 32-bit I/O load samples the live low-half counter value. The
+			// halfword-specific pre-fetch correction belongs to LDRH/Read16; using
+			// it here makes the mGBA count-up loop observe every ordinary tick one
+			// cycle late.
+			value = value&0xffff0000 | uint32(t.m.Timers.Counter(timer))
 		}
 	}
 	if access.Instruction {
