@@ -103,3 +103,36 @@ func TestWaveTriggerReloadAfterExtraLengthClockUsesFF(t *testing.T) {
 		t.Fatal("wave channel not enabled after trigger-side length reload")
 	}
 }
+
+func TestCGBBWaveSwallowsFirstPostTriggerExtraLengthClock(t *testing.T) {
+	a, _, _ := newWaveTimingTestAPU(t, types.CGBBC)
+	a.channels[2].dacEnabled = true
+	a.channels[2].lengthCounter = 1
+	a.channels[2].lengthCounterEnabled = false
+
+	// Trigger while the frame-sequencer phase does not extra-clock length.
+	a.frameSequencerStep = 0
+	a.Write(types.NR34, 0x80)
+	if !a.channels[2].enabled {
+		t.Fatal("wave channel not enabled after trigger")
+	}
+
+	// At the next extra-clock phase, CGB B swallows the first NRx4 length
+	// clock after trigger. The following write consumes the counter.
+	a.frameSequencerStep = 1
+	a.Write(types.NR34, 0x03)
+	if got := a.channels[2].lengthCounter; got != 1 {
+		t.Fatalf("length after first CGB-B post-trigger write = %d, want 1", got)
+	}
+	if !a.channels[2].enabled {
+		t.Fatal("CGB-B wave disabled on swallowed first extra-length clock")
+	}
+
+	a.Write(types.NR34, 0x03)
+	if got := a.channels[2].lengthCounter; got != 0 {
+		t.Fatalf("length after second CGB-B post-trigger write = %d, want 0", got)
+	}
+	if a.channels[2].enabled {
+		t.Fatal("CGB-B wave stayed enabled after second extra-length clock")
+	}
+}
