@@ -54,6 +54,7 @@ type State struct {
 	LastTileDataReadAt    uint64
 	LastTileDataReadPlane uint8
 	LastTileDataReadValid bool
+	TileSelectGlitch      bool
 
 	// Object fetcher
 	ObjectFetcherState ObjectFetcherState
@@ -135,6 +136,7 @@ func (p *PPU) Snapshot() State {
 		LastTileDataReadAt:        p.lastTileDataReadAt,
 		LastTileDataReadPlane:     p.lastTileDataReadPlane,
 		LastTileDataReadValid:     p.lastTileDataReadValid,
+		TileSelectGlitch:          p.tileSelectGlitch,
 		ObjectFetcherState:       p.objectFetcherState,
 		ObjFetcherTileNo:         p.objFetcherTileNo,
 		ObjFetcherTileAttr:       p.objFetcherTileAttr,
@@ -205,6 +207,7 @@ func (p *PPU) Restore(s State) {
 	p.lastTileDataReadAt = s.LastTileDataReadAt
 	p.lastTileDataReadPlane = s.LastTileDataReadPlane
 	p.lastTileDataReadValid = s.LastTileDataReadValid
+	p.tileSelectGlitch = s.TileSelectGlitch
 	p.objectFetcherState = s.ObjectFetcherState
 	p.objFetcherTileNo = s.ObjFetcherTileNo
 	p.objFetcherTileAttr = s.ObjFetcherTileAttr
