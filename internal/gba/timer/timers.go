@@ -180,7 +180,7 @@ func (t *Timers) writeControl(index int, value uint16) {
 		// reload event. Late priority also keeps overflow edges ahead of control
 		// changes at identical timestamps.
 		t.scheduler.Schedule(1, gbascheduler.PriorityLate, func() {
-			t.applyControlWithStartDelay(index, value, 1)
+			t.applyControlWithStartDelay(index, value, 0)
 		})
 		return
 	}
