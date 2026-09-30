@@ -141,8 +141,7 @@
       "collection": "ly",
       "name": "ly-dmgC-cgbBC@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/ly/ly-dmgC-cgbBC@DMG",
@@ -166,8 +165,7 @@
       "collection": "ly",
       "name": "ly-ncmE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/oam/oam-read-cgbE@CGBDE",
