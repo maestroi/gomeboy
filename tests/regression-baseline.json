@@ -1730,8 +1730,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_1",
       "name": "channel_1_extra_length_clocking-cgb0B@CGB0",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGB0"
     },
     {
@@ -1739,8 +1738,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_1",
       "name": "channel_1_extra_length_clocking-cgb0B@CGBBC",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGBBC"
     },
     {
@@ -1906,8 +1904,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_2",
       "name": "channel_2_extra_length_clocking-cgb0B@CGB0",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGB0"
     },
     {
@@ -1915,8 +1912,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_2",
       "name": "channel_2_extra_length_clocking-cgb0B@CGBBC",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGBBC"
     },
     {
@@ -2001,8 +1997,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_3",
       "name": "channel_3_extra_length_clocking-cgb0",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGB0"
     },
     {
@@ -2128,8 +2123,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_4",
       "name": "channel_4_extra_length_clocking-cgb0B@CGB0",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGB0"
     },
     {
@@ -2137,8 +2131,7 @@
       "suite": "samesuite",
       "collection": "apu/channel_4",
       "name": "channel_4_extra_length_clocking-cgb0B@CGBBC",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md",
+      "expected": "pass",
       "model": "CGBBC"
     },
     {
