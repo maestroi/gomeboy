@@ -13,8 +13,6 @@ var knownFailures = map[string]bool{
 	"bully (CGB)":                           true,
 	"tellinglys (DMG)":                      true,
 	"tellinglys (CGB)":                      true,
-	"strikethrough (DMG)":                   true,
-	"strikethrough (CGB)":                   true,
 }
 
 // skipKnownFailure skips the named test when known-failure skipping is
