@@ -176,8 +176,8 @@ func TestCounterForCPUReadSamplesTickPhase(t *testing.T) {
 	if got := timers.Counter(0); got != 0xffff {
 		t.Fatalf("live counter before overflow = %04x, want ffff", got)
 	}
-	if got := timers.CounterForCPURead(0); got != 0xfffe {
-		t.Fatalf("CPU read before overflow = %04x, want pre-tick fffe", got)
+	if got := timers.CounterForCPURead(0); got != 0xffff {
+		t.Fatalf("CPU read before overflow = %04x, want live ffff", got)
 	}
 
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
@@ -201,8 +201,8 @@ func TestCounterForCPUReadSamplesCascadePhase(t *testing.T) {
 	if got := timers.Counter(1); got != 0x1235 {
 		t.Fatalf("live cascaded counter = %04x, want 1235", got)
 	}
-	if got := timers.CounterForCPURead(1); got != 0x1234 {
-		t.Fatalf("CPU read on cascade edge = %04x, want pre-tick 1234", got)
+	if got := timers.CounterForCPURead(1); got != 0x1235 {
+		t.Fatalf("CPU read on cascade edge = %04x, want live 1235", got)
 	}
 
 	// If the cascaded timer itself overflows on that parent edge, the event has
@@ -231,11 +231,11 @@ func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 
-	// The running timer receives two cycles before the disable completion
-	// event. It is frozen for the rest of this four-cycle interval.
+	// The control write commits one cycle later. The timer receives that final
+	// running tick, then remains frozen for the rest of this interval.
 	timers.Advance(4)
-	if got := timers.Counter(0); got != 0xff05 {
-		t.Fatalf("timer did not stop on delayed control edge: %04x, want ff05", got)
+	if got := timers.Counter(0); got != 0xff04 {
+		t.Fatalf("timer did not stop on control event: %04x, want ff04", got)
 	}
 	if got := timers.Control(0); got != 0 {
 		t.Fatalf("timer disable event not visible: control=%04x", got)
@@ -243,8 +243,8 @@ func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 	timers.EndWriteBusAccess()
 	timers.EndWriteAccess()
 	timers.Advance(1)
-	if got := timers.Counter(0); got != 0xff05 {
-		t.Fatalf("timer advanced after disable event: %04x, want ff05", got)
+	if got := timers.Counter(0); got != 0xff04 {
+		t.Fatalf("timer advanced after disable event: %04x, want ff04", got)
 	}
 }
 
