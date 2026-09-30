@@ -171,7 +171,7 @@ func (t *Timers) writeControl(index int, value uint16) {
 // applyControl mirrors the event-based timer model used by mature GBA cores:
 // the prescaler is a free-running divider of the global master clock, so starts
 // and frequency changes align to scheduler time instead of a timer-local phase.
-func (t *Timers) applyControl(index int, value uint16, cpuWrite bool) {
+func (t *Timers) applyControl(index int, value uint16, _ bool) {
 	s := &t.timer[index]
 	oldControl := s.control
 	newControl := value & controlMask(index)
@@ -222,23 +222,10 @@ func (t *Timers) applyControl(index int, value uint16, cpuWrite bool) {
 
 	divisor := uint64(prescalers[newControl&controlPrescalerMask])
 	offset := int64(t.scheduler.Now() % divisor)
-	stoppedCounter := s.counter
 
-	if cpuWrite {
-		// Hardware edge case: when the stopped counter is already FFFF and the
-		// enable event lands exactly on a prescaler tick, that tick can occur
-		// during the reload-load cycle before the new reload value is latched.
-		if stoppedCounter == 0xffff && offset == 0 {
-			t.startChannel(index, 0)
-			return
-		}
-		s.counter = s.reload
-		t.startChannel(index, offset-1)
-		return
-	}
-
-	// Direct/debug writes do not model the CPU bus delay. Keep their historical
-	// immediate-start behavior while still using global prescaler alignment.
+	// In this CPU integration the deferred control event itself lands at the
+	// completion of the MMIO write/load phase. Starting from the global divider
+	// phase here avoids charging the reload-load cycle twice.
 	s.counter = s.reload
 	t.startChannel(index, offset)
 }
