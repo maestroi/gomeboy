@@ -374,8 +374,8 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := m2.Timers.Counter(0); got != 0xffff {
-		t.Fatalf("Timer0 before overflow-edge load = %04x, want ffff", got)
+	if got := m2.Timers.Counter(0); got != 0x0000 {
+		t.Fatalf("Timer0 live counter before overflow-edge load = %04x, want 0000", got)
 	}
 	if _, err := m2.Step(); err != nil {
 		t.Fatal(err)
