@@ -158,14 +158,8 @@ func (t *Timers) writeControl(index int, value uint16) {
 	s.pendingControl = value & controlMask(index)
 	if t.deferWrites {
 		// The CPU core invokes MMIO writes before consuming the transfer's bus
-		// phase. Starts/config changes therefore commit one scheduler cycle later.
-		// A running->disabled edge is sampled after that bus phase, which is one
-		// additional cycle in this callback ordering. This matches the timer IRQ
-		// suite's observed freeze point without changing scheduler-global timing.
+		// phase. Starts/config changes commit one scheduler cycle later.
 		delay := uint64(1)
-		if s.control&controlEnable != 0 && s.pendingControl&controlEnable == 0 {
-			delay = 2
-		}
 		t.scheduler.Schedule(delay, gbascheduler.PriorityLate, func() {
 			t.applyControl(index, s.pendingControl, true)
 		})
