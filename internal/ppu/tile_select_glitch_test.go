@@ -8,7 +8,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 )
 
-func newCGBTileSelectCollisionTest(t *testing.T) (*PPU, *gbio.Bus, *scheduler.Scheduler) {
+func newCGBTileSelectCollisionTest(t *testing.T) (*PPU, *gbio.Bus) {
 	t.Helper()
 
 	rom := make([]byte, 0x8000)
@@ -27,37 +27,57 @@ func newCGBTileSelectCollisionTest(t *testing.T) (*PPU, *gbio.Bus, *scheduler.Sc
 	p.fetcherTileNoAddress = 0x1800
 	p.fetcherTileAttr = 0
 	b.VRAM[0][0x1800] = 0x12
-	b.VRAM[0][0x0120] = 0xaa
-	return p, b, s
+	b.VRAM[0][0x0121] = 0x5a
+	return p, b
 }
 
-func TestCGBTileSelectResetOnBitplaneReadUsesTileIndex(t *testing.T) {
-	p, b, _ := newCGBTileSelectCollisionTest(t)
+func TestCGBTileSelectResetGlitchesNextHighBitplaneFetch(t *testing.T) {
+	p, b := newCGBTileSelectCollisionTest(t)
 
-	p.fetcherState = BGGetTileDataLowT2
+	// T1 selects the high-bitplane fetch. The CPU write becomes visible at
+	// the end of its machine cycle, so the gomeboy scheduler carries this
+	// same-edge conflict into the following high-data fetch step.
+	p.fetcherState = BGGetTileDataHighT1
 	p.stepPixelFetcher()
-	if got := p.fetcherData[0]; got != 0xaa {
-		t.Fatalf("pre-write bitplane = %#02x, want 0xaa", got)
-	}
-
-	// The LCDC write lands on the same scheduler cycle as the completed VRAM
-	// bitplane read. CGB hardware drives the tile-map index onto the data bus
-	// when TILE_SEL changes from 1 to 0 on this edge.
 	b.Write(types.LCDC, 0x80)
-	if got := p.fetcherData[0]; got != 0x12 {
-		t.Fatalf("same-cycle TILE_SEL reset data = %#02x, want tile index 0x12", got)
+	p.stepPixelFetcher()
+
+	if got := p.fetcherData[1]; got != 0x12 {
+		t.Fatalf("TILE_SEL reset high bitplane = %#02x, want tile index 0x12", got)
+	}
+	if p.tileSelectGlitch {
+		t.Fatal("TILE_SEL conflict remained pending after high-bitplane fetch")
 	}
 }
 
-func TestCGBTileSelectResetAfterBitplaneReadKeepsFetchedData(t *testing.T) {
-	p, b, s := newCGBTileSelectCollisionTest(t)
+func TestCGBTileSelectUnchangedKeepsHighBitplaneData(t *testing.T) {
+	p, b := newCGBTileSelectCollisionTest(t)
 
-	p.fetcherState = BGGetTileDataLowT2
+	p.fetcherState = BGGetTileDataHighT1
 	p.stepPixelFetcher()
-	s.Tick(1)
+	b.Write(types.LCDC, 0x90)
+	p.stepPixelFetcher()
 
+	if got := p.fetcherData[1]; got != 0x5a {
+		t.Fatalf("unchanged TILE_SEL high bitplane = %#02x, want VRAM data 0x5a", got)
+	}
+}
+
+func TestCGBTileSelectResetDoesNotSubstituteSignedTileID(t *testing.T) {
+	p, b := newCGBTileSelectCollisionTest(t)
+
+	b.VRAM[0][0x1800] = 0x92
+	b.VRAM[0][0x0921] = 0x66
+
+	p.fetcherState = BGGetTileDataHighT1
+	p.stepPixelFetcher()
 	b.Write(types.LCDC, 0x80)
-	if got := p.fetcherData[0]; got != 0xaa {
-		t.Fatalf("off-cycle TILE_SEL reset data = %#02x, want fetched 0xaa", got)
+	p.stepPixelFetcher()
+
+	if got := p.fetcherData[1]; got != 0x66 {
+		t.Fatalf("signed tile high bitplane = %#02x, want VRAM data 0x66", got)
+	}
+	if p.tileSelectGlitch {
+		t.Fatal("TILE_SEL conflict remained pending after signed-tile high fetch")
 	}
 }
