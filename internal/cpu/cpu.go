@@ -208,7 +208,8 @@ func (c *CPU) skipHALT() {
 	// interrupt wakes HALT. Keep the CPU/DMA clock gated for that wake cycle
 	// while scheduler-driven PPU state continues to advance. Mid-scanline
 	// register writes immediately after HALT observe this phase difference.
-	if !c.hasFrame && c.b.HasInterrupts() && c.b.Model().IsCGB() {
+	pendingLCD := c.b.Get(types.IE)&c.b.Get(types.IF)&io.LCDINT != 0
+	if !c.hasFrame && pendingLCD && c.b.Model().IsCGB() {
 		c.s.Tick(4)
 	}
 
