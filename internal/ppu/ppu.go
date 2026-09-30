@@ -61,23 +61,6 @@ const (
 //   - [Pan Docs](https://gbdev.io/pandocs/Graphics.html)
 //   - [Hacktix GBEDG](https://hacktix.github.io/GBEDG/ppu/)
 //   - [Mooneye test suite](https://github.com/Gekkio/mooneye-test-suite)
-type TileSelectDebugStats struct {
-	SetByState   [16]uint64
-	ResetByState [16]uint64
-	SetReadDelta   [9]uint64
-	ResetReadDelta [9]uint64
-	LCDCWrites      uint64
-	CGBModeWrites   uint64
-	Value80         uint64
-	ValueE1         uint64
-	ValueE3         uint64
-	ValueF3         uint64
-}
-
-func (p *PPU) TileSelectDebugStats() TileSelectDebugStats {
-	return p.tileSelectDebug
-}
-
 type PPU struct {
 	// LCDC register
 	enabled     bool  // LCDC.7 - LCD Enable
@@ -142,11 +125,7 @@ type PPU struct {
 	fetcherTileAttr      uint8                  // Current attributes
 	fetcherData          [2]uint8               // Tile pattern data (low + high bytes)
 	fetcherTileNoAddress uint16                 // VRAM address of current tile map entry
-	lastTileDataReadAt    uint64               // Scheduler cycle of the most recent BG/window bitplane read
-	lastTileDataReadPlane uint8                // Bitplane (0=low, 1=high) read at lastTileDataReadAt
-	lastTileDataReadValid bool                 // Whether lastTileDataReadAt identifies a real fetch
-	tileSelectGlitch      bool                 // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
-	tileSelectDebug       TileSelectDebugStats // temporary diagnostic counters for LCDC.4 timing work
+	tileSelectGlitch bool // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -231,14 +210,6 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 
 	b.ReserveAddress(types.LCDC, func(v byte) byte {
-		p.tileSelectDebug.LCDCWrites++
-		if p.cgbMode { p.tileSelectDebug.CGBModeWrites++ }
-		switch v {
-		case 0x80: p.tileSelectDebug.Value80++
-		case 0xe1: p.tileSelectDebug.ValueE1++
-		case 0xe3: p.tileSelectDebug.ValueE3++
-		case 0xf3: p.tileSelectDebug.ValueF3++
-		}
 		oldLCDC := b.Get(types.LCDC)
 		oldTileSel := oldLCDC&types.Bit4 != 0
 		newTileSel := v&types.Bit4 != 0
@@ -248,26 +219,6 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			// the next high-bitplane fetch, where the tile ID can appear on the
 			// data bus instead of VRAM data.
 			p.tileSelectGlitch = true
-		}
-		if p.cgbMode && oldTileSel != newTileSel {
-			state := int(p.fetcherState)
-			if state >= len(p.tileSelectDebug.SetByState) {
-				state = len(p.tileSelectDebug.SetByState) - 1
-			}
-			delta := 8
-			if p.lastTileDataReadValid && p.s.Cycle() >= p.lastTileDataReadAt {
-				d := p.s.Cycle() - p.lastTileDataReadAt
-				if d < 8 {
-					delta = int(d)
-				}
-			}
-			if newTileSel {
-				p.tileSelectDebug.SetByState[state]++
-				p.tileSelectDebug.SetReadDelta[delta]++
-			} else {
-				p.tileSelectDebug.ResetByState[state]++
-				p.tileSelectDebug.ResetReadDelta[delta]++
-			}
 		}
 		p.winTileMap = v >> 6 & 1
 		p.winEnabled = v&types.Bit5 > 0
@@ -1245,9 +1196,6 @@ func (p *PPU) stepPixelFetcher() {
 		}
 	case BGGetTileDataLowT2:
 		p.fetcherData[0] = p.b.GetVRAM(p.getBGTileAddress(), p.fetcherTileAttr&types.Bit3>>3)
-		p.lastTileDataReadAt = p.s.Cycle()
-		p.lastTileDataReadPlane = 0
-		p.lastTileDataReadValid = true
 	case BGWinGetTileDataHighT2:
 		tileNo := p.b.GetVRAM(p.fetcherTileNoAddress, 0)
 		if p.cgbMode && p.tileSelectGlitch && tileNo&types.Bit7 == 0 {
@@ -1258,9 +1206,6 @@ func (p *PPU) stepPixelFetcher() {
 			p.fetcherData[1] = p.b.GetVRAM(p.getBGTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
 		}
 		p.tileSelectGlitch = false
-		p.lastTileDataReadAt = p.s.Cycle()
-		p.lastTileDataReadPlane = 1
-		p.lastTileDataReadValid = true
 		if p.fetcherTileAttr&types.Bit5 > 0 {
 			p.fetcherData[0] = bits.Reverse8(p.fetcherData[0])
 			p.fetcherData[1] = bits.Reverse8(p.fetcherData[1])
@@ -1316,14 +1261,8 @@ func (p *PPU) stepPixelFetcher() {
 		}
 	case WinGetTileDataLowT1:
 		p.fetcherData[0] = p.b.GetVRAM(p.getWinTileAddress(), p.fetcherTileAttr&types.Bit3>>3)
-		p.lastTileDataReadAt = p.s.Cycle()
-		p.lastTileDataReadPlane = 0
-		p.lastTileDataReadValid = true
 	case WinGetTileDataHighT1:
 		p.fetcherData[1] = p.b.GetVRAM(p.getWinTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
-		p.lastTileDataReadAt = p.s.Cycle()
-		p.lastTileDataReadPlane = 1
-		p.lastTileDataReadValid = true
 		if p.fetcherTileAttr&types.Bit5 > 0 {
 			p.fetcherData[0] = bits.Reverse8(p.fetcherData[0])
 			p.fetcherData[1] = bits.Reverse8(p.fetcherData[1])
@@ -1615,5 +1554,6 @@ func (p *PPU) resetFetcher() {
 	p.winTriggerWx = false
 
 	p.fetcherState = BGWinActivating
+	p.tileSelectGlitch = false
 	p.lx = 0
 }
