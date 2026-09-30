@@ -301,6 +301,12 @@ func (t *Timers) syncCounter(index int) {
 		return
 	}
 	elapsed := t.scheduler.Now() - s.timestampStarted
+	// lastTickOverflow describes the exact master-clock edge on which an
+	// overflow occurred. Once scheduler time moves beyond that edge, CPU reads
+	// must no longer expose the pre-overflow FFFF value.
+	if elapsed != 0 {
+		s.lastTickOverflow = false
+	}
 	divisor := uint64(prescalers[s.control&controlPrescalerMask])
 	total := uint64(s.phase) + elapsed
 	ticks := total / divisor
@@ -461,13 +467,14 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 		}
 		return s.counter - 1
 	}
-	// Reads happen at the I/O data phase, after scheduler time for that bus
-	// access has already been materialized. Only an overflow edge needs the
-	// pre-edge value; ordinary ticks are directly observable here.
+	divisor := prescalers[s.control&controlPrescalerMask]
+	if divisor == 0 || s.phase != 0 {
+		return s.counter
+	}
 	if s.lastTickOverflow {
 		return 0xffff
 	}
-	return s.counter
+	return s.counter - 1
 }
 
 // Reload returns the programmed reload latch.
