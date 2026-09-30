@@ -413,6 +413,7 @@ func logImageMismatchStats(t *testing.T, expectedImage string, gb *gameboy.GameB
 	st := gb.PPU.Snapshot()
 	t.Logf("cgb-acid-hell final cpu PC=%04x B=%02x C=%02x D=%02x E=%02x LCDC=%02x CGBMode=%v mode=%d ly=%d lx=%d",
 		gb.CPU.PC, gb.CPU.B, gb.CPU.C, gb.CPU.D, gb.CPU.E, gb.Bus.Get(types.LCDC), st.CGBMode, st.Mode, st.LY, st.LX)
+	t.Logf("cgb-acid-hell LD(HL),r stats: %+v", gb.CPU.LDHLDebugStats())
 	sum := md5.Sum(gb.ROM)
 	setup := []byte{0x21, 0x40, 0xff, 0x11, 0xe1, 0x80, 0x01, 0xf3, 0xe3}
 	setupAt := bytes.Index(gb.ROM, setup)
