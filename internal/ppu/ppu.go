@@ -1327,13 +1327,14 @@ const (
 func (p *PPU) stepObjectFetcher() {
 	switch p.objectFetcherState {
 	case OBJGetTileNoT1:
-		base := uint16(0xfe00) + uint16(p.fetchingObj.index)*4
-		p.objFetcherTileNo = p.b.PPUReadOAMFetch(base + 2)
-		p.fetchingObj.id = p.objFetcherTileNo
+		// The first OBJ fetch dot advances the interrupted BG/window fetcher;
+		// OAM's tile/attribute word is sampled on the following fetch phase.
 		p.stepPixelFetcher()
 	case OBJGetTileNoT2:
 		base := uint16(0xfe00) + uint16(p.fetchingObj.index)*4
+		p.objFetcherTileNo = p.b.PPUReadOAMFetch(base + 2)
 		p.objFetcherTileAttr = p.b.PPUReadOAMFetch(base + 3)
+		p.fetchingObj.id = p.objFetcherTileNo
 		p.fetchingObj.attr = p.objFetcherTileAttr
 		p.stepPixelFetcher()
 	case OBJGetTileDataLowT2:
