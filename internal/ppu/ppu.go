@@ -125,6 +125,9 @@ type PPU struct {
 	fetcherTileAttr      uint8                  // Current attributes
 	fetcherData          [2]uint8               // Tile pattern data (low + high bytes)
 	fetcherTileNoAddress uint16                 // VRAM address of current tile map entry
+	lastTileDataReadAt   uint64                 // Scheduler cycle of the most recent BG/window bitplane read
+	lastTileDataReadPlane uint8                 // Bitplane (0=low, 1=high) read at lastTileDataReadAt
+	lastTileDataReadValid bool                  // Whether lastTileDataReadAt identifies a real fetch
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -209,6 +212,21 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 
 	b.ReserveAddress(types.LCDC, func(v byte) byte {
+		oldLCDC := b.Get(types.LCDC)
+		oldTileSel := oldLCDC&types.Bit4 != 0
+		newTileSel := v&types.Bit4 != 0
+		if p.cgbMode && oldTileSel && !newTileSel &&
+			p.lastTileDataReadValid && p.lastTileDataReadAt == p.s.Cycle() {
+			// On CGB hardware (except the D-only variant), resetting LCDC.4 on
+			// the same T-cycle as a BG/window bitplane read feeds the tile-map
+			// index onto the pattern-data bus for that plane.
+			tileNo := p.b.GetVRAM(p.fetcherTileNoAddress, 0)
+			if p.lastTileDataReadPlane == 1 && p.fetcherTileAttr&types.Bit5 != 0 {
+				tileNo = bits.Reverse8(tileNo)
+			}
+			p.fetcherData[p.lastTileDataReadPlane] = tileNo
+		}
+
 		p.winTileMap = v >> 6 & 1
 		p.winEnabled = v&types.Bit5 > 0
 		p.addressMode = 1 &^ (v >> 4 & 1)
@@ -1185,8 +1203,14 @@ func (p *PPU) stepPixelFetcher() {
 		}
 	case BGGetTileDataLowT2:
 		p.fetcherData[0] = p.b.GetVRAM(p.getBGTileAddress(), p.fetcherTileAttr&types.Bit3>>3)
+		p.lastTileDataReadAt = p.s.Cycle()
+		p.lastTileDataReadPlane = 0
+		p.lastTileDataReadValid = true
 	case BGWinGetTileDataHighT2:
 		p.fetcherData[1] = p.b.GetVRAM(p.getBGTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
+		p.lastTileDataReadAt = p.s.Cycle()
+		p.lastTileDataReadPlane = 1
+		p.lastTileDataReadValid = true
 		if p.fetcherTileAttr&types.Bit5 > 0 {
 			p.fetcherData[0] = bits.Reverse8(p.fetcherData[0])
 			p.fetcherData[1] = bits.Reverse8(p.fetcherData[1])
@@ -1242,8 +1266,14 @@ func (p *PPU) stepPixelFetcher() {
 		}
 	case WinGetTileDataLowT1:
 		p.fetcherData[0] = p.b.GetVRAM(p.getWinTileAddress(), p.fetcherTileAttr&types.Bit3>>3)
+		p.lastTileDataReadAt = p.s.Cycle()
+		p.lastTileDataReadPlane = 0
+		p.lastTileDataReadValid = true
 	case WinGetTileDataHighT1:
 		p.fetcherData[1] = p.b.GetVRAM(p.getWinTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
+		p.lastTileDataReadAt = p.s.Cycle()
+		p.lastTileDataReadPlane = 1
+		p.lastTileDataReadValid = true
 		if p.fetcherTileAttr&types.Bit5 > 0 {
 			p.fetcherData[0] = bits.Reverse8(p.fetcherData[0])
 			p.fetcherData[1] = bits.Reverse8(p.fetcherData[1])
