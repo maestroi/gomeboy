@@ -204,15 +204,6 @@ func (c *CPU) skipHALT() {
 		c.s.Skip()
 	}
 
-	// CGB hardware leaves the PPU one CPU M-cycle ahead when a STAT/LYC
-	// interrupt wakes HALT. Keep the CPU/DMA clock gated for that wake cycle
-	// while scheduler-driven PPU state continues to advance. Mid-scanline
-	// register writes immediately after HALT observe this phase difference.
-	pendingLCD := c.b.Get(types.IE)&c.b.Get(types.IF)&io.LCDINT != 0
-	if !c.hasFrame && pendingLCD && c.b.Model().IsCGB() {
-		c.s.Tick(4)
-	}
-
 	// if we came out of the halt skip because a frame was rendered
 	// but there are no pending interrupts, then we need to indicate
 	// to the cpu that we should latch back onto halt skipping on the
