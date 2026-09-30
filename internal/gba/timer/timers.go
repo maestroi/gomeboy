@@ -176,11 +176,15 @@ func controlMask(index int) uint16 {
 
 func (t *Timers) writeControl(index int, value uint16) {
 	if t.deferWrites {
-		// Control takes effect one cycle after the write and after a same-cycle
-		// reload event. Late priority also keeps overflow edges ahead of control
-		// changes at identical timestamps.
-		t.scheduler.Schedule(1, gbascheduler.PriorityLate, func() {
-			t.applyControlWithStartDelay(index, value, 0)
+		// Starts/configuration commit one cycle after the write. Keep a running
+		// timer alive through one additional CPU phase when disabling so we can
+		// model the write-completion edge independently from the start-load edge.
+		delay := uint64(1)
+		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
+			delay = 2
+		}
+		t.scheduler.Schedule(delay, gbascheduler.PriorityLate, func() {
+			t.applyControlWithStartDelay(index, value, 1)
 		})
 		return
 	}
