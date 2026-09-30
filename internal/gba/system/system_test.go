@@ -265,10 +265,9 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	//   strh r2, [r1]   ; update reload latch while running
 	//   ldrh r0, [r1]   ; sample the live counter
 	//
-	// Timer reload/control writes are timestamped one cycle after their I/O
-	// write. Overflow has earlier same-cycle priority than reload, so the STRH
-	// edge first reloads FFFF and then installs the new 0000 latch. The next
-	// overflow uses 0000 before the following LDRH samples the preceding phase.
+	// TMxCNT_L is visible at the I/O write phase while control transitions stay
+	// timestamped. Therefore an overflow during the STRH transfer sees the new
+	// 0000 reload latch, matching the suite's bus-phase dependency.
 	code := uint32(bus.IWRAMStart + 0x1a00)
 	m.Bus.Write32(code+0, 0xe5813000, bus.Access{}) // STR  r3,[r1]
 	m.Bus.Write32(code+4, 0xe1c120b0, bus.Access{}) // STRH r2,[r1]
@@ -294,8 +293,8 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CPU.TotalCycles != 2 || m.Timers.Reload(0) != 0 || m.Timers.Counter(0) != 0xffff {
-		t.Fatalf("reload instruction cycles/reload/counter = %d/%04x/%04x, want 2/0000/ffff",
+	if second.CPU.TotalCycles != 2 || m.Timers.Reload(0) != 0 || m.Timers.Counter(0) != 0 {
+		t.Fatalf("reload instruction cycles/reload/counter = %d/%04x/%04x, want 2/0000/0000",
 			second.CPU.TotalCycles, m.Timers.Reload(0), m.Timers.Counter(0))
 	}
 
