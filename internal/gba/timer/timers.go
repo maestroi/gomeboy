@@ -295,32 +295,33 @@ func (t *Timers) syncCounter(index int) {
 	s.timestampStarted = t.scheduler.Now()
 }
 
-// CyclesUntilEvent returns the master-clock distance to the next overflow of
-// any independently clocked timer. Count-up timers are driven by their parent
-// overflow at that same edge and therefore do not need a separate deadline.
+// NeedsAdvance reports whether timer-local master time must be advanced.
+// Pending register-write events count even when no timer is enabled yet.
+func (t *Timers) NeedsAdvance() bool {
+	if t.active != 0 {
+		return true
+	}
+	_, ok := t.scheduler.Next()
+	return ok
+}
+
+// CyclesUntilEvent returns the distance to the next timestamped timer event.
+// Overflow and delayed register writes share the same scheduler, so this is
+// authoritative for both enabled timers and writes that will enable one.
 func (t *Timers) CyclesUntilEvent() uint32 {
-	if t.active == 0 {
+	at, ok := t.scheduler.Next()
+	if !ok {
 		return math.MaxUint32
 	}
-	best := uint64(math.MaxUint32)
-	for index := 0; index < 4; index++ {
-		s := &t.timer[index]
-		if s.control&controlEnable == 0 {
-			continue
-		}
-		if index > 0 && s.control&controlCountUp != 0 {
-			continue
-		}
-
-
-		divisor := uint64(prescalers[s.control&controlPrescalerMask])
-		ticks := uint64(0x10000 - uint32(s.counter))
-		cycles := ticks*divisor - uint64(s.phase)
-		if cycles < best {
-			best = cycles
-		}
+	now := t.scheduler.Now()
+	if at <= now {
+		return 0
 	}
-	return uint32(best)
+	delta := at - now
+	if delta > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(delta)
 }
 
 // Advance advances all enabled timers by GBA master-clock cycles.
