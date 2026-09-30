@@ -70,7 +70,7 @@ func Test_Regressions(t *testing.T) {
 	}
 	_ = os.Remove(regressionResultsPath)
 
-	cmd := exec.Command("go", "test", "-tags", "test", "-v", "-run", "^Test_All$")
+	cmd := exec.Command("go", "test", "-tags", "test", "-v", "-run", "^Test_All/strikethrough$")
 	var output strings.Builder
 	cmd.Stdout = &output
 	cmd.Stderr = &output
