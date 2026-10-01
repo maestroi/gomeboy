@@ -233,41 +233,29 @@ func (t *Timers) applyControl(index int, value uint16) {
 		return
 	}
 
-	// Re-anchor only when a start or clock-source configuration changes.
-	// IRQ-only rewrites keep the existing counter/deadline phase.
+	// Timer prescalers are aligned to the global GBA master-clock grid. A start
+	// or clock-source change therefore re-anchors to the previous divisor edge,
+	// not to a timer-local phase. This mirrors the absolute-deadline model used
+	// by mGBA and keeps results independent of Advance() chunking.
 	oldClock := oldControl & (controlPrescalerMask | controlCountUp)
 	newClock := newControl & (controlPrescalerMask | controlCountUp)
-	if !oldEnabled || oldCascade {
-		t.anchorChannel(index, 0)
-	} else if oldClock != newClock {
-		// The old batched model preserved the accumulated prescaler remainder
-		// when software changed only the divisor. Preserve that hardware phase
-		// in timestamp form instead of snapping the next tick to "now".
-		oldDivisor := uint64(prescalers[oldControl&controlPrescalerMask])
-		remainder := uint64(0)
-		if oldDivisor != 0 && t.scheduler.Now() >= s.lastEvent {
-			remainder = (t.scheduler.Now() - s.lastEvent) % oldDivisor
-		}
-		newDivisor := uint64(prescalers[newControl&controlPrescalerMask])
-		if newDivisor != 0 {
-			remainder %= newDivisor
-		}
-		t.anchorChannel(index, remainder)
+	if !oldEnabled || oldCascade || oldClock != newClock {
+		t.anchorChannel(index)
 	} else {
 		t.scheduleOverflow(index)
 	}
 }
 
-func (t *Timers) anchorChannel(index int, phase uint64) {
+func (t *Timers) anchorChannel(index int) {
 	s := &t.timer[index]
-	// Timer enable starts with phase zero. A live prescaler change may carry a
-	// remainder from the old divider; encode it by moving the last tick
-	// timestamp backwards rather than maintaining a second phase counter.
 	now := t.scheduler.Now()
-	if phase > now {
-		phase = now
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	if divisor == 0 {
+		s.lastEvent = now
+	} else {
+		// All GBA timer divisors are powers of two.
+		s.lastEvent = now & ^(divisor - 1)
 	}
-	s.lastEvent = now - phase
 	t.scheduleOverflow(index)
 }
 
