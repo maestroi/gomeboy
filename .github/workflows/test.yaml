@@ -28,10 +28,8 @@ jobs:
         run: go test -tags test ./tests -run '^$'
       - name: fetch pinned whichboot boot fingerprint ROM
         run: bash tests/fetch-whichboot.sh
-      - name: test library, HLE boot, and agent tooling packages
-        run: go test ./internal/apu ./internal/cpu ./internal/io ./internal/gameboy ./internal/gb/... ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream ./cmd/gb-compat
-      - name: benchmark optimized GBA whole-frame performance
-        run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfGBAStepFrame(Headless|Audio)$' -benchmem -benchtime=250ms -count=2
+      - name: test shared library and agent tooling packages
+        run: go test ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream
 
   test_gba:
     runs-on: ubuntu-latest
@@ -50,6 +48,8 @@ jobs:
         run: go mod download
       - name: test GBA core packages
         run: go test ./internal/gba/...
+      - name: benchmark optimized GBA whole-frame performance
+        run: go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfGBAStepFrame(Headless|Audio)$' -benchmem -benchtime=250ms -count=2
       - name: fetch pinned @rkanoid compatibility ROM
         run: bash tests/gba/compatibility/fetch-rkanoid.sh
       - name: build project multi-hardware compatibility ROM
@@ -128,7 +128,7 @@ jobs:
           GOMEBOY_MEMORY_STABILITY_FRAMES: '400'
         run: go test -gcflags=all=-d=checkptr=2 ./internal/gba/... ./internal/gb/... ./internal/apu ./internal/io ./internal/gameboy ./pkg/gomeboy/... ./pkg/memprobe ./cmd/memprobe ./cmd/gomeboy-stream ./cmd/gb-compat
 
-  test_regressions:
+  test_gb_gbc:
     runs-on: ubuntu-latest
 
     permissions:
@@ -145,14 +145,22 @@ jobs:
         run: go mod download
       - name: extract bundled GB/GBC test ROMs
         run: go test -tags test ./tests -run '^$'
+      - name: fetch pinned whichboot boot fingerprint ROM
+        run: bash tests/fetch-whichboot.sh
+      - name: test GB/GBC core packages
+        run: go test ./internal/apu ./internal/cpu ./internal/io ./internal/gameboy ./internal/gb/... ./cmd/gb-compat
       - name: fetch pinned AGE conformance corpus
         run: bash tests/fetch-age.sh
       - name: build pinned GB/GBC compatibility fixtures
         run: bash tests/gb/compatibility/build-fixtures.sh
       - name: run GB/GBC compatibility smoke
         run: go run ./cmd/gb-compat -manifest tests/gb/compatibility/smoke.json -output gb-gbc-compatibility.json -markdown gb-gbc-compatibility.md -commit "$GITHUB_SHA"
-      - name: tests
+      - name: run GB/GBC conformance regression gate
         run: go test -tags test -v ./tests -run Test_Regressions
+      - name: benchmark GB/GBC whole-frame performance
+        run: |
+          set -o pipefail
+          go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfStepFrame(Audio|Headless(NoVideo)?)$' -benchmem -benchtime=250ms -count=2 | tee gb-gbc-performance.txt
       - name: upload GB/GBC regression report
         if: always()
         uses: actions/upload-artifact@v6
@@ -164,6 +172,7 @@ jobs:
             tests/external-corpus.json
             gb-gbc-compatibility.json
             gb-gbc-compatibility.md
+            gb-gbc-performance.txt
           if-no-files-found: ignore
 
   test_desktop_glfw:
