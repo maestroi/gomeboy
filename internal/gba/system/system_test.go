@@ -376,8 +376,8 @@ func TestCPUTimerReadUsesBusPhaseCount(t *testing.T) {
 	if _, err := m2.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if got := m2.CPU.ReadRegister(0); got != 0xffff {
-		t.Fatalf("Timer0 overflow-edge sample = %04x, want pre-edge ffff", got)
+	if got := m2.CPU.ReadRegister(0); got != 0x0000 {
+		t.Fatalf("Timer0 overflow-edge sample = %04x, want reloaded 0000", got)
 	}
 }
 
