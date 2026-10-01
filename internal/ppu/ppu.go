@@ -790,13 +790,6 @@ func (p *PPU) handleVisualLine() {
 
 		if !p.s.DoubleSpeed() {
 			p.mode, p.modeToInt = ModeHBlank, ModeHBlank
-			// On CGB hardware the Mode-0 STAT line rises on the same dot
-			// that Mode 3 ends. Delaying the edge until EnterHBlank makes
-			// HALT observe HBlank one dot late even though STAT already
-			// reports Mode 0.
-			if p.cgbMode {
-				p.statUpdate()
-			}
 		}
 
 		p.lineState = EnterHBlank
