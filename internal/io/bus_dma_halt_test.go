@@ -141,3 +141,64 @@ func TestMGBHaltedDMAUsesExactInFlightOAMByte(t *testing.T) {
 		t.Errorf("odd-index frozen DMA X/flags = %#02x, want 0x9f", got)
 	}
 }
+
+func TestActiveOAMDMABlocksMode2BusRefresh(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.DMGABC)
+
+	b.dmaActive = true
+	if !b.PPUOAMScanBlockedByDMA() {
+		t.Fatal("active OAM DMA did not block Mode 2 bus refresh")
+	}
+
+	b.dmaActive = false
+	if b.PPUOAMScanBlockedByDMA() {
+		t.Fatal("inactive OAM DMA still blocked Mode 2 bus refresh")
+	}
+}
+
+func TestMGBHaltedDMAKeepsMode2BusReadable(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.MGB)
+
+	b.dmaActive = true
+	s.Halted = true
+	if b.PPUOAMScanBlockedByDMA() {
+		t.Fatal("MGB halted-DMA profile unexpectedly blocked Mode 2 bus refresh")
+	}
+}
+
+func TestActiveOAMDMAExposesCurrentWordToObjectFetcher(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := NewBus(s, make([]byte, 0x8000))
+	b.Map(types.DMGABC)
+
+	b.dmaActive = true
+
+	// While the next destination is odd, the PPU sees that destination's word.
+	b.dmaDestination = 0xfe03
+	b.data[0xfe02] = 0x12
+	b.data[0xfe03] = 0x34
+	if got := b.PPUReadOAMFetch(0xfe42); got != 0x12 {
+		t.Fatalf("Mode 3 tile byte during DMA = %#02x, want 0x12", got)
+	}
+	if got := b.PPUReadOAMFetch(0xfe43); got != 0x34 {
+		t.Fatalf("Mode 3 attribute byte during DMA = %#02x, want 0x34", got)
+	}
+
+	// Crossing to an even destination advances the exposed 16-bit OAM word.
+	// This boundary is what strikethrough.gb relies on while fetching its OBJ.
+	b.dmaDestination = 0xfe04
+	b.data[0xfe02] = 0xaa
+	b.data[0xfe03] = 0xbb
+	b.data[0xfe04] = 0x56
+	b.data[0xfe05] = 0x78
+	if got := b.PPUReadOAMFetch(0xfe42); got != 0x56 {
+		t.Fatalf("Mode 3 tile byte after DMA word advance = %#02x, want 0x56", got)
+	}
+	if got := b.PPUReadOAMFetch(0xfe43); got != 0x78 {
+		t.Fatalf("Mode 3 attribute byte after DMA word advance = %#02x, want 0x78", got)
+	}
+}
