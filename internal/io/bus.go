@@ -249,6 +249,12 @@ func (b *Bus) Map(m types.Model) {
 		})
 		b.ReserveAddress(types.FF72, func(v byte) byte { return v })
 		b.ReserveAddress(types.FF73, func(v byte) byte { return v })
+		// FF74 exists only in native CGB mode. Its power-on value is 0x00 and
+		// all eight bits are read/write. In DMG compatibility mode the address
+		// remains unhandled, so the generic IO path keeps it locked at 0xff.
+		if b.IsGBCCart() {
+			b.ReserveAddress(types.FF74, func(v byte) byte { return v })
+		}
 		b.ReserveAddress(types.FF75, func(v byte) byte { return v&0x70 | 0x8F })
 		b.Set(types.FF75, 0x8F)
 
@@ -709,6 +715,44 @@ func (b *Bus) PPUReadOAM(address uint16) byte {
 		return (old | incoming) & 0xfc
 	}
 	return next | incoming
+}
+
+// PPUOAMScanBlockedByDMA reports whether active OAM DMA prevents Mode 2 from
+// refreshing its Y/X bus latches. The PPU keeps the previous latch values in
+// that case rather than sampling an artificial 0xff byte. The measured MGB
+// halted-DMA path remains readable through PPUReadOAM.
+func (b *Bus) PPUOAMScanBlockedByDMA() bool {
+	return b.dmaActive && !(b.model == types.MGB && b.s.Halted)
+}
+
+// PPUReadOAMScan returns an OAM byte for a Mode 2 bus-latch refresh. Callers
+// must first check PPUOAMScanBlockedByDMA; while blocked, hardware retains the
+// existing Mode 2 bus values instead of performing a new OAM read.
+func (b *Bus) PPUReadOAMScan(address uint16) byte {
+	return b.PPUReadOAM(address)
+}
+
+// PPUReadOAMFetch returns the byte visible when Mode 3 fetches an object's
+// tile/attribute word. During active OAM DMA, the PPU sees the 16-bit OAM word
+// currently being updated by DMA rather than the selected object's stored word.
+// The requested address is used only for its low/high-byte parity.
+func (b *Bus) PPUReadOAMFetch(address uint16) byte {
+	if !b.dmaActive || (b.model == types.MGB && b.s.Halted) {
+		return b.PPUReadOAM(address)
+	}
+
+	// dmaDestination points at the next byte to be copied. The PPU-facing OAM
+	// bus is word-oriented and advances to the word containing that destination;
+	// crossing an even-byte boundary therefore exposes the next word immediately,
+	// rather than the word containing the byte that was just written.
+	if b.dmaDestination >= 0xfea0 {
+		return b.PPUReadOAM(address)
+	}
+	wordBase := b.dmaDestination &^ 1
+	if wordBase < 0xfe00 {
+		return 0xff
+	}
+	return b.data[wordBase+address&1]
 }
 
 // startDMATransfer initiates a DMA transfer.
