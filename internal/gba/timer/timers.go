@@ -460,14 +460,30 @@ func (t *Timers) Counter(index int) uint16 {
 	return t.timer[index].counter
 }
 
-// CounterForCPURead returns the timer value visible at the start of the CPU
-// I/O data phase. timedMemory asks for this value before consuming the read's
-// bus cycles, which already places the sample at the hardware-visible edge.
-// Materialize to the current timer timestamp and do not subtract a synthetic
-// "pre-tick" value; doing so makes exact-edge reads one count late.
+// CounterForCPURead returns the timer value at GomeBoy's CPU data-sampling
+// phase. The CPU core has already consumed the current instruction-fetch phase
+// before issuing this data callback, so an ordinary timer tick on that exact
+// timestamp is sampled one phase earlier. Cascaded timers are already committed
+// by their parent's explicit overflow event.
 func (t *Timers) CounterForCPURead(index int) uint16 {
 	t.syncCounter(index)
-	return t.timer[index].counter
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 {
+		return s.counter
+	}
+
+	now := t.scheduler.Now()
+	if index > 0 && s.control&controlCountUp != 0 {
+		return s.counter
+	}
+
+	if s.lastTickAt == now {
+		if s.lastOverflowAt == now {
+			return 0xffff
+		}
+		return s.counter - 1
+	}
+	return s.counter
 }
 
 // Reload returns the programmed reload latch.
