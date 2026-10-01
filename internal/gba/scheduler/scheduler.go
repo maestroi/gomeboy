@@ -129,6 +129,18 @@ func (s *Scheduler) AdvanceTo(target uint64) {
 // Advance moves forward by cycles and dispatches due events.
 func (s *Scheduler) Advance(cycles uint64) { s.AdvanceTo(s.now + cycles) }
 
+// Reset clears queued events and restores the master timestamp. It is intended
+// for machine-state restoration, where peripheral callbacks are rebuilt from
+// their serialized logical deadlines.
+func (s *Scheduler) Reset(now uint64) {
+	s.now = now
+	s.nextHandle = 0
+	s.nextSeq = 0
+	s.events = s.events[:0]
+	s.byHandle = make(map[Handle]*event)
+	heap.Init(&s.events)
+}
+
 func (s *Scheduler) discardCanceled() {
 	for len(s.events) != 0 && s.events[0].canceled {
 		heap.Pop(&s.events)
