@@ -137,9 +137,9 @@ func (t *Timers) EndWriteBusAccess() {
 	}
 }
 
-// EndWriteAccess commits starts and other control changes at the instruction
-// boundary. This preserves the CPU-visible timing that already scores best on
-// the pinned suite while still representing the effect as a scheduler event.
+// EndWriteAccess flushes any timer control write not already committed by the
+// CPU bus adapter. Normal CPU writes commit at EndWriteBusAccess, the transfer
+// completion edge, rather than waiting for the later instruction boundary.
 func (t *Timers) EndWriteAccess() {
 	if !t.deferWrites {
 		return
@@ -182,14 +182,11 @@ func controlMask(index int) uint16 {
 func (t *Timers) writeControl(index int, value uint16) {
 	value &= controlMask(index)
 	if t.deferWrites {
-		// Disables remain active through the store's bus cycles and become
-		// visible at transfer completion. Starts/config changes commit at the
-		// instruction boundary, matching the established CPU timer phase.
-		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
-			t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, value: value})
-			return
-		}
-		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, value: value})
+		// Timer control is sampled by the I/O transfer and becomes effective at
+		// that transfer's completion edge. Keeping enables/config changes until
+		// the architectural instruction boundary starts TMx one CPU phase late
+		// for STR/STRH sequences in the hardware timer suite.
+		t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, value: value})
 		return
 	}
 	t.applyControl(index, value)
