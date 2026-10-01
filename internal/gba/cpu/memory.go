@@ -92,27 +92,31 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		// opcode fetch advances hardware time. Re-sample before executing the
 		// fetched opcode so that fetch-phase IRQ edges do not gain a whole extra
 		// instruction of latency.
-		if kind, ok := c.pendingInterrupt(); ok {
-			if err := c.EnterException(kind, c.pc+4); err != nil {
-				return StepResult{FetchCycles: fetch}, err
+		if fetch > 1 {
+			if kind, ok := c.pendingInterrupt(); ok {
+				if err := c.EnterException(kind, c.pc+4); err != nil {
+					return StepResult{FetchCycles: fetch}, err
+				}
+				return StepResult{
+					FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
+					PipelineFlush: true, ExceptionTaken: true, Exception: kind,
+				}, nil
 			}
-			return StepResult{
-				FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
-				PipelineFlush: true, ExceptionTaken: true, Exception: kind,
-			}, nil
 		}
 		exec, err = c.ExecuteThumbWithMemory(instruction, mem)
 	} else {
 		var instruction uint32
 		instruction, fetch = mem.Read32(c.pc, access)
-		if kind, ok := c.pendingInterrupt(); ok {
-			if err := c.EnterException(kind, c.pc+4); err != nil {
-				return StepResult{FetchCycles: fetch}, err
+		if fetch > 1 {
+			if kind, ok := c.pendingInterrupt(); ok {
+				if err := c.EnterException(kind, c.pc+4); err != nil {
+					return StepResult{FetchCycles: fetch}, err
+				}
+				return StepResult{
+					FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
+					PipelineFlush: true, ExceptionTaken: true, Exception: kind,
+				}, nil
 			}
-			return StepResult{
-				FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
-				PipelineFlush: true, ExceptionTaken: true, Exception: kind,
-			}, nil
 		}
 		exec, err = c.ExecuteARMWithMemory(instruction, mem)
 	}
