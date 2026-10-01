@@ -483,13 +483,11 @@ func (t *Timers) CounterForCPURead(index int) uint16 {
 
 	now := t.scheduler.Now()
 	if index > 0 && s.control&controlCountUp != 0 {
-		if s.lastTickAt != now {
-			return s.counter
-		}
-		if s.lastOverflowAt == now {
-			return 0xffff
-		}
-		return s.counter - 1
+		// Count-up is clocked by the parent timer's overflow event. By the time
+		// the CPU data phase samples TMxCNT_L, that cascade event has committed,
+		// so expose the post-cascade counter (including a child's reload on its
+		// own overflow) instead of manufacturing a pre-edge value.
+		return s.counter
 	}
 
 	if s.lastTickAt == now {
