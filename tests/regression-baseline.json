@@ -829,8 +829,7 @@
       "collection": "bully",
       "name": "bully (CGB)",
       "model": "CGB",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "bully/bully/bully (DMG)",
