@@ -233,29 +233,36 @@ func (t *Timers) applyControl(index int, value uint16) {
 		return
 	}
 
-	// Timer prescalers are aligned to the global GBA master-clock grid. A start
-	// or clock-source change therefore re-anchors to the previous divisor edge,
-	// not to a timer-local phase. This mirrors the absolute-deadline model used
-	// by mGBA and keeps results independent of Advance() chunking.
+	// Re-anchor only when a start or clock-source configuration changes.
+	// IRQ-only rewrites keep the existing counter/deadline phase.
 	oldClock := oldControl & (controlPrescalerMask | controlCountUp)
 	newClock := newControl & (controlPrescalerMask | controlCountUp)
-	if !oldEnabled || oldCascade || oldClock != newClock {
-		t.anchorChannel(index)
+	if !oldEnabled || oldCascade {
+		t.anchorChannel(index, 0)
+	} else if oldClock != newClock {
+		// Preserve the accumulated prescaler remainder when changing divisors.
+		oldDivisor := uint64(prescalers[oldControl&controlPrescalerMask])
+		remainder := uint64(0)
+		if oldDivisor != 0 && t.scheduler.Now() >= s.lastEvent {
+			remainder = (t.scheduler.Now() - s.lastEvent) % oldDivisor
+		}
+		newDivisor := uint64(prescalers[newControl&controlPrescalerMask])
+		if newDivisor != 0 {
+			remainder %= newDivisor
+		}
+		t.anchorChannel(index, remainder)
 	} else {
 		t.scheduleOverflow(index)
 	}
 }
 
-func (t *Timers) anchorChannel(index int) {
+func (t *Timers) anchorChannel(index int, phase uint64) {
 	s := &t.timer[index]
 	now := t.scheduler.Now()
-	divisor := uint64(prescalers[s.control&controlPrescalerMask])
-	if divisor == 0 {
-		s.lastEvent = now
-	} else {
-		// All GBA timer divisors are powers of two.
-		s.lastEvent = now & ^(divisor - 1)
+	if phase > now {
+		phase = now
 	}
+	s.lastEvent = now - phase
 	t.scheduleOverflow(index)
 }
 
