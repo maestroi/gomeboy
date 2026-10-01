@@ -18,7 +18,6 @@ import (
 
 const gbaAddressSpaceSize uint64 = 1 << 32
 
-var errGBAStateUnsupported = errors.New("gomeboy: GBA save states are not implemented yet")
 
 type gbaCore struct {
 	machine   *system.Machine
@@ -245,10 +244,6 @@ func (c *gbaCore) Reset() error {
 	return nil
 }
 
-func (c *gbaCore) SaveState() ([]byte, error) { return nil, errGBAStateUnsupported }
-func (c *gbaCore) LoadState([]byte) error      { return errGBAStateUnsupported }
-func (c *gbaCore) QuickSave() error            { return errGBAStateUnsupported }
-func (c *gbaCore) QuickLoad() error            { return errGBAStateUnsupported }
 func (c *gbaCore) Close() error                { return c.flushSave() }
 
 func gbaSaveName(name string) string {
@@ -354,10 +349,6 @@ func (c *gbaCore) flushSave() error {
 	}
 	return nil
 }
-
-func (c *gbaCore) NewCheckpoint() any { return &struct{}{} }
-func (c *gbaCore) CheckpointInto(any) {}
-func (c *gbaCore) RestoreCheckpoint(any) error { return errGBAStateUnsupported }
 
 func (c *gbaCore) Press(button Button) {
 	if c.machine == nil {
