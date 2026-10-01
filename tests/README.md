@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/92/?scale=100&title=passing%20232,%20failing%2020&width=500)
+![progress](https://progress-bar.xyz/85/?scale=100&title=passing%20267,%20failing%2044&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 232 |
-| XFAIL | 20 |
+| PASS | 267 |
+| XFAIL | 44 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -17,6 +17,8 @@ This report is generated from the structured per-test result set used by CI and 
 <hr/>
 GomeBoy is automatically tested against the following test suites:
 
+* **[AGE test roms](https://github.com/c-sp/age-test-roms)**  
+  <sup>by [c-sp](https://github.com/c-sp); CI uses AGE revision cd3f654d13bf from the pinned game-boy-test-roms v7.0 release.</sup>
 * **[Blargg's test roms](https://github.com/retrio/gb-test-roms)**  
   <sup>by [Shay Green (a.k.a. Blargg)](http://www.slack.net/~ant/) </sup>
 * **[Bully](https://github.com/Hacktix/BullyGB)**, 
@@ -34,6 +36,8 @@ GomeBoy is automatically tested against the following test suites:
 * **[SameSuite](https://github.com/LIJI32/SameSuite)**  
   <sup>by [Lior Halphon](https://github.com/LIJI32) </sup>
 
+External-suite integration status, including pinned but not-yet-run candidates, is tracked in tests/external-corpus.json.
+
 Different test suites use different pass/fail criteria. Some may write output to the serial port such as
 [Blargg's test roms](https://github.com/retrio/gb-test-roms), others may write to the CPU registers, such as 
 [Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite) and [SameSuite](https://github.com/LIJI32/SameSuite).
@@ -46,11 +50,12 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
+| age | 20% | 11 | 44 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
-| mooneye | 99% | 113 | 1 | 114 |
-| samesuite | 75% | 59 | 19 | 78 |
+| mooneye | 100% | 114 | 0 | 114 |
+| samesuite | 100% | 82 | 0 | 82 |
 | scribbltests | 100% | 5 | 0 | 5 |
 | strikethrough | 100% | 2 | 0 | 2 |
 
@@ -69,6 +74,99 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | dmg-acid2 (CGB) | pass | pass | pass |  |
 | dmg-acid2 (DMG) | pass | pass | pass |  |
+
+### age
+
+#### halt
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| ei-halt-dmgC-cgbBCE@CGBBC | pass | pass | pass |  |
+| ei-halt-dmgC-cgbBCE@CGBDE | pass | pass | pass |  |
+| ei-halt-dmgC-cgbBCE@DMG | pass | pass | pass |  |
+| halt-m0-interrupt-dmgC-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| halt-m0-interrupt-dmgC-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| halt-m0-interrupt-dmgC-cgbBCE@DMG | pass | pass | pass |  |
+| halt-prefetch-dmgC-cgbBCE@CGBBC | pass | pass | pass |  |
+| halt-prefetch-dmgC-cgbBCE@CGBDE | pass | pass | pass |  |
+| halt-prefetch-dmgC-cgbBCE@DMG | pass | pass | pass |  |
+
+#### lcd-align-ly
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| lcd-align-ly-cgbBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| lcd-align-ly-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+
+#### ly
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| ly-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| ly-dmgC-cgbBC@CGBBC | pass | pass | pass |  |
+| ly-dmgC-cgbBC@DMG | pass | pass | pass |  |
+| ly-ncmBC@CGBBC | pass | pass | pass |  |
+| ly-ncmE@CGBDE | pass | pass | pass |  |
+
+#### oam
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| oam-read-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-read-dmgC-cgbBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-read-dmgC-cgbBC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-read-ncmBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-read-ncmE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-write-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-write-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-write-dmgC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-write-ncmBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-write-ncmBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+
+#### stat-interrupt
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| stat-int-dmgC-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-int-dmgC-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-int-dmgC-cgbBCE@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-int-ncmBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-int-ncmBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+
+#### stat-mode-sprites
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| stat-mode-sprites-dmgC-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-sprites-dmgC-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-sprites-dmgC-cgbBCE@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-sprites-ds-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-sprites-ds-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+
+#### stat-mode-window
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| stat-mode-window-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-dmgC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-ds-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-ds-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-ncmBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-ncmBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+
+#### stat-mode
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| stat-mode-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-dmgC-cgbBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-dmgC-cgbBC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-ds-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-ds-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-ncmBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-ncmE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+
+#### vram
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| vram-read-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| vram-read-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| vram-read-dmgC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| vram-read-ncmBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| vram-read-ncmBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
 
 ### blarrg
 
@@ -233,7 +331,7 @@ is compared against a reference image from a known good emulator.
 #### madness
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| mgb_oam_dma_halt_sprites | fail | fail | xfail | Known failure imported from tests/README.md |
+| mgb_oam_dma_halt_sprites | pass | pass | pass |  |
 
 #### manual-only
 | Test | Expected | Actual | Status | Context |
@@ -347,20 +445,22 @@ is compared against a reference image from a known good emulator.
 | channel_1_delay | pass | pass | pass |  |
 | channel_1_duty | pass | pass | pass |  |
 | channel_1_duty_delay | pass | pass | pass |  |
-| channel_1_extra_length_clocking-cgb0B | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_1_extra_length_clocking-cgb0B@CGB0 | pass | pass | pass |  |
+| channel_1_extra_length_clocking-cgb0B@CGBBC | pass | pass | pass |  |
 | channel_1_freq_change | pass | pass | pass |  |
-| channel_1_freq_change_timing-A | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_1_freq_change_timing-cgb0BC | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_1_freq_change_timing-cgbDE | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_1_freq_change_timing-A | pass | pass | pass |  |
+| channel_1_freq_change_timing-cgb0BC@CGB0 | pass | pass | pass |  |
+| channel_1_freq_change_timing-cgb0BC@CGBBC | pass | pass | pass |  |
+| channel_1_freq_change_timing-cgbDE | pass | pass | pass |  |
 | channel_1_nrx2_glitch | pass | pass | pass |  |
 | channel_1_nrx2_speed_change | pass | pass | pass |  |
 | channel_1_restart | pass | pass | pass |  |
 | channel_1_restart_nrx2_glitch | pass | pass | pass |  |
 | channel_1_stop_div | pass | pass | pass |  |
 | channel_1_stop_restart | pass | pass | pass |  |
-| channel_1_sweep | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_1_sweep_restart | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_1_sweep_restart_2 | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_1_sweep | pass | pass | pass |  |
+| channel_1_sweep_restart | pass | pass | pass |  |
+| channel_1_sweep_restart_2 | pass | pass | pass |  |
 | channel_1_volume | pass | pass | pass |  |
 | channel_1_volume_div | pass | pass | pass |  |
 
@@ -372,7 +472,8 @@ is compared against a reference image from a known good emulator.
 | channel_2_delay | pass | pass | pass |  |
 | channel_2_duty | pass | pass | pass |  |
 | channel_2_duty_delay | pass | pass | pass |  |
-| channel_2_extra_length_clocking-cgb0B | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_2_extra_length_clocking-cgb0B@CGB0 | pass | pass | pass |  |
+| channel_2_extra_length_clocking-cgb0B@CGBBC | pass | pass | pass |  |
 | channel_2_freq_change | pass | pass | pass |  |
 | channel_2_nrx2_glitch | pass | pass | pass |  |
 | channel_2_nrx2_speed_change | pass | pass | pass |  |
@@ -388,11 +489,11 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | channel_3_and_glitch | pass | pass | pass |  |
 | channel_3_delay | pass | pass | pass |  |
-| channel_3_extra_length_clocking-cgb0 | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_3_extra_length_clocking-cgbB | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_3_extra_length_clocking-cgb0 | pass | pass | pass |  |
+| channel_3_extra_length_clocking-cgbB | pass | pass | pass |  |
 | channel_3_first_sample | pass | pass | pass |  |
-| channel_3_freq_change_delay | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_3_restart_delay | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_3_freq_change_delay | pass | pass | pass |  |
+| channel_3_restart_delay | pass | pass | pass |  |
 | channel_3_restart_during_delay | pass | pass | pass |  |
 | channel_3_restart_stop_delay | pass | pass | pass |  |
 | channel_3_shift_delay | pass | pass | pass |  |
@@ -407,11 +508,12 @@ is compared against a reference image from a known good emulator.
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
 | channel_4_align | pass | pass | pass |  |
-| channel_4_delay | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_4_equivalent_frequencies | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_4_extra_length_clocking-cgb0B | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_4_freq_change | fail | fail | xfail | Known failure imported from tests/README.md |
-| channel_4_frequency_alignment | fail | fail | xfail | Known failure imported from tests/README.md |
+| channel_4_delay | pass | pass | pass |  |
+| channel_4_equivalent_frequencies | pass | pass | pass |  |
+| channel_4_extra_length_clocking-cgb0B@CGB0 | pass | pass | pass |  |
+| channel_4_extra_length_clocking-cgb0B@CGBBC | pass | pass | pass |  |
+| channel_4_freq_change | pass | pass | pass |  |
+| channel_4_frequency_alignment | pass | pass | pass |  |
 | channel_4_lfsr | pass | pass | pass |  |
 | channel_4_lfsr_15_7 | pass | pass | pass |  |
 | channel_4_lfsr_7_15 | pass | pass | pass |  |
@@ -450,8 +552,8 @@ is compared against a reference image from a known good emulator.
 #### sgb
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| command_mlt_req | fail | fail | xfail | Known failure imported from tests/README.md |
-| command_mlt_req_1_incrementing | fail | fail | xfail | Known failure imported from tests/README.md |
+| command_mlt_req | pass | pass | pass |  |
+| command_mlt_req_1_incrementing | pass | pass | pass |  |
 
 ### scribbltests
 
@@ -471,3 +573,4 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | strikethrough (CGB) | pass | pass | pass |  |
 | strikethrough (DMG) | pass | pass | pass |  |
+
