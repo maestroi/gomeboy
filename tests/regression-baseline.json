@@ -63,8 +63,7 @@
       "collection": "halt",
       "name": "halt-m0-interrupt-dmgC-cgbBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/halt/halt-m0-interrupt-dmgC-cgbBCE@CGBDE",
@@ -72,8 +71,7 @@
       "collection": "halt",
       "name": "halt-m0-interrupt-dmgC-cgbBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/halt/halt-m0-interrupt-dmgC-cgbBCE@DMG",
