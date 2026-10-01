@@ -249,9 +249,10 @@ func (t *Timers) applyControl(index int, value uint16) {
 
 func (t *Timers) anchorChannel(index int) {
 	s := &t.timer[index]
-	divisor := uint64(prescalers[s.control&controlPrescalerMask])
-	now := t.scheduler.Now()
-	s.lastEvent = now - now%divisor
+	// Timer enable resets the local prescaler phase. All later counter
+	// materialization and overflow deadlines are measured from this timestamp,
+	// so the event model is independent of Advance() chunking.
+	s.lastEvent = t.scheduler.Now()
 	t.scheduleOverflow(index)
 }
 
@@ -337,16 +338,15 @@ func (t *Timers) syncCounter(index int) {
 	}
 
 	now := t.scheduler.Now()
-	divisor := uint64(prescalers[s.control&controlPrescalerMask])
-	aligned := now - now%divisor
-	if aligned <= s.lastEvent {
+	if now <= s.lastEvent {
 		return
 	}
-
-	ticks := (aligned - s.lastEvent) / divisor
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	ticks := (now - s.lastEvent) / divisor
 	if ticks == 0 {
 		return
 	}
+
 	// Overflow deadlines are explicit scheduler events, so a normal sync never
 	// crosses a wrap. Keep the arithmetic bounded defensively for restored state.
 	untilOverflow := uint64(0x10000 - uint32(s.counter))
