@@ -793,7 +793,14 @@ func (p *PPU) handleVisualLine() {
 		}
 
 		p.lineState = EnterHBlank
-		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
+		enterHBlankDelay := uint64(1)
+		if p.cgbMode && !p.s.DoubleSpeed() {
+			// CGB exposes the Mode-0 status before the HBlank STAT request/
+			// bus-entry edge. Keep the line length fixed; EnterHBlank uses
+			// dotsPassed to shorten the remaining HBlank by the same dot.
+			enterHBlankDelay++
+		}
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, enterHBlankDelay)
 		return
 	case EnterHBlank: // variable
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
