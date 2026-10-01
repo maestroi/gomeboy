@@ -428,20 +428,6 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 	}
 	m.CPU.SetPC(lr)
 
-	// HLE skips the BIOS return instruction itself. A real exception return is
-	// still a PC-changing operation and refills the two pipeline slots after the
-	// return target. Charge those phases through the same bus-timing model used
-	// by CPU branches so free-running hardware (notably timer prescalers) keeps
-	// the phase it would have after the real BIOS path. The target opcode itself
-	// remains the following CPU Step, matching CPU.Step's refill convention.
-	width := uint32(4)
-	if saved.Thumb() {
-		width = 2
-	}
-	seq := bus.Access{Sequential: true}
-	refill := m.Bus.AccessCycles(lr+width, width, seq) +
-		m.Bus.AccessCycles(lr+2*width, width, seq)
-	m.Advance(refill)
 
 	// The real BIOS leaves this instruction in the protected BIOS read latch
 	// when returning from its SWI dispatcher. The suite relies on that value
