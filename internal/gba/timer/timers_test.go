@@ -296,6 +296,30 @@ func TestTimerPrescalers(t *testing.T) {
 	}
 }
 
+
+func TestTimerPrescalerChangePreservesAccumulatedPhase(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0x0000, bus.Access{})
+	b.Write16(timerHigh(0), controlEnable|1, bus.Access{}) // /64
+
+	timers.Advance(63)
+	if got := timers.Counter(0); got != 0 {
+		t.Fatalf("counter before /64 tick = %04x, want 0000", got)
+	}
+
+	// Changing to /256 while enabled preserves the 63-cycle prescaler
+	// remainder. The next increment is therefore 193 cycles away, not 256.
+	b.Write16(timerHigh(0), controlEnable|2, bus.Access{})
+	timers.Advance(192)
+	if got := timers.Counter(0); got != 0 {
+		t.Fatalf("counter before preserved /256 edge = %04x, want 0000", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 1 {
+		t.Fatalf("counter at preserved /256 edge = %04x, want 0001", got)
+	}
+}
+
 func TestTimerOverflowReloadsAndCanBatchMultipleOverflows(t *testing.T) {
 	var hookTimer int
 	var hookCount uint32
