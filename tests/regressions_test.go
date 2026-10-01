@@ -108,5 +108,7 @@ func Test_Regressions(t *testing.T) {
 			)
 		})
 	}
-	fmt.Println(output.String())
+	if len(unexpected) > 0 {
+		fmt.Println(output.String())
+	}
 }
