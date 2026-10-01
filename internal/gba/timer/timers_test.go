@@ -130,7 +130,7 @@ func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
 	// The reload latch is visible in the CPU I/O write phase, while control is
-	// still a timestamped edge one master cycle later.
+	// a timestamped event at the instruction-completion boundary.
 	timers.BeginWriteAccess()
 	b.Write32(timerLow(0), uint32(controlEnable)<<16|0xffff, bus.Access{})
 	if timers.Control(0) != 0 || timers.Reload(0) != 0xffff || timers.Counter(0) != 0 {
@@ -226,20 +226,23 @@ func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 
-	// The control write commits one cycle later. The timer receives that final
-	// running tick, then remains frozen for the rest of this interval.
+	// The write's bus cycles still belong to the running timer. The disable is
+	// committed as a same-timestamp event at transfer completion.
 	timers.Advance(4)
-	if got := timers.Counter(0); got != 0xff04 {
-		t.Fatalf("timer did not stop on control event: %04x, want ff04", got)
+	if got := timers.Counter(0); got != 0xff07 {
+		t.Fatalf("timer did not advance through disable bus phase: %04x, want ff07", got)
 	}
-	if got := timers.Control(0); got != 0 {
-		t.Fatalf("timer disable event not visible: control=%04x", got)
+	if got := timers.Control(0); got != controlEnable {
+		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 	timers.EndWriteBusAccess()
+	if got := timers.Control(0); got != 0 {
+		t.Fatalf("timer disable event not visible at bus completion: control=%04x", got)
+	}
 	timers.EndWriteAccess()
 	timers.Advance(1)
-	if got := timers.Counter(0); got != 0xff04 {
-		t.Fatalf("timer advanced after disable event: %04x, want ff04", got)
+	if got := timers.Counter(0); got != 0xff07 {
+		t.Fatalf("timer advanced after disable event: %04x, want ff07", got)
 	}
 }
 
