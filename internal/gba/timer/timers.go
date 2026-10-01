@@ -249,9 +249,10 @@ func (t *Timers) applyControl(index int, value uint16) {
 
 func (t *Timers) anchorChannel(index int) {
 	s := &t.timer[index]
-	divisor := uint64(prescalers[s.control&controlPrescalerMask])
-	now := t.scheduler.Now()
-	s.lastEvent = now - now%divisor
+	// Enabling a GBA timer restarts its prescaler phase. Keep the absolute
+	// timestamp anchor so later work is event-driven, but do not borrow elapsed
+	// phase from a free-running global divider.
+	s.lastEvent = t.scheduler.Now()
 	t.scheduleOverflow(index)
 }
 
