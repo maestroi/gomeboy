@@ -171,8 +171,8 @@ func TestCounterForCPUReadSamplesTickPhase(t *testing.T) {
 	if got := timers.Counter(0); got != 0xffff {
 		t.Fatalf("live counter before overflow = %04x, want ffff", got)
 	}
-	if got := timers.CounterForCPURead(0); got != 0xfffe {
-		t.Fatalf("CPU read before overflow = %04x, want pre-tick fffe", got)
+	if got := timers.CounterForCPURead(0); got != 0xffff {
+		t.Fatalf("CPU read before overflow = %04x, want current ffff", got)
 	}
 
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
@@ -180,8 +180,8 @@ func TestCounterForCPUReadSamplesTickPhase(t *testing.T) {
 	if got := timers.Counter(0); got != 0x0000 {
 		t.Fatalf("live counter after overflow = %04x, want 0000", got)
 	}
-	if got := timers.CounterForCPURead(0); got != 0xffff {
-		t.Fatalf("CPU read on overflow edge = %04x, want pre-edge ffff", got)
+	if got := timers.CounterForCPURead(0); got != 0x0000 {
+		t.Fatalf("CPU read on overflow edge = %04x, want reloaded 0000", got)
 	}
 }
 
