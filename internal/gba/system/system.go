@@ -21,11 +21,9 @@ const (
 	// The transfer then stalls the CPU for the bus/internal cycles reported by DMA.
 	DMAStartLatency uint64 = 2
 
-	// IRQPropagationLatency is scheduled one master cycle before the physical
-	// seven-cycle IRQ input deadline because this core samples the deferred line
-	// at the following ARM instruction boundary. This keeps the effective
-	// request-to-sample latency at seven cycles without source-specific hacks.
-	IRQPropagationLatency uint64 = 6
+	// IRQPropagationLatency is the GBA interrupt-controller delay from an
+	// enabled pending request (IE & IF) to the CPU-visible IRQ delivery event.
+	IRQPropagationLatency uint64 = 7
 )
 
 // StepResult describes one architectural CPU step plus any DMA stalls that
