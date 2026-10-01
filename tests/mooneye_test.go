@@ -95,6 +95,14 @@ func (m *mooneyeTest) Run(t *testing.T) {
 
 
 
+		if strings.Contains(m.name, "halt-m0-interrupt") {
+			results := make([]byte, 8)
+			for i := range results {
+				results[i] = g.Bus.Get(0xC000 + uint16(i))
+			}
+			t.Logf("AGE halt-m0 results model=%s bytes=% x", m.model, results)
+		}
+
 		expectedRegisters := []uint8{3, 5, 8, 13, 21, 34}
 		for i, r := range []uint8{g.CPU.B, g.CPU.C, g.CPU.D, g.CPU.E, g.CPU.H, g.CPU.L} {
 			if r != expectedRegisters[i] {
