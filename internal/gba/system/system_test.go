@@ -253,7 +253,7 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	}
 }
 
-func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
+func TestCPUTimerWritesAndReadsUseBusPhase(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
@@ -305,12 +305,12 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	if third.CPU.ExceptionTaken {
 		t.Fatalf("timer IRQ arrived before sampled LDRH: %+v", third.CPU)
 	}
-	if got := m.CPU.ReadRegister(0); got != 0 {
-		t.Fatalf("Timer0 immediate sample = %04x, want 0000", got)
+	if got := m.CPU.ReadRegister(0); got != 1 {
+		t.Fatalf("Timer0 immediate sample = %04x, want current 0001", got)
 	}
 }
 
-func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
+func TestCPUTimerReadUsesBusPhaseCount(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
@@ -337,13 +337,12 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 	if _, err := m.Step(); err != nil {
 		t.Fatal(err)
 	}
-	if got := m.CPU.ReadRegister(0); got != 0xfff9 {
-		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fff9", got)
+	if got := m.CPU.ReadRegister(0); got != 0xfffa {
+		t.Fatalf("Timer0 sampled load = %04x, want bus-phase fffa", got)
 	}
 
-	// If the instruction fetch itself crosses the overflow edge, internal state
-	// reloads at that timestamp but the CPU data phase still samples the pre-edge
-	// FFFF value.
+	// If the instruction fetch crosses the overflow edge, the data phase samples
+	// the already-committed timer state at the start of its I/O transfer.
 	m2 := New(nil, nil)
 	if err := m2.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
