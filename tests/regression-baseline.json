@@ -828,8 +828,7 @@
       "collection": "bully",
       "name": "bully (CGB)",
       "model": "CGB",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "bully/bully/bully (DMG)",
@@ -2318,8 +2317,7 @@
       "collection": "strikethrough",
       "name": "strikethrough (CGB)",
       "model": "CGB",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     },
     {
       "id": "strikethrough/strikethrough/strikethrough (DMG)",
@@ -2327,8 +2325,7 @@
       "collection": "strikethrough",
       "name": "strikethrough (DMG)",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Known failure imported from tests/README.md"
+      "expected": "pass"
     }
   ]
 }
