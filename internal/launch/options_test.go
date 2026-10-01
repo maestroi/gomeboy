@@ -120,6 +120,11 @@ func TestParseValid(t *testing.T) {
 			want: Options{Model: gomeboy.ModelCGB, LogLevel: log.InfoLevel},
 		},
 		{
+			name: "exact CGB revision family",
+			args: []string{"-model", "cGbDe"},
+			want: Options{Model: gomeboy.ModelCGBDE, LogLevel: log.InfoLevel},
+		},
+		{
 			name: "log level is case-insensitive",
 			args: []string{"-log-level", "ERROR"},
 			want: Options{Model: gomeboy.ModelAuto, LogLevel: log.ErrorLevel},

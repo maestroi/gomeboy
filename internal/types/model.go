@@ -17,6 +17,13 @@ const (
 	SGB                 // SGB - Super Game Boy
 	SGB2                // SGB2 - Super Game Boy 2
 	AGB                 // AGB - Game Boy Advance
+
+	// Exact production CGB revision families are appended so existing serialized
+	// Model integer values remain stable. CGBABC remains the generic/user-facing
+	// CGB compatibility profile; conformance suites can select these exact
+	// families when hardware-visible behavior differs.
+	CGBBC // CGB B/C production-family behavior
+	CGBDE // CGB D/E production-family behavior
 )
 
 var ModelNames = map[Model]string{
@@ -24,6 +31,8 @@ var ModelNames = map[Model]string{
 	DMGABC: "DMG",
 	CGB0:   "CGB0",
 	CGBABC: "CGB",
+	CGBBC:  "CGBBC",
+	CGBDE:  "CGBDE",
 	MGB:    "MGB",
 	SGB:    "SGB",
 	SGB2:   "SGB2",
@@ -44,6 +53,24 @@ func StringToModel(s string) Model {
 
 func (m Model) String() string {
 	return ModelNames[m]
+}
+
+
+// IsCGB reports whether m is native Game Boy Color hardware. It includes the
+// generic CGB profile plus exact production revision families.
+func (m Model) IsCGB() bool {
+	switch m {
+	case CGB0, CGBABC, CGBBC, CGBDE:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsExactCGBRevision reports whether m names one of the production-revision
+// families used by revision-aware conformance suites.
+func (m Model) IsExactCGBRevision() bool {
+	return m == CGBBC || m == CGBDE
 }
 
 // ModelBootROMChecksums - MD5 checksums of the boot ROMs of each model
@@ -71,10 +98,28 @@ var ModelIO = map[Model]map[HardwareAddress]interface{}{
 	DMG0:   {DIV: uint16(0x182F), LY: uint8(0x92)},
 	DMGABC: {DIV: uint16(0xABC9)},
 	CGBABC: {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
+	CGBBC:  {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
+	CGBDE:  {P1: uint8(0xFF), DIV: uint16(0x2675), BCPS: uint8(0xC8), OCPS: uint8(0xD0)},
 	CGB0:   {DIV: uint16(0x2881)},
+	MGB:    {DIV: uint16(0xABC9)},
 	SGB:    {P1: uint8(0xFF), DIV: uint16(0xD85F), NR52: uint8(0xF0), STAT: uint8(0x85), LY: uint8(0x00)},
 	SGB2:   {DIV: uint16(0xD84F)},
 	AGB:    {DIV: uint16(0x267B)},
+}
+
+// ModelIOCGB contains post-boot I/O timing overrides for cartridges that
+// request CGB mode. The CGB boot ROM takes a different execution path for
+// CGB-compatible cartridges, so DIV/LY at entry differ from the compatibility
+// path measured by Mooneye's DMG-cartridge boot tests.
+//
+// The divider values include the hidden phase bits used by the scheduler.
+// They are pinned by whichboot.gb v1.1's DIV/fine hardware fingerprints.
+var ModelIOCGB = map[Model]map[HardwareAddress]interface{}{
+	CGB0:   {DIV: uint16(0x20A4), LY: uint8(0x90)},
+	CGBABC: {DIV: uint16(0x1E98), LY: uint8(0x90)},
+	CGBBC:  {DIV: uint16(0x1E98), LY: uint8(0x90)},
+	CGBDE:  {DIV: uint16(0x1E98), LY: uint8(0x90)},
+	AGB:    {DIV: uint16(0x1E9C), LY: uint8(0x90)},
 }
 
 // ModelRegisters - model specific starting CPU registers for a DMG-only
@@ -86,6 +131,8 @@ var ModelRegisters = map[Model][]uint8{
 	DMGABC: {0x01, 0xB0, 0x00, 0x13, 0x00, 0xD8, 0x01, 0x4D},
 	CGB0:   {0x11, 0x80, 0x00, 0x00, 0x00, 0x08, 0x00, 0x7C},
 	CGBABC: {0x11, 0x80, 0x00, 0x00, 0x00, 0x08, 0x00, 0x7C},
+	CGBBC:  {0x11, 0x80, 0x00, 0x00, 0x00, 0x08, 0x00, 0x7C},
+	CGBDE:  {0x11, 0x80, 0x00, 0x00, 0x00, 0x08, 0x00, 0x7C},
 	MGB:    {0xFF, 0xB0, 0x00, 0x13, 0x00, 0xD8, 0x01, 0x4D},
 	SGB:    {0x01, 0x00, 0x00, 0x14, 0x00, 0x00, 0xC0, 0x60},
 	SGB2:   {0xFF, 0x00, 0x00, 0x14, 0x00, 0x00, 0xC0, 0x60},
@@ -98,6 +145,8 @@ var ModelRegisters = map[Model][]uint8{
 var ModelRegistersCGB = map[Model][]uint8{
 	CGB0:   {0x11, 0x80, 0x00, 0x00, 0xFF, 0x56, 0x00, 0x0D},
 	CGBABC: {0x11, 0x80, 0x00, 0x00, 0xFF, 0x56, 0x00, 0x0D},
+	CGBBC:  {0x11, 0x80, 0x00, 0x00, 0xFF, 0x56, 0x00, 0x0D},
+	CGBDE:  {0x11, 0x80, 0x00, 0x00, 0xFF, 0x56, 0x00, 0x0D},
 	AGB:    {0x11, 0x80, 0x01, 0x00, 0xFF, 0x56, 0x00, 0x0D},
 }
 

@@ -135,8 +135,9 @@ func TestLoadROMSelectsGBAByExtension(t *testing.T) {
 	}
 }
 
-func TestGBAStateOperationsReportUnsupported(t *testing.T) {
-	e, err := New(Headless())
+func TestGBAStateRoundTripQuickSaveAndCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	e, err := New(Headless(), WithSaveDir(dir))
 	if err == nil {
 		err = e.LoadROMBytes(gbaLoopROM(), "loop.gba")
 	}
@@ -145,11 +146,130 @@ func TestGBAStateOperationsReportUnsupported(t *testing.T) {
 	}
 	defer e.Close()
 
-	if _, err := e.SaveState(); err == nil || !strings.Contains(err.Error(), "GBA save states") {
-		t.Fatalf("SaveState error = %v", err)
+	core := e.core.(*gbaCore)
+	core.machine.Bus.EWRAM()[0x123] = 0x5a
+	e.Press(ButtonA)
+	e.StepFrame()
+
+	state, err := e.SaveState()
+	if err != nil {
+		t.Fatalf("SaveState: %v", err)
 	}
-	if err := e.QuickSave(); err == nil || !strings.Contains(err.Error(), "GBA save states") {
-		t.Fatalf("QuickSave error = %v", err)
+	if len(state) <= gbaStateHeader {
+		t.Fatalf("SaveState returned %d bytes", len(state))
+	}
+	wantCycle := e.Cycle()
+	wantFrame := e.FrameCount()
+	wantPC := core.machine.CPU.PC()
+	wantKeys := core.machine.Keypad.PressedMask()
+
+	var checkpoint Checkpoint
+	e.CheckpointInto(&checkpoint)
+
+	e.StepFrame()
+	nextCycle := e.Cycle()
+	nextPC := core.machine.CPU.PC()
+	nextFrame := append([]byte(nil), e.Frame().RGB...)
+
+	core.machine.Bus.EWRAM()[0x123] = 0xa5
+	e.Release(ButtonA)
+	e.StepFrame()
+
+	if err := e.LoadState(state); err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if got := e.Cycle(); got != wantCycle {
+		t.Fatalf("Cycle after LoadState = %d, want %d", got, wantCycle)
+	}
+	if got := e.FrameCount(); got != wantFrame {
+		t.Fatalf("FrameCount after LoadState = %d, want %d", got, wantFrame)
+	}
+	if got := core.machine.CPU.PC(); got != wantPC {
+		t.Fatalf("PC after LoadState = %#x, want %#x", got, wantPC)
+	}
+	if got := core.machine.Bus.EWRAM()[0x123]; got != 0x5a {
+		t.Fatalf("EWRAM after LoadState = %#02x, want 0x5a", got)
+	}
+	if got := core.machine.Keypad.PressedMask(); got != wantKeys {
+		t.Fatalf("keypad after LoadState = %#04x, want %#04x", got, wantKeys)
+	}
+
+	e.StepFrame()
+	if got := e.Cycle(); got != nextCycle {
+		t.Fatalf("deterministic continuation cycle = %d, want %d", got, nextCycle)
+	}
+	if got := core.machine.CPU.PC(); got != nextPC {
+		t.Fatalf("deterministic continuation PC = %#x, want %#x", got, nextPC)
+	}
+	if got := e.Frame().RGB; string(got) != string(nextFrame) {
+		t.Fatal("framebuffer diverged after SaveState/LoadState continuation")
+	}
+
+	if err := e.RestoreCheckpoint(&checkpoint); err != nil {
+		t.Fatalf("RestoreCheckpoint: %v", err)
+	}
+	if got := e.Cycle(); got != wantCycle {
+		t.Fatalf("Cycle after RestoreCheckpoint = %d, want %d", got, wantCycle)
+	}
+
+	if err := e.QuickSave(); err != nil {
+		t.Fatalf("QuickSave: %v", err)
+	}
+	core.machine.Bus.EWRAM()[0x123] = 0xcc
+	e.StepFrame()
+	if err := e.QuickLoad(); err != nil {
+		t.Fatalf("QuickLoad: %v", err)
+	}
+	if got := core.machine.Bus.EWRAM()[0x123]; got != 0x5a {
+		t.Fatalf("EWRAM after QuickLoad = %#02x, want 0x5a", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "loop.state")); err != nil {
+		t.Fatalf("quick-save state file: %v", err)
+	}
+}
+
+func TestGBAStateRejectsWrongROMAndPreservesHeadlessPolicy(t *testing.T) {
+	source, err := New()
+	if err == nil {
+		err = source.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	source.StepFrame()
+	state, err := source.SaveState()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headless, err := New(Headless())
+	if err == nil {
+		err = headless.LoadROMBytes(gbaLoopROM(), "loop.gba")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer headless.Close()
+	if err := headless.LoadState(state); err != nil {
+		t.Fatalf("headless LoadState: %v", err)
+	}
+	headless.StepFrame()
+	if _, count := headless.Samples(); count != 0 {
+		t.Fatalf("restoring audible state enabled headless audio buffering: %d samples", count)
+	}
+
+	otherROM := append(append([]byte(nil), gbaLoopROM()...), 0)
+	other, err := New(Headless())
+	if err == nil {
+		err = other.LoadROMBytes(otherROM, "other.gba")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if err := other.LoadState(state); err == nil || !strings.Contains(err.Error(), "ROM does not match") {
+		t.Fatalf("wrong-ROM LoadState error = %v", err)
 	}
 }
 

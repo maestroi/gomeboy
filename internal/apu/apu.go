@@ -1,6 +1,7 @@
 package apu
 
 import (
+	"math"
 	"github.com/maestroi/gomeboy/internal/io"
 	"github.com/maestroi/gomeboy/internal/scheduler"
 	"github.com/maestroi/gomeboy/internal/types"
@@ -49,6 +50,8 @@ type squareChannel struct {
 	lockedDuty       uint8
 	waveDutyPosition uint8
 	hasLockedDuty    bool
+	lastStepAt       uint64
+	sampleReady      bool
 }
 
 func (c channel) isEnabled() bool {
@@ -66,6 +69,10 @@ type APU struct {
 		negate          bool
 		didNegate       bool
 		sweepEnabled    bool
+		sweepCheckAt    uint64
+		sweepStopAt     uint64
+		sweepLoadAt     uint64
+		sweepLoadValue  uint16
 	}
 	channel2 squareChannel
 	channel3 struct {
@@ -73,17 +80,19 @@ type APU struct {
 		volumeCode          uint8
 		waveRAMPosition     uint8
 		waveRAMSampleBuffer uint8
-		waveRAMLastPosition uint8
+		waveRAMLastPosition        uint8
+		sampleReady                bool
+		swallowNextExtraLengthClock bool
 	}
 	channel4 struct {
-		clockShift     uint8
-		divisorCode    uint8
-		widthMask      uint16
-		lfsr           uint16
-		delayedCycles  uint64
-		isTriggered    bool
-		cyclesIncurred uint64
-		frequencyTimer uint64
+		clockShift   uint8
+		divisorCode  uint8
+		widthMask    uint16
+		lfsr         uint16
+		divCounter   uint16
+		divCountdown uint64 // APU T-cycles until the next divisor-stage increment.
+		divRunning   bool
+		divReloaded  bool // the previous divisor increment landed on this exact cycle
 	}
 
 	waveformData [4][]float32
@@ -147,11 +156,18 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		enabled: true,
 	}
 	a.channel3.volumeCode = 4
+	a.channel1.lastStepAt = math.MaxUint64
+	a.channel2.lastStepAt = math.MaxUint64
+	a.channel1.sweepCheckAt = math.MaxUint64
+	a.channel1.sweepStopAt = math.MaxUint64
+	a.channel1.sweepLoadAt = math.MaxUint64
 
 	s.RegisterEvent(scheduler.APUChannel1, func() {
 		// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_1/channel_1_stop_restart.asm
 		if a.channels[0].isEnabled() {
 			a.channel1.waveDutyPosition = (a.channel1.waveDutyPosition + 1) & 7
+			a.channel1.lastStepAt = a.s.Cycle()
+			a.channel1.sampleReady = true
 			s.ScheduleEvent(scheduler.APUChannel1, uint64((2048-a.channels[0].frequency)<<2))
 		}
 
@@ -166,6 +182,8 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 		// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_2/channel_2_stop_restart.asm
 		if a.channels[1].isEnabled() {
 			a.channel2.waveDutyPosition = (a.channel2.waveDutyPosition + 1) & 7
+			a.channel2.lastStepAt = a.s.Cycle()
+			a.channel2.sampleReady = true
 			s.ScheduleEvent(scheduler.APUChannel2, uint64((2048-a.channels[1].frequency)<<2))
 		}
 
@@ -181,9 +199,11 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			a.channel3.waveRAMLastRead = a.s.Cycle()
 			a.channel3.waveRAMLastPosition = a.channel3.waveRAMPosition >> 1
 			a.channel3.waveRAMSampleBuffer = a.waveRAM[a.channel3.waveRAMLastPosition]
+			a.channel3.sampleReady = true
 			a.s.ScheduleEvent(scheduler.APUChannel3, uint64((2048-a.channels[2].frequency)<<1))
 		} else {
 			a.channel3.waveRAMSampleBuffer = 0
+			a.channel3.sampleReady = false
 		}
 	})
 
@@ -200,6 +220,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 	a.sample()
 
 	b.ReserveLazyReader(types.NR52, func() byte {
+		a.runSweepDue()
 		v := uint8(0x70)
 		if a.enabled {
 			v |= types.Bit7
@@ -225,52 +246,57 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			return a.readWaveRAM(i)
 		})
 	}
-	a.channel4.frequencyTimer = 8
 
-	b.RegisterGBCHandler(func() {
+	registerPCMReaders := func() {
 		b.ReserveLazyReader(types.PCM12, func() byte {
-			// warning to any who read
-			// this is not accurate to hardware in the slightest, this is many botch jobs and timing hacks to work around
-			// botch jobs. even these PCM readers are hacked together
+			a.runSweepDue()
 			pcm := uint8(0)
 
-			sampleLength := (uint64(2048-a.channels[0].frequency) * 4) + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
+			if a.channels[0].enabled && a.channel1.sampleReady {
+				sample := ((duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1) * a.channels[0].currentVolume
+				// CGB 0/B/C PCM12 can read zero on the exact duty-step cycle when
+				// the sample being replaced was zero. SameSuite's revision-specific
+				// frequency-write timing rows observe this bus/APU race directly.
+				if (a.b.Model() == types.CGB0 || a.b.Model() == types.CGBBC) &&
+					a.channel1.lastStepAt == a.s.Cycle() {
+					previousPos := (a.channel1.waveDutyPosition + 7) & 7
+					if ((duties[a.channel1.duty] >> previousPos) & 1) == 0 {
+						sample = 0
+					}
+				}
+				pcm |= sample
 			}
 
-			if a.channels[0].enabled && a.s.Cycle()-a.channels[0].enableTime >= sampleLength {
-				pcm |= (duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1 * a.channels[0].currentVolume
+			if a.channels[1].enabled && a.channel2.sampleReady {
+				sample := ((duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1) * a.channels[1].currentVolume
+				if (a.b.Model() == types.CGB0 || a.b.Model() == types.CGBBC) &&
+					a.channel2.lastStepAt == a.s.Cycle() {
+					previousPos := (a.channel2.waveDutyPosition + 7) & 7
+					if ((duties[a.channel2.duty] >> previousPos) & 1) == 0 {
+						sample = 0
+					}
+				}
+				pcm |= (sample & 0x0f) << 4
 			}
-			sampleLength = uint64(2048-a.channels[1].frequency)*4 + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-			if a.channels[1].enabled && a.s.Cycle()-a.channels[1].enableTime >= sampleLength {
-				pcm |= (((duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1 * a.channels[1].currentVolume) & 0xf) << 4
-			}
-
 			return pcm
-
 		})
 		b.ReserveLazyReader(types.PCM34, func() byte {
 			pcm := uint8(0)
-			sampleLength := (uint64(2048-a.channels[2].frequency) * 2) + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-			if a.channels[2].enabled && (a.s.Cycle()-a.channels[2].enableTime > sampleLength) {
+			// Channel 3 frequency writes affect the next sample period, not the
+			// sample that is already in flight. The scheduled channel event is the
+			// hardware-visible fetch boundary, so expose PCM only after that fetch
+			// has happened rather than recomputing a delay from the live frequency.
+			if a.channels[2].enabled && a.channel3.sampleReady {
 				shift := 0
 				if a.channel3.waveRAMPosition&1 == 0 {
 					shift = 4
 				}
 				pcm |= (((a.channel3.waveRAMSampleBuffer) >> shift) & 0x0f) >> a.channel3.volumeCode
 			}
-			sampleLength = uint64(a.channel4.frequencyTimer) + 4
-			if a.s.DoubleSpeed() {
-				sampleLength *= 2
-			}
-			if a.channels[3].enabled && a.s.Cycle()-a.channels[3].enableTime > sampleLength {
+			if a.channels[3].enabled {
+				// PCM34 is an observation point for the free-running noise divider.
+				// Bring the two-stage counter/LFSR state to the read cycle before
+				// exposing the channel output.
 				a.catchupLFSR()
 				pcm |= ((uint8(a.channel4.lfsr) & 1 * a.channels[3].currentVolume) & 0x0f) << 4
 			}
@@ -278,7 +304,10 @@ func New(b *io.Bus, s *scheduler.Scheduler) *APU {
 			return pcm
 
 		})
-	})
+	}
+	b.RegisterGBCHandler(registerPCMReaders)
+	b.RegisterAGBHandler(registerPCMReaders)
+
 	for i := types.NR10; i <= types.NR44; i++ {
 		a.b.Write(i, 0) // load or masks into bus
 	}
@@ -290,6 +319,7 @@ func (a *APU) Visualise(v bool) {
 }
 
 func (a *APU) StepFrameSequencer() {
+	a.runSweepDue()
 	if !a.enabled { // frame sequencer does nothing if the APU is disabled
 		return
 	}
@@ -332,19 +362,7 @@ func (a *APU) StepFrameSequencer() {
 
 	// clock sweep (128hz)
 	if a.frameSequencerStep&3 == 3 {
-		if a.channels[0].enabled && a.channel1.sweepEnabled {
-			a.channel1.sweepTimer++
-			a.channel1.sweepTimer &= 7
-
-			if a.channel1.sweepTimer == 7 {
-				a.channel1.sweepTimer = a.channel1.sweepPeriod ^ 7
-
-				if a.channel1.sweepPeriod != 0 {
-					a.freqCalc(true)
-					a.freqCalc(false)
-				}
-			}
-		}
+		a.clockSweep()
 	}
 }
 
@@ -393,6 +411,7 @@ var digitalAnalog = []float32{
 var volumes = []float32{.125, .250, .375, .500, .625, .750, .875, 1}
 
 func (a *APU) sample() {
+	a.runSweepDue()
 	// Headless mode has no audio consumer. SetHeadless normally removes this
 	// event entirely; this guard also makes old/inconsistent save states safe.
 	if a.headless {
@@ -404,15 +423,15 @@ func (a *APU) sample() {
 
 	// read samples from channel DACs
 	samples := [4]float32{}
-	if channels[0].isEnabled() && !a.Debug.Square1 {
+	if channels[0].isEnabled() && a.channel1.sampleReady && !a.Debug.Square1 {
 		output := (duties[a.channel1.duty] >> a.channel1.waveDutyPosition) & 1
 		samples[0] = digitalAnalog[output*(channels[0].currentVolume)]
 	}
-	if channels[1].isEnabled() && !a.Debug.Square2 {
+	if channels[1].isEnabled() && a.channel2.sampleReady && !a.Debug.Square2 {
 		output := (duties[a.channel2.duty] >> a.channel2.waveDutyPosition) & 1
 		samples[1] = digitalAnalog[output*(channels[1].currentVolume)]
 	}
-	if channels[2].isEnabled() && !a.Debug.Wave {
+	if channels[2].isEnabled() && a.channel3.sampleReady && !a.Debug.Wave {
 		samples[2] = digitalAnalog[((a.channel3.waveRAMSampleBuffer>>((a.channel3.waveRAMPosition&1)<<2))&0x0f)>>a.channel3.volumeCode]
 	}
 	if channels[3].isEnabled() && !a.Debug.Noise {
@@ -488,6 +507,7 @@ func (a *APU) AnalogOutput() [4][]float32 {
 }
 
 func (a *APU) Write(address uint16, v uint8) uint8 {
+	a.runSweepDue()
 	switch address {
 	case types.NR10:
 		if !a.enabled {
@@ -534,22 +554,66 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 	case types.NR13, types.NR23, types.NR33:
 		if a.enabled {
 			ch := ((address & 0x00ff) - 19) / 5
+			reloadNow := false
+			if ch == 0 {
+				reloadNow = a.channels[0].isEnabled() && a.channel1.lastStepAt == a.s.Cycle()
+			} else if ch == 1 {
+				reloadNow = a.channels[1].isEnabled() && a.channel2.lastStepAt == a.s.Cycle()
+			}
 			a.channels[ch].frequency = (a.channels[ch].frequency & 0x700) | uint16(v)
+			if reloadNow {
+				a.reschedulePulseAfterReload(ch)
+			}
 		}
 	case types.NR14, types.NR24, types.NR34, types.NR44:
 		if !a.enabled {
 			return 0
 		}
 		ch := ((address & 0x00ff) - 20) / 5
+		reloadNow := false
+		if ch == 0 {
+			reloadNow = a.channels[0].isEnabled() && a.channel1.lastStepAt == a.s.Cycle()
+		} else if ch == 1 {
+			reloadNow = a.channels[1].isEnabled() && a.channel2.lastStepAt == a.s.Cycle()
+		}
 		if ch != 3 {
-			a.channels[ch].frequency = (a.channels[ch].frequency & 0x00ff) | uint16(v&0x7)<<8
+			oldFrequency := a.channels[ch].frequency
+			// CGB D/E has one extra half-APU-tick window after a CH1 duty step:
+			// lowering NR14's high frequency bits there backs the duty position up
+			// once, while the already-latched PCM sample remains visible.
+			if ch == 0 && a.b.Model() == types.CGBDE && a.s.DoubleSpeed() &&
+				v&types.Bit7 == 0 && a.channels[0].isEnabled() &&
+				oldFrequency&0x700 == 0x700 && uint16(v&7)<<8 != 0x700 &&
+				!reloadNow && a.channel1.lastStepAt != math.MaxUint64 &&
+				a.s.Cycle()-a.channel1.lastStepAt == 4 {
+				a.channel1.waveDutyPosition = (a.channel1.waveDutyPosition + 7) & 7
+			}
+			a.channels[ch].frequency = (oldFrequency & 0x00ff) | uint16(v&0x7)<<8
+			if reloadNow && ch < 2 {
+				a.reschedulePulseAfterReload(ch)
+			}
 		}
 		lengthCounterEnabled := v&types.Bit6 > 0
-		if a.frameSequencerStep&1 == 1 && !a.channels[ch].lengthCounterEnabled && lengthCounterEnabled && a.channels[ch].lengthCounter > 0 {
+		extraLengthClocked := a.shouldExtraClockLength(ch, lengthCounterEnabled)
+		if ch == 2 && extraLengthClocked && a.channel3.swallowNextExtraLengthClock {
+			// SameSuite's hardware measurements show that CGB B CH3 needs one
+			// additional NRx4 write versus CGB0 before the same length value
+			// expires. The ROM cannot distinguish a counter loaded one higher
+			// from the first post-trigger extra clock being swallowed; model the
+			// latter because it leaves ordinary NR31 length loading unchanged.
+			a.channel3.swallowNextExtraLengthClock = false
+			extraLengthClocked = false
+		}
+		if extraLengthClocked {
 			a.channels[ch].lengthCounter--
 			a.channels[ch].enabled = a.channels[ch].lengthCounter > 0
 		}
 		a.channels[ch].lengthCounterEnabled = lengthCounterEnabled
+
+		// Capture whether a wave sample was already live before a retrigger.
+		// A retrigger keeps that old sample audible until the phantom first
+		// period completes; a fresh trigger remains silent until its first fetch.
+		wasChannelEnabled := a.channels[ch].isEnabled()
 
 		// handle trigger
 		if v&types.Bit7 > 0 {
@@ -574,6 +638,9 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 
 			switch ch {
 			case 0: // Square 1
+				if !wasChannelEnabled {
+					a.channel1.sampleReady = false
+				}
 				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_1/channel_1_delay.asm
 				offset := uint64(8)
 				if a.s.Until(scheduler.APUChannel1) != 0 {
@@ -591,13 +658,27 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.ScheduleEvent(scheduler.APUChannel1, t)
 				a.channel1.didNegate = false
 				a.channel1.sweepTimer = a.channel1.sweepPeriod ^ 7
-				a.channel1.frequencyShadow = a.channels[0].frequency
 				a.channel1.sweepEnabled = a.channel1.sweepPeriod != 0 || a.channel1.shift != 0
+				a.channel1.sweepStopAt = math.MaxUint64
 
+				// Trigger reaches the sweep unit on the next 1 MHz APU edge, then
+				// the shadow register latches two M-cycles later. With a non-zero
+				// shift, the trigger overflow check follows seven M-cycles after
+				// that arrival and any stop becomes visible one APU tick later.
+				scale := a.apuTimingScale()
+				tick := uint64(4) * scale
+				arrives := alignForward(a.s.Cycle(), a.enableTimer, tick) + tick
+				a.channel1.sweepLoadValue = a.channels[0].frequency
+				a.channel1.sweepLoadAt = arrives + 8*scale
 				if a.channel1.shift > 0 {
-					a.freqCalc(false)
+					a.channel1.sweepCheckAt = arrives + 28*scale
+				} else {
+					a.channel1.sweepCheckAt = math.MaxUint64
 				}
 			case 1: // Square 2
+				if !wasChannelEnabled {
+					a.channel2.sampleReady = false
+				}
 				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_2/channel_2_delay.asm
 				offset := uint64(8)
 				if a.s.Until(scheduler.APUChannel2) != 0 {
@@ -614,7 +695,11 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.DescheduleEvent(scheduler.APUChannel2)
 				a.s.ScheduleEvent(scheduler.APUChannel2, t)
 			case 2: // Wave
-				if a.channels[2].isEnabled() && a.s.Until(scheduler.APUChannel3) == 2 && (a.b.Model() != types.CGBABC && a.b.Model() != types.CGB0) {
+				if !wasChannelEnabled {
+					a.channel3.sampleReady = false
+				}
+				a.channel3.swallowNextExtraLengthClock = a.b.Model() == types.CGBBC
+				if a.channels[2].isEnabled() && a.s.Until(scheduler.APUChannel3) == 2 && !a.b.Model().IsCGB() {
 					newPos := (a.channel3.waveRAMPosition + 1) & 31
 					pos := newPos >> 1
 					if pos < 4 {
@@ -626,9 +711,16 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				}
 
 				if a.channels[2].lengthCounter == 0 {
-					a.channels[2].lengthCounter = 0x100
-					if a.channels[2].lengthCounterEnabled && a.frameSequencerStep&1 == 1 {
-						a.channels[2].lengthCounter--
+					// If this same NRx4 trigger performed the extra length clock
+					// that expired the counter, hardware reloads CH3 to 0xFF rather
+					// than 0x100. This is observable on early CGB revisions.
+					if extraLengthClocked {
+						a.channels[2].lengthCounter = 0xff
+					} else {
+						a.channels[2].lengthCounter = 0x100
+						if a.channels[2].lengthCounterEnabled && a.frameSequencerStep&1 == 1 {
+							a.channels[2].lengthCounter--
+						}
 					}
 				}
 
@@ -639,25 +731,12 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				a.s.DescheduleEvent(scheduler.APUChannel3)
 				a.s.ScheduleEvent(scheduler.APUChannel3, t+6)
 			case 3: // Noise
+				// Channel 4 is a two-stage timer: NR43's divisor clocks a
+				// free-running counter, and a rising edge of counter bit
+				// clockShift clocks the LFSR. Trigger resets the LFSR but not the
+				// global 1 MHz / 512 kHz alignment used by the divisor stage.
 				a.channel4.lfsr = 0
-				a.lastCatchup = a.s.Cycle() // lfsr is reset so no need to step through
-
-				offset := uint64(4)
-				if a.channel4.isTriggered {
-					offset = 8
-				}
-
-				// https://github.com/LIJI32/SameSuite/blob/master/apu/channel_4/channel_4_align.asm
-				if a.s.DoubleSpeed() && (a.s.Cycle()-a.enableTimer)%8 != 0 {
-					offset += 4
-				}
-
-				if a.s.DoubleSpeed() {
-					offset /= 2
-				}
-				a.channel4.delayedCycles = offset
-				a.channel4.isTriggered = true
-				a.channel4.cyclesIncurred = 0
+				a.startNoiseDivider(wasChannelEnabled)
 			}
 		}
 	case types.NR21:
@@ -675,14 +754,15 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		a.channels[2].dacEnabled = v&types.Bit7 != 0
 		if !a.channels[2].dacEnabled {
 			a.channels[2].enabled = false
+			a.channel3.sampleReady = false
+			a.channel3.swallowNextExtraLengthClock = false
 		}
 	case types.NR31:
-		switch a.b.Model() {
-		case types.CGBABC, types.CGB0:
+		if a.b.Model().IsCGB() {
 			if a.enabled {
 				a.channels[2].lengthCounter = 0x100 - uint16(v)
 			}
-		default:
+		} else {
 			a.channels[2].lengthCounter = 0x100 - uint16(v)
 		}
 	case types.NR32:
@@ -698,16 +778,18 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 		if !a.enabled {
 			return 0
 		}
+		// Settle the old divisor/shift selection first. NR43 then reinterprets
+		// the counter already reached; it does not restart the current divisor
+		// countdown except when the write lands exactly on a reload edge.
 		a.catchupLFSR()
+		onReload := a.channel4.divRunning && a.channel4.divReloaded
+
 		a.channel4.widthMask = 0x4000 | uint16(v&types.Bit3)<<3
 		a.channel4.clockShift = v >> 4
-
 		a.channel4.divisorCode = v & 7
 
-		if a.channel4.divisorCode == 0 {
-			a.channel4.frequencyTimer = 8 << a.channel4.clockShift
-		} else {
-			a.channel4.frequencyTimer = uint64(a.channel4.divisorCode<<4) << a.channel4.clockShift
+		if onReload {
+			a.reloadNoiseDivisorOnEdge()
 		}
 	case types.NR50:
 		if !a.enabled && !a.b.IsBooting() {
@@ -767,22 +849,30 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 				negate          bool
 				didNegate       bool
 				sweepEnabled    bool
+				sweepCheckAt    uint64
+				sweepStopAt     uint64
+				sweepLoadAt     uint64
+				sweepLoadValue  uint16
 			}{}
 			a.channel2 = squareChannel{}
+			a.channel1.lastStepAt = math.MaxUint64
+			a.channel2.lastStepAt = math.MaxUint64
+			a.channel1.sweepCheckAt = math.MaxUint64
+			a.channel1.sweepStopAt = math.MaxUint64
+			a.channel1.sweepLoadAt = math.MaxUint64
 			a.channel4 = struct {
-				clockShift     uint8
-				divisorCode    uint8
-				widthMask      uint16
-				lfsr           uint16
-				delayedCycles  uint64
-				isTriggered    bool
-				cyclesIncurred uint64
-				frequencyTimer uint64
+				clockShift   uint8
+				divisorCode  uint8
+				widthMask    uint16
+				lfsr         uint16
+				divCounter   uint16
+				divCountdown uint64
+				divRunning   bool
+				divReloaded  bool
 			}{}
 			a.channel3.volumeCode = 4
 			a.lastCatchup = a.s.Cycle()
 			a.channels = [4]channel{}
-			a.channel4.frequencyTimer = 8
 			a.enableTimer = a.s.Cycle()
 		}
 		if !a.b.IsGBC() && v&0x80 > 0 {
@@ -793,7 +883,7 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 	default:
 		if address >= 0xff30 && address <= 0xff3f {
 			if a.channels[2].isEnabled() {
-				if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model() == types.CGBABC || a.b.Model() == types.CGB0 {
+				if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model().IsCGB() {
 					a.waveRAM[a.channel3.waveRAMLastPosition] = v
 				}
 			} else {
@@ -804,6 +894,115 @@ func (a *APU) Write(address uint16, v uint8) uint8 {
 
 	return v
 }
+
+func (a *APU) reschedulePulseAfterReload(ch uint16) {
+	var event scheduler.EventType
+	switch ch {
+	case 0:
+		event = scheduler.APUChannel1
+	case 1:
+		event = scheduler.APUChannel2
+	default:
+		return
+	}
+	a.s.DescheduleEvent(event)
+	a.s.ScheduleEvent(event, uint64((2048-a.channels[ch].frequency)<<2))
+}
+
+
+func (a *APU) apuTimingScale() uint64 {
+	if a.s.DoubleSpeed() {
+		return 2
+	}
+	return 1
+}
+
+func (a *APU) sweepFrequencyCalc(at uint64) (uint16, bool) {
+	shifted := a.channel1.frequencyShadow >> a.channel1.shift
+	var next uint16
+	if a.channel1.negate {
+		a.channel1.didNegate = true
+		next = a.channel1.frequencyShadow - shifted
+	} else {
+		next = a.channel1.frequencyShadow + shifted
+	}
+	if next > 0x7ff {
+		a.channel1.sweepStopAt = at + 4*a.apuTimingScale()
+		return next, false
+	}
+	return next, true
+}
+
+func (a *APU) runSweepDue() {
+	now := a.s.Cycle()
+
+	applyLoad := func() {
+		if a.channel1.sweepLoadAt <= now {
+			a.channel1.sweepLoadAt = math.MaxUint64
+			a.channel1.frequencyShadow = a.channel1.sweepLoadValue
+		}
+	}
+	applyCheck := func() {
+		if a.channel1.sweepCheckAt <= now {
+			at := a.channel1.sweepCheckAt
+			a.channel1.sweepCheckAt = math.MaxUint64
+			// The delayed second check re-reads NR10. Clearing the shift before
+			// this point cancels it; changing the shift changes the calculation.
+			if a.channel1.sweepEnabled && a.channel1.shift > 0 {
+				_, _ = a.sweepFrequencyCalc(at)
+			}
+		}
+	}
+
+	if a.channel1.sweepCheckAt < a.channel1.sweepLoadAt {
+		applyCheck()
+		applyLoad()
+	} else {
+		applyLoad()
+		applyCheck()
+	}
+
+	if a.channel1.sweepStopAt <= now {
+		a.channel1.sweepStopAt = math.MaxUint64
+		a.channels[0].enabled = false
+	}
+}
+
+func (a *APU) clockSweep() {
+	if !a.channels[0].enabled || !a.channel1.sweepEnabled {
+		return
+	}
+
+	a.channel1.sweepTimer = (a.channel1.sweepTimer + 1) & 7
+	if a.channel1.sweepTimer != 7 {
+		return
+	}
+	a.channel1.sweepTimer = a.channel1.sweepPeriod ^ 7
+	if a.channel1.sweepPeriod == 0 {
+		return
+	}
+
+	now := a.s.Cycle()
+	next, ok := a.sweepFrequencyCalc(now)
+	if !ok {
+		return
+	}
+	if a.channel1.shift == 0 {
+		return
+	}
+
+	reloadNow := a.channel1.lastStepAt == now
+	a.channel1.frequencyShadow = next
+	a.channels[0].frequency = next
+	if reloadNow {
+		a.reschedulePulseAfterReload(0)
+	}
+	// The hardware's second overflow calculation is not part of this atomic
+	// writeback. It occurs seven M-cycles later and then takes one APU tick for
+	// an overflow disable to become visible.
+	a.channel1.sweepCheckAt = now + 28*a.apuTimingScale()
+}
+
 
 func (a *APU) clockVolume(channel int) {
 	if a.channels[channel].clock {
@@ -885,7 +1084,7 @@ func (a *APU) glitchNRx2(channel uint16, value uint8, oldValue uint8) {
 
 func (a *APU) readWaveRAM(address uint16) uint8 {
 	if a.channels[2].isEnabled() {
-		if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model() == types.CGBABC || a.b.Model() == types.CGB0 {
+		if a.s.Cycle()-a.channel3.waveRAMLastRead < 2 || a.b.Model().IsCGB() {
 			return a.waveRAM[a.channel3.waveRAMLastPosition]
 		} else {
 			return 0xff
@@ -894,46 +1093,197 @@ func (a *APU) readWaveRAM(address uint16) uint8 {
 	return a.waveRAM[address-0xff30]
 }
 
-func (a *APU) catchupLFSR() {
-	if a.lastCatchup > a.s.Cycle() {
-		a.lastCatchup = a.s.Cycle()
-	}
-	currentCycle := a.s.Cycle()
-	cyclesPassed := currentCycle - (a.lastCatchup)
+func (a *APU) noiseSpeedScale() uint64 {
 	if a.s.DoubleSpeed() {
-		cyclesPassed >>= 1
+		return 2
 	}
-	cyclesPassed += a.channel4.cyclesIncurred
+	return 1
+}
 
-	if cyclesPassed <= a.channel4.delayedCycles {
-		a.channel4.delayedCycles -= cyclesPassed
+// noiseDivisorIncrement is the first stage of channel 4's frequency timer,
+// expressed in normal-speed T-cycles. Divisor code 0 is the hardware carve-out
+// that ticks twice as fast as code 1.
+func (a *APU) noiseDivisorIncrement() uint64 {
+	if a.channel4.divisorCode == 0 {
+		return 4
+	}
+	return uint64(a.channel4.divisorCode) * 8
+}
+
+func (a *APU) noisePeriod() uint64 {
+	if a.channel4.clockShift >= 14 {
+		return 0
+	}
+	return a.noiseDivisorIncrement() << (a.channel4.clockShift + 1)
+}
+
+func noiseStepsToRise(counter uint16, shift uint8) uint64 {
+	if shift >= 14 {
+		return 0
+	}
+	m := uint32(1) << (shift + 1)
+	t := uint32(1) << shift
+	cc := uint32(counter) & (m - 1)
+	return uint64(((t + m - cc - 1) & (m - 1)) + 1)
+}
+
+func alignForward(now, phase, period uint64) uint64 {
+	if period == 0 {
+		return now
+	}
+	rem := (now + period - phase%period) % period
+	if rem == 0 {
+		return now
+	}
+	return now + period - rem
+}
+
+// noiseTriggerDeadline returns the absolute scheduler cycle of the first LFSR
+// shift after NR44 trigger. A fresh trigger clears the divide-by-two stage and
+// therefore waits half a noise period; a restart waits a full period. The
+// divisor stage is aligned to a 512 kHz grid whose odd 1 MHz ticks are anchored
+// at APU power-on.
+func (a *APU) noiseTriggerDeadline(restarting bool) uint64 {
+	scale := a.noiseSpeedScale()
+	tick := uint64(4) * scale
+	halfGrid := tick * 2
+	now := a.s.Cycle()
+	edge := alignForward(now, a.enableTimer, tick)
+
+	extra := uint64(8) * scale
+	if a.channel4.divisorCode != 0 {
+		noisePhase := a.enableTimer % halfGrid
+		if (edge+halfGrid-noisePhase)%halfGrid != tick {
+			if a.channel4.divisorCode == 1 {
+				extra += tick
+			} else {
+				extra -= tick
+			}
+		}
+	}
+
+	period := a.noisePeriod() * scale
+	deadline := edge + period/2 + extra
+	if restarting {
+		deadline = edge + period + extra
+	}
+
+	// In double speed the CPU write callback occurs one half APU tick after
+	// the hardware data phase that feeds the noise divider. SameSuite's
+	// channel_4_align brackets this by one NOP; preserve that bus/APU phase
+	// relationship instead of delaying the whole divider by a full tick.
+	if a.s.DoubleSpeed() {
+		deadline -= 4
+	}
+	return deadline
+}
+
+func (a *APU) startNoiseDivider(restarting bool) {
+	a.lastCatchup = a.s.Cycle()
+	a.channel4.divRunning = true
+	a.channel4.divReloaded = false
+
+	if a.channel4.clockShift >= 14 {
+		a.channel4.divCounter = 0
+		a.channel4.divCountdown = a.noiseDivisorIncrement()
+		return
+	}
+
+	if restarting {
+		a.channel4.divCounter = uint16(1) << a.channel4.clockShift
+	} else {
+		a.channel4.divCounter = 0
+	}
+
+	deadline := a.noiseTriggerDeadline(restarting)
+	scale := a.noiseSpeedScale()
+	untilRise := (deadline - a.s.Cycle()) / scale
+	steps := noiseStepsToRise(a.channel4.divCounter, a.channel4.clockShift)
+	inc := a.noiseDivisorIncrement()
+	prior := uint64(0)
+	if steps > 1 {
+		prior = (steps - 1) * inc
+	}
+	if untilRise > prior {
+		a.channel4.divCountdown = untilRise - prior
+	} else {
+		a.channel4.divCountdown = inc
+	}
+}
+
+func (a *APU) reloadNoiseDivisorOnEdge() {
+	inc := a.noiseDivisorIncrement()
+	if a.channel4.divisorCode == 0 {
+		a.channel4.divCountdown = inc
+		a.channel4.divReloaded = true
+		return
+	}
+
+	// Non-zero divisors reload only on the 512 kHz grid. Round the new
+	// countdown's absolute target forward to that grid.
+	scale := a.noiseSpeedScale()
+	tick := uint64(4) * scale
+	halfGrid := tick * 2
+	now := a.s.Cycle()
+	target := now + inc*scale
+	noisePhase := a.enableTimer % halfGrid
+	adjust := (tick + noisePhase + halfGrid - target%halfGrid) % halfGrid
+	a.channel4.divCountdown = (target + adjust - now) / scale
+	a.channel4.divReloaded = true
+}
+
+func (a *APU) stepNoiseLFSR() {
+	lfsr := a.channel4.lfsr
+	newHighBit := (lfsr ^ (lfsr >> 1) ^ 1) & 1
+	lfsr >>= 1
+	lfsr = (lfsr &^ a.channel4.widthMask) | (newHighBit * a.channel4.widthMask)
+	a.channel4.lfsr = lfsr
+}
+
+func (a *APU) catchupLFSR() {
+	currentCycle := a.s.Cycle()
+	if a.lastCatchup > currentCycle {
+		a.lastCatchup = currentCycle
+	}
+	if !a.channel4.divRunning {
 		a.lastCatchup = currentCycle
 		return
 	}
 
-	cyclesPassed -= a.channel4.delayedCycles
+	cyclesPassed := currentCycle - a.lastCatchup
+	if a.s.DoubleSpeed() {
+		cyclesPassed >>= 1
+	}
+	if cyclesPassed == 0 {
+		return
+	}
+	a.lastCatchup = currentCycle
+	a.channel4.divReloaded = false
 
-	freqTimer := a.channel4.frequencyTimer
-	steps := (cyclesPassed) / freqTimer
-
-	// step LFSR state
-	if steps > 0 {
-		lfsr := a.channel4.lfsr
-		bitMask := a.channel4.widthMask
-
-		for i := uint64(0); i < steps; i++ {
-			newHighBit := (lfsr ^ (lfsr >> 1) ^ 1) & 1
-			lfsr >>= 1
-			lfsr = (lfsr &^ bitMask) | (newHighBit * bitMask)
+	for cyclesPassed >= a.channel4.divCountdown {
+		cyclesPassed -= a.channel4.divCountdown
+		oldBit := uint16(0)
+		if a.channel4.clockShift < 14 {
+			oldBit = (a.channel4.divCounter >> a.channel4.clockShift) & 1
 		}
+		a.channel4.divCounter = (a.channel4.divCounter + 1) & 0x3fff
+		newBit := uint16(0)
+		if a.channel4.clockShift < 14 {
+			newBit = (a.channel4.divCounter >> a.channel4.clockShift) & 1
+		}
+		a.channel4.divCountdown = a.noiseDivisorIncrement()
 
-		a.channel4.lfsr = lfsr
+		if oldBit == 0 && newBit == 1 && a.channels[3].isEnabled() {
+			a.stepNoiseLFSR()
+		}
 	}
 
-	a.channel4.delayedCycles = 0
-	a.channel4.cyclesIncurred = cyclesPassed % freqTimer
-
-	a.lastCatchup = currentCycle
+	if cyclesPassed > 0 {
+		a.channel4.divCountdown -= cyclesPassed
+		a.channel4.divReloaded = false
+	} else {
+		a.channel4.divReloaded = true
+	}
 }
 
 func (a *APU) Samples() ([]float32, uint32) {
@@ -951,32 +1301,36 @@ func (a *APU) Samples() ([]float32, uint32) {
 	return s, b
 }
 
-func (a *APU) freqCalc(update bool) {
-	newFreq := a.channel1.frequencyShadow >> a.channel1.shift
-	if a.channel1.negate {
-		a.channel1.didNegate = true
-		newFreq = a.channel1.frequencyShadow - newFreq
-	} else {
-		newFreq = a.channel1.frequencyShadow + newFreq
+// shouldExtraClockLength implements the NRx4 length-enable edge clock.
+//
+// On normal hardware, when the next frame-sequencer step does not clock length,
+// a 0->1 transition of the length-enable bit clocks the counter immediately.
+// CGB0 and the early CGB B-family additionally clock on any NRx4 write while
+// length was previously disabled, even if the new write leaves it disabled.
+// SameSuite covers this hardware bug on channels 1 and 2.
+func (a *APU) shouldExtraClockLength(ch uint16, newEnabled bool) bool {
+	if a.frameSequencerStep&1 == 0 || a.channels[ch].lengthCounterEnabled || a.channels[ch].lengthCounter == 0 {
+		return false
 	}
-
-	if newFreq > 0x7ff {
-		a.channels[0].enabled = false
-	} else if a.channel1.shift > 0 && update {
-		a.channel1.frequencyShadow = newFreq
-		a.channels[0].frequency = newFreq
+	if newEnabled {
+		return true
+	}
+	switch a.b.Model() {
+	case types.CGB0, types.CGBBC:
+		return true
+	default:
+		return false
 	}
 }
 
 func (a *APU) writeNRx1(ch int, v uint8) {
-	switch a.b.Model() {
-	case types.CGBABC, types.CGB0:
+	if a.b.Model().IsCGB() {
 		if a.enabled {
 			a.channels[ch].lengthCounter = uint16(0x40 - (v & 0x3f))
 		}
-	default:
-		a.channels[ch].lengthCounter = uint16(0x40 - (v & 0x3f))
+		return
 	}
+	a.channels[ch].lengthCounter = uint16(0x40 - (v & 0x3f))
 }
 
 func (a *APU) ToggleMute() {

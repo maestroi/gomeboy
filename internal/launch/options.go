@@ -43,7 +43,7 @@ type Options struct {
 func Register(fs *flag.FlagSet) {
 	fs.String("rom", "", "path to a .gb / .gbc / .gba ROM to load")
 	fs.String("boot", "", "path to a GB boot ROM (.gbr) or 16 KiB GBA BIOS to use")
-	fs.String("model", string(gomeboy.ModelAuto), "hardware model to emulate: auto, DMG0, DMG, CGB0, CGB, MGB, SGB, SGB2, or AGB (case-insensitive); auto infers the model from the cartridge")
+	fs.String("model", string(gomeboy.ModelAuto), "hardware model to emulate: auto, DMG0, DMG, CGB0, CGB, CGBBC, CGBDE, MGB, SGB, SGB2, or AGB (case-insensitive); auto infers the model from the cartridge")
 	fs.Bool("printer", false, "attach the Game Boy Printer serial device")
 	fs.String("cheats", "", "path to a cheats file (GameShark / GameGenie) to load; the working directory is never probed")
 	fs.String("log-level", log.InfoLevel.String(), "log level: debug, info, or error")
@@ -69,8 +69,10 @@ var modelValues = map[string]gomeboy.Model{
 	"auto": gomeboy.ModelAuto,
 	"dmg0": gomeboy.ModelDMG0,
 	"dmg":  gomeboy.ModelDMG,
-	"cgb0": gomeboy.ModelCGB0,
-	"cgb":  gomeboy.ModelCGB,
+	"cgb0":  gomeboy.ModelCGB0,
+	"cgb":   gomeboy.ModelCGB,
+	"cgbbc": gomeboy.ModelCGBBC,
+	"cgbde": gomeboy.ModelCGBDE,
 	"mgb":  gomeboy.ModelMGB,
 	"sgb":  gomeboy.ModelSGB,
 	"sgb2": gomeboy.ModelSGB2,
@@ -80,7 +82,7 @@ var modelValues = map[string]gomeboy.Model{
 func parseModel(s string) (gomeboy.Model, error) {
 	m, ok := modelValues[strings.ToLower(strings.TrimSpace(s))]
 	if !ok {
-		return "", fmt.Errorf("launch: invalid -model %q: use auto, DMG0, DMG, CGB0, CGB, MGB, SGB, SGB2, or AGB", s)
+		return "", fmt.Errorf("launch: invalid -model %q: use auto, DMG0, DMG, CGB0, CGB, CGBBC, CGBDE, MGB, SGB, SGB2, or AGB", s)
 	}
 	return m, nil
 }
@@ -173,8 +175,10 @@ func (o *Options) CheatsPath() string {
 var coreModel = map[gomeboy.Model]types.Model{
 	gomeboy.ModelDMG0: types.DMG0,
 	gomeboy.ModelDMG:  types.DMGABC,
-	gomeboy.ModelCGB0: types.CGB0,
-	gomeboy.ModelCGB:  types.CGBABC,
+	gomeboy.ModelCGB0:  types.CGB0,
+	gomeboy.ModelCGB:   types.CGBABC,
+	gomeboy.ModelCGBBC: types.CGBBC,
+	gomeboy.ModelCGBDE: types.CGBDE,
 	gomeboy.ModelMGB:  types.MGB,
 	gomeboy.ModelSGB:  types.SGB,
 	gomeboy.ModelSGB2: types.SGB2,

@@ -10,6 +10,11 @@ import (
 const (
 	VRAM uint16 = 0b0000_0011_0000_0000
 	OAM         = 0b1000_0000_0000_0000
+
+	// CGB has separate cartridge, WRAM, and VRAM buses. During OAM DMA only
+	// the source bus is taken from the CPU; the other buses remain accessible.
+	cgbCartBus uint16 = 0b0000_1100_1111_1111 // 0000-7FFF, A000-BFFF
+	cgbWRAMBus uint16 = 0b1111_0000_0000_0000 // C000-FDFF (IO/HRAM handled separately)
 )
 
 // wRAMSeed is the fixed seed used to pseudo-randomize work RAM on boot.
@@ -53,6 +58,7 @@ type Bus struct {
 	s     *scheduler.Scheduler
 
 	gbcHandlers []func()
+	agbHandlers []func()
 
 	// DMA related stuff
 	dmaSource, dmaDestination  uint16
@@ -129,7 +135,7 @@ func (b *Bus) syncWRAMEcho() {
 
 func (b *Bus) Map(m types.Model) {
 	b.model = m
-	b.isGBC = m == types.CGBABC || m == types.CGB0
+	b.isGBC = m.IsCGB() || m == types.AGB
 	if b.isSGB() {
 		b.initSGB()
 	}
@@ -236,7 +242,7 @@ func (b *Bus) Map(m types.Model) {
 	}
 
 	// setup cgb model registers
-	if b.model == types.CGBABC || b.model == types.CGB0 {
+	if b.model.IsCGB() {
 		b.vRAMBankMask = 1
 		b.ReserveAddress(types.VBK, func(v byte) byte {
 			if b.IsGBCCart() || b.IsBooting() { // CGB boot ROM makes use of both banks
@@ -248,10 +254,22 @@ func (b *Bus) Map(m types.Model) {
 		})
 		b.ReserveAddress(types.FF72, func(v byte) byte { return v })
 		b.ReserveAddress(types.FF73, func(v byte) byte { return v })
+		// FF74 exists only in native CGB mode. Its power-on value is 0x00 and
+		// all eight bits are read/write. In DMG compatibility mode the address
+		// remains unhandled, so the generic IO path keeps it locked at 0xff.
+		if b.IsGBCCart() {
+			b.ReserveAddress(types.FF74, func(v byte) byte { return v })
+		}
 		b.ReserveAddress(types.FF75, func(v byte) byte { return v&0x70 | 0x8F })
 		b.Set(types.FF75, 0x8F)
 
 		for _, f := range b.gbcHandlers {
+			f()
+		}
+	}
+
+	if b.model == types.AGB {
+		for _, f := range b.agbHandlers {
 			f()
 		}
 	}
@@ -272,6 +290,11 @@ func (b *Bus) Boot() {
 	for k, v := range types.ModelIO[b.model] {
 		ioRegs[k] = v
 	}
+	if b.IsGBCCart() {
+		for k, v := range types.ModelIOCGB[b.model] {
+			ioRegs[k] = v
+		}
+	}
 	for i := types.HardwareAddress(0xFF00); i < 0xFF80; i++ {
 		// has the model provided a value?
 		if ioRegs[i] != nil {
@@ -285,7 +308,8 @@ func (b *Bus) Boot() {
 		}
 	}
 
-	// unpack logo data
+	// Recreate the VRAM residue left by the selected boot ROM. whichboot.gb
+	// fingerprints this state independently of CPU registers/timing.
 	logoData := b.data[0x0104:0x0134]
 	var unpackedLogoData []byte
 	for i := 0; i < len(logoData); i++ {
@@ -298,16 +322,36 @@ func (b *Bus) Boot() {
 		currentData[2], currentData[6] = currentData[0], currentData[4] // double bytes
 		unpackedLogoData = append(unpackedLogoData, currentData[:]...)
 	}
-	copy(b.data[0x8010:], append(unpackedLogoData, 0x3C, 0, 0x42, 0, 0xB9, 0, 0xA5, 0, 0xB9, 0, 0xA5, 0, 0x42, 0, 0x3C))
-	copy(b.VRAM[0][0x0010:], append(unpackedLogoData, 0x3C, 0, 0x42, 0, 0xB9, 0, 0xA5, 0, 0xB9, 0, 0xA5, 0, 0x42, 0, 0x3C))
-	for i := uint8(0); i < 12; i++ {
-		b.data[0x9904+uint16(i)] = i + 1
-		b.VRAM[0][0x0904+uint16(i)] = i + 1
-		b.data[0x9924+uint16(i)] = i + 13
-		b.VRAM[0][0x0924+uint16(i)] = i + 13
+	copy(b.data[0x8010:], unpackedLogoData)
+	copy(b.VRAM[0][0x0010:], unpackedLogoData)
+
+	// DMG0 predates the registered-symbol addition, so tile $19 is blank.
+	// All later official boot ROMs represented here leave the standard ® tile.
+	if b.model != types.DMG0 {
+		copyright := [...]byte{0x3C, 0, 0x42, 0, 0xB9, 0, 0xA5, 0, 0xB9, 0, 0xA5, 0, 0x42, 0, 0x3C}
+		copy(b.data[0x8190:], copyright[:])
+		copy(b.VRAM[0][0x0190:], copyright[:])
 	}
-	b.data[0x9910] = 0x19
-	b.VRAM[0][0x0910] = 0x19
+
+	// The monochrome/SGB boot ROMs leave the Nintendo logo tile indices in the
+	// BG map. CGB/GBA boot ROMs do not leave that map residue behind.
+	leaveLogoMap := true
+	switch b.model {
+	case types.CGB0, types.CGBABC, types.CGBBC, types.CGBDE, types.AGB:
+		leaveLogoMap = false
+	}
+	if leaveLogoMap {
+		for i := uint8(0); i < 12; i++ {
+			b.data[0x9904+uint16(i)] = i + 1
+			b.VRAM[0][0x0904+uint16(i)] = i + 1
+			b.data[0x9924+uint16(i)] = i + 13
+			b.VRAM[0][0x0924+uint16(i)] = i + 13
+		}
+		if b.model != types.DMG0 {
+			b.data[0x9910] = 0x19
+			b.VRAM[0][0x0910] = 0x19
+		}
+	}
 
 	// wRAM is randomized on boot (not accurate to hardware, but random enough to pass most anti-emu checks).
 	// A fixed seed is used so that headless execution is deterministic across runs and instances.
@@ -320,7 +364,7 @@ func (b *Bus) Boot() {
 		}
 	}
 
-	if b.model == types.CGBABC || b.model == types.CGB0 {
+	if b.model.IsCGB() {
 		b.Set(types.VBK, 0xFE)
 
 		if !b.IsGBCCart() {
@@ -336,6 +380,7 @@ func (b *Bus) ReserveAddress(addr uint16, f func(byte) byte) { b.writeHandlers[a
 func (b *Bus) ReserveLazyReader(addr uint16, f func() byte)  { b.lazyReaders[addr&0xff] = f }               // reserve IO lazy reader
 func (b *Bus) RegisterBootHandler(f func())                  { b.bootHandlers = append(b.bootHandlers, f) } // called after boot ROM
 func (b *Bus) RegisterGBCHandler(f func())                   { b.gbcHandlers = append(b.gbcHandlers, f) }   // called when model is CGB
+func (b *Bus) RegisterAGBHandler(f func())                   { b.agbHandlers = append(b.agbHandlers, f) }   // called for AGB GB-compatibility hardware
 
 // Write writes to the specified memory address. This function
 // calls the write handler if it exists.
@@ -383,20 +428,12 @@ func (b *Bus) Write(addr uint16, value byte) {
 		case types.DMA:
 			b.dmaSource = uint16(value) << 8
 
-			if !b.isGBC {
-				// set conflicting bus
-				if b.dmaSource >= 0x8000 && b.dmaSource < 0xA000 {
-					b.dmaConflicted = VRAM
-				} else if b.dmaSource < 0x8000 || b.dmaSource >= 0xA000 && b.dmaSource <= 0xFEFF {
-					b.dmaConflicted = ^VRAM
-				}
-			}
-
 			if b.dmaSource >= 0xE000 && b.dmaSource < 0xFE00 {
 				b.dmaSource &= 0xDDFF // account for mirroring
 			} else if b.dmaSource >= 0xFE00 {
-				b.dmaSource -= 0x2000 // why
+				b.dmaSource -= 0x2000 // OAM-DMA decoding aliases this range onto WRAM
 			}
+			b.setDMAConflictBus()
 
 			b.dmaActive = false
 			b.dmaRestarting = b.dmaEnabled
@@ -456,6 +493,19 @@ func (b *Bus) Write(addr uint16, value byte) {
 			if (b.regionLocks<<8)&OAM > 0 || b.isDMATransferring() {
 				return
 			}
+		// 0xFEA0-0xFEFF extra/unusable OAM. CGB 0-A/B/C revisions expose
+		// a small aliased RAM here; later hardware ignores writes.
+		case addr <= 0xFEFF:
+			if (b.regionLocks<<8)&OAM > 0 || b.isDMATransferring() {
+				return
+			}
+			switch b.model {
+			case types.CGB0, types.CGBABC, types.CGBBC:
+				// CGB 0/A/B/C clear address bits 3 and 4, so e.g. FEA0
+				// and FEB8 refer to the same backing byte.
+				b.data[addr&^0x18] = value
+			}
+			return
 		}
 	}
 
@@ -525,10 +575,14 @@ func (b *Bus) CopyTo(start, end uint16, src []byte) {
 }
 
 func (b *Bus) Read(addr uint16) byte {
+	if addr < 0xFE00 && b.isDMATransferring() && b.dmaConflicted&(1<<(addr>>12)) > 0 {
+		return b.dmaConflict
+	}
+
 	switch {
 	case addr <= 0x9FFF || addr >= 0xC000 && addr <= 0xFDFF:
 		addrBitmask := uint16(1 << (addr >> 12))
-		if b.regionLocks&0xff00&(addrBitmask&0x7fff) > 0 || (b.isDMATransferring() && b.dmaConflicted&addrBitmask > 0) {
+		if b.regionLocks&0xff00&(addrBitmask&0x7fff) > 0 {
 			return b.dmaConflict
 		}
 	case addr <= 0xBFFF:
@@ -561,10 +615,26 @@ func (b *Bus) Read(addr uint16) byte {
 		if f := b.lazyReaders[addr&0xff]; f != nil {
 			return f()
 		}
-	// OAM can be read locked by the PPU and a DMA transfer
+	// OAM and the extra/unusable OAM range share the PPU bus lock.
 	case addr <= 0xFE9F:
 		if b.regionLocks&OAM > 0 || b.isDMATransferring() {
 			return 0xff
+		}
+	case addr <= 0xFEFF:
+		if b.regionLocks&OAM > 0 || b.isDMATransferring() {
+			return 0xff
+		}
+		switch b.model {
+		case types.CGB0, types.CGBABC, types.CGBBC:
+			return b.data[addr&^0x18]
+		case types.CGBDE, types.AGB:
+			// The grouped D/E profile follows the later E-style open-bus
+			// pattern: repeat the high nibble of the low address byte.
+			n := byte(addr >> 4 & 0x0f)
+			return n<<4 | n
+		default:
+			// DMG-family hardware reads zero here outside the OAM lock.
+			return 0x00
 		}
 	}
 
@@ -595,6 +665,31 @@ func (b *Bus) IsGBCCart() bool       { return b.c.IsCGBCartridge() } // returns 
 func (b *Bus) Model() types.Model    { return b.model }              // returns the current model
 
 func (b *Bus) isDMATransferring() bool { return b.dmaActive || b.dmaRestarting } // DMA transfer in progress
+
+// setDMAConflictBus records which CPU address bus is owned by OAM DMA.
+// DMG has one shared main bus (plus VRAM), while CGB separates cartridge and
+// WRAM buses. A CPU read on the owned bus observes the byte currently driven by
+// DMA; accesses on the other CGB bus continue normally.
+func (b *Bus) setDMAConflictBus() {
+	if !b.isGBC {
+		if b.dmaSource >= 0x8000 && b.dmaSource < 0xA000 {
+			b.dmaConflicted = VRAM
+		} else {
+			b.dmaConflicted = ^VRAM
+		}
+		return
+	}
+
+	switch {
+	case b.dmaSource >= 0x8000 && b.dmaSource < 0xA000:
+		b.dmaConflicted = VRAM
+	case b.dmaSource >= 0xC000 && b.dmaSource < 0xFE00:
+		b.dmaConflicted = cgbWRAMBus
+	default:
+		b.dmaConflicted = cgbCartBus
+	}
+}
+
 
 // PPUReadOAM returns the value currently visible to the PPU on the OAM bus.
 //
@@ -646,6 +741,44 @@ func (b *Bus) PPUReadOAM(address uint16) byte {
 		return (old | incoming) & 0xfc
 	}
 	return next | incoming
+}
+
+// PPUOAMScanBlockedByDMA reports whether active OAM DMA prevents Mode 2 from
+// refreshing its Y/X bus latches. The PPU keeps the previous latch values in
+// that case rather than sampling an artificial 0xff byte. The measured MGB
+// halted-DMA path remains readable through PPUReadOAM.
+func (b *Bus) PPUOAMScanBlockedByDMA() bool {
+	return b.dmaActive && !(b.model == types.MGB && b.s.Halted)
+}
+
+// PPUReadOAMScan returns an OAM byte for a Mode 2 bus-latch refresh. Callers
+// must first check PPUOAMScanBlockedByDMA; while blocked, hardware retains the
+// existing Mode 2 bus values instead of performing a new OAM read.
+func (b *Bus) PPUReadOAMScan(address uint16) byte {
+	return b.PPUReadOAM(address)
+}
+
+// PPUReadOAMFetch returns the byte visible when Mode 3 fetches an object's
+// tile/attribute word. During active OAM DMA, the PPU sees the 16-bit OAM word
+// currently being updated by DMA rather than the selected object's stored word.
+// The requested address is used only for its low/high-byte parity.
+func (b *Bus) PPUReadOAMFetch(address uint16) byte {
+	if !b.dmaActive || (b.model == types.MGB && b.s.Halted) {
+		return b.PPUReadOAM(address)
+	}
+
+	// dmaDestination points at the next byte to be copied. The PPU-facing OAM
+	// bus is word-oriented and advances to the word containing that destination;
+	// crossing an even-byte boundary therefore exposes the next word immediately,
+	// rather than the word containing the byte that was just written.
+	if b.dmaDestination >= 0xfea0 {
+		return b.PPUReadOAM(address)
+	}
+	wordBase := b.dmaDestination &^ 1
+	if wordBase < 0xfe00 {
+		return 0xff
+	}
+	return b.data[wordBase+address&1]
 }
 
 // startDMATransfer initiates a DMA transfer.

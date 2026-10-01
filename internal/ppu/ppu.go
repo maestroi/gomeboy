@@ -125,6 +125,7 @@ type PPU struct {
 	fetcherTileAttr      uint8                  // Current attributes
 	fetcherData          [2]uint8               // Tile pattern data (low + high bytes)
 	fetcherTileNoAddress uint16                 // VRAM address of current tile map entry
+	tileSelectGlitch bool // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -139,6 +140,9 @@ type PPU struct {
 	offscreenLineState OffscreenLineState // VBlank handling
 	glitchedLineState  GlitchedLineState  // First-line startup behaviour
 	objBuffer          []Object           // Scanline object buffer
+	oamScanIndex       uint8              // Next OAM entry inspected during Mode 2
+	oamScanYBus        uint8              // Last Y byte observed by the Mode 2 OAM bus
+	oamScanXBus        uint8              // Last X byte observed by the Mode 2 OAM bus
 
 	// Timing counters
 	lineDot  uint64 // Cycle at which the current line began
@@ -209,6 +213,16 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 
 	b.ReserveAddress(types.LCDC, func(v byte) byte {
+		oldLCDC := b.Get(types.LCDC)
+		oldTileSel := oldLCDC&types.Bit4 != 0
+		newTileSel := v&types.Bit4 != 0
+		if p.cgbMode && p.mode == ModeVRAM && oldTileSel && !newTileSel {
+			// CPU writes become visible after the scheduler has advanced the
+			// current machine cycle. Carry the CGB TILE_SEL reset conflict into
+			// the next high-bitplane fetch, where the tile ID can appear on the
+			// data bus instead of VRAM data.
+			p.tileSelectGlitch = true
+		}
 		p.winTileMap = v >> 6 & 1
 		p.winEnabled = v&types.Bit5 > 0
 		p.addressMode = 1 &^ (v >> 4 & 1)
@@ -299,7 +313,30 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	b.ReserveAddress(types.LY, func(v byte) byte {
 		if b.IsBooting() {
 			p.ly = v
-			return v
+			visibleLY := v
+			// DMG0's HLE bootstrap keeps its hidden line pipeline one line
+			// ahead of the LY value visible at cartridge entry. Keeping p.ly
+			// at the established phase preserves the later boot-HWIO cadence,
+			// while whichboot observes the measured LY=145 handoff.
+			if b.Model() == types.DMG0 && v == 0x92 {
+				visibleLY = 0x91
+			}
+
+			// CGB/AGB boot ROMs hand CGB-compatible cartridges off while the
+			// LCD is already in VBlank (LY=144). Bus.Boot applies LCDC before
+			// LY, so the ordinary LCD-enable path has already scheduled a
+			// visible-line event. Re-home the PPU state machine in VBlank when
+			// the HLE boot profile writes that hardware-visible LY value.
+			if b.IsGBCCart() && v >= 144 && v <= 153 &&
+				(b.Model().IsCGB() || b.Model() == types.AGB) {
+				p.s.DescheduleEvent(scheduler.PPUHandleVisualLine)
+				p.s.DescheduleEvent(scheduler.PPUHandleGlitchedLine0)
+				p.s.DescheduleEvent(scheduler.PPUHandleOffscreenLine)
+				p.mode, p.modeToInt = ModeVBlank, ModeVBlank
+				p.offscreenLineState = StartVBlank
+				p.handleOffscreenLine()
+			}
+			return visibleLY
 		}
 		return p.b.Get(types.LY)
 	})
@@ -604,57 +641,94 @@ var stateCycles = []uint64{
 //   - [mooneye/acceptance/ppu/intr_2_mode_0_timing]
 //   - [mooneye/acceptance/ppu/intr_2_mode3_timing]
 //   - [mooneye/acceptance/ppu/intr_2_oam_ok_timing]
+// scanOAMEntry performs one of the 40 Mode 2 object checks. Hardware
+// advances to a new four-byte OAM entry every two dots; keeping that cadence
+// visible to the scheduler is required for OAM DMA overlap tests such as
+// Strikethrough.
+func (p *PPU) scanOAMEntry() {
+	if p.oamScanIndex >= 40 || len(p.objBuffer) >= 10 || p.Debug.OBJDisabled {
+		return
+	}
+
+	base := uint16(0xfe00) + uint16(p.oamScanIndex)*4
+	// Mode 2 has dedicated Y/X bus latches. During ordinary active OAM DMA the
+	// PPU cannot refresh them, so each entry is tested using whatever values the
+	// previous readable scan left on the bus. This persistence across scanlines is
+	// observable in strikethrough.gb.
+	if !p.b.PPUOAMScanBlockedByDMA() {
+		p.oamScanYBus = p.b.PPUReadOAMScan(base)
+		p.oamScanXBus = p.b.PPUReadOAMScan(base + 1)
+	}
+	y, x := p.oamScanYBus, p.oamScanXBus
+
+	if p.ly+16 < y || p.ly+16 >= y+p.objSize {
+		return
+	}
+
+	// Mode 2 only selects objects from their Y/X coordinates. Tile number and
+	// attributes are sampled later by the Mode 3 object fetcher.
+	p.objBuffer = append(p.objBuffer, Object{
+		y:     y,
+		x:     x,
+		index: p.oamScanIndex,
+	})
+}
+
 func (p *PPU) handleVisualLine() {
 	switch p.lineState {
 	case StartOAMScan:
-		p.b.Lock(io.OAM)
-		p.checkWindowTriggerWY()
+		// Mode 2 inspects one OAM entry every two dots. The previous
+		// implementation took a single snapshot at dot 80, which made DMA
+		// overlapping the scan impossible to model.
+		if p.oamScanIndex == 0 {
+			p.b.Lock(io.OAM)
+			p.checkWindowTriggerWY()
+			p.objBuffer = p.objBuffer[:0]
 
-		p.lineDot = p.s.Cycle()
-		p.lyForComparison = uint16(p.ly)
-		p.mode, p.modeToInt = ModeOAM, ModeOAM
-		p.statUpdate()
-		p.modeToInt = 255
-		p.statUpdate()
-	case ReleaseOAMBus: // on dot 76
-		p.b.RBlock(io.VRAM, !p.cgbMode)
-		p.b.WBlock(io.OAM, p.cgbMode)
-		p.b.WUnlock(io.VRAM)
-	case StartPixelTransfer: // on dot 80
-		// fill obj
-		if p.objEnabled && !p.Debug.OBJDisabled {
-			// fill obj buffer
-			p.objBuffer = []Object{}
-			for i := uint16(0); i < 0xa0 && len(p.objBuffer) < 10; i += 4 {
-				y, x, id, attr := p.b.PPUReadOAM(0xfe00+i), p.b.PPUReadOAM(0xfe00+i+1), p.b.PPUReadOAM(0xfe00+i+2), p.b.PPUReadOAM(0xfe00+i+3)
-
-				if p.ly+16 >= y &&
-					p.ly+16 < y+p.objSize {
-					spr := Object{
-						y:     y,
-						x:     x,
-						id:    id,
-						attr:  attr,
-						index: uint8(i) >> 2,
-					}
-
-					if p.objSize == 16 {
-						if (p.ly+16-y < 8 && spr.attr&types.Bit6 > 0) || (p.ly+16-y >= 8 && spr.attr&types.Bit6 == 0) {
-							spr.id |= 1
-						} else {
-							spr.id &= 0xfe
-						}
-					}
-
-					p.objBuffer = append(p.objBuffer, spr)
-				}
-			}
-
-			sort.SliceStable(p.objBuffer, func(i, j int) bool {
-				return p.objBuffer[i].x < p.objBuffer[j].x
-			})
+			p.lineDot = p.s.Cycle()
+			p.lyForComparison = uint16(p.ly)
+			p.mode, p.modeToInt = ModeOAM, ModeOAM
+			p.statUpdate()
+			p.modeToInt = 255
+			p.statUpdate()
 		}
 
+		p.scanOAMEntry()
+		p.oamScanIndex++
+		if p.oamScanIndex < 38 {
+			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 2)
+			return
+		}
+
+		// OAM entries 38 and 39 are still searched on dots 76 and 78,
+		// while the CPU-facing bus starts its documented late-Mode-2
+		// accessibility transition.
+		p.lineState = ReleaseOAMBus
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 2)
+		return
+	case ReleaseOAMBus: // dots 76 and 78
+		if p.oamScanIndex == 38 {
+			p.b.RBlock(io.VRAM, !p.cgbMode)
+			p.b.WBlock(io.OAM, p.cgbMode)
+			p.b.WUnlock(io.VRAM)
+		}
+
+		p.scanOAMEntry()
+		p.oamScanIndex++
+		if p.oamScanIndex < 40 {
+			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 2)
+			return
+		}
+
+		// Fetch order is left-to-right; stable ordering preserves OAM order
+		// for equal X coordinates, which is needed by the priority mixer.
+		sort.SliceStable(p.objBuffer, func(i, j int) bool {
+			return p.objBuffer[i].x < p.objBuffer[j].x
+		})
+		p.lineState = StartPixelTransfer
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 2)
+		return
+	case StartPixelTransfer: // on dot 80
 		p.resetFetcher()
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
 		p.statUpdate() // clear stat line
@@ -785,6 +859,7 @@ func (p *PPU) handleVisualLine() {
 		}
 		p.statUpdate()
 
+		p.oamScanIndex = 0
 		p.lineState = StartOAMScan
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
 		return
@@ -865,6 +940,35 @@ var offscreenLineCycles = []uint64{
 	Line153LYC0:         444,
 }
 
+// lateLine153LYZero reports whether the visible LY register remains 153 until
+// dot 8 of line 153. Hardware measurements used by AGE and SameBoy show two
+// production CGB paths:
+//   - CGB B/C, normal speed: LY becomes 0 at dot 6.
+//   - CGB D/E, and CGB double speed: LY remains 153 until dot 8.
+//
+// The generic CGB profile follows the established production behavior and
+// therefore takes the late path only in double speed.
+func (p *PPU) lateLine153LYZero() bool {
+	if p.b.Model() == types.CGBDE {
+		return true
+	}
+	return p.b.Model().IsCGB() && p.s.DoubleSpeed()
+}
+
+func (p *PPU) offscreenStateCycles(state OffscreenLineState) uint64 {
+	if !p.lateLine153LYZero() {
+		return offscreenLineCycles[state]
+	}
+	switch state {
+	case Line153LYUpdate:
+		return 2
+	case Line153LY0:
+		return 4
+	default:
+		return offscreenLineCycles[state]
+	}
+}
+
 // handleOffscreenLine manages the ModeVBlank period (LY = 144 - 153) maintaining
 // the 456 dots/line cadence. This also includes handling the erratic behaviour that
 // occurs on line 153 in regard to the LY/LYC register and STAT comparison checks.
@@ -919,11 +1023,22 @@ func (p *PPU) handleOffscreenLine() {
 	case Line153LYUpdate:
 		p.b.Set(types.LY, 153)
 	case Line153LY0:
-		p.b.Set(types.LY, 0)
+		// B/C normal-speed hardware exposes LY=0 from dot 6. D/E and
+		// double-speed CGB retain LY=153 for two more dots.
+		if !p.lateLine153LYZero() {
+			p.b.Set(types.LY, 0)
+		}
 		p.lyForComparison = 153
 		p.statUpdate()
 	case Line153LYC:
-		p.lyForComparison = 0xffff
+		if p.lateLine153LYZero() {
+			p.b.Set(types.LY, 0)
+			// D/E (and double-speed CGB) keeps LY=153 as the comparison
+			// value until dot 12 even though the visible register is now 0.
+			p.lyForComparison = 153
+		} else {
+			p.lyForComparison = 0xffff
+		}
 		p.statUpdate()
 	case Line153LYC0:
 		p.lyForComparison = 0
@@ -938,7 +1053,7 @@ func (p *PPU) handleOffscreenLine() {
 		return
 	}
 
-	p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, offscreenLineCycles[p.offscreenLineState])
+	p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, p.offscreenStateCycles(p.offscreenLineState))
 	p.offscreenLineState++
 }
 
@@ -1123,7 +1238,15 @@ func (p *PPU) stepPixelFetcher() {
 	case BGGetTileDataLowT2:
 		p.fetcherData[0] = p.b.GetVRAM(p.getBGTileAddress(), p.fetcherTileAttr&types.Bit3>>3)
 	case BGWinGetTileDataHighT2:
-		p.fetcherData[1] = p.b.GetVRAM(p.getBGTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
+		tileNo := p.b.GetVRAM(p.fetcherTileNoAddress, 0)
+		if p.cgbMode && p.tileSelectGlitch && tileNo&types.Bit7 == 0 {
+			// On CGB hardware, an LCDC.4 1->0 transition racing the high
+			// bitplane fetch can put the unsigned tile ID itself on the data bus.
+			p.fetcherData[1] = tileNo
+		} else {
+			p.fetcherData[1] = p.b.GetVRAM(p.getBGTileAddress()|1, p.fetcherTileAttr&types.Bit3>>3)
+		}
+		p.tileSelectGlitch = false
 		if p.fetcherTileAttr&types.Bit5 > 0 {
 			p.fetcherData[0] = bits.Reverse8(p.fetcherData[0])
 			p.fetcherData[1] = bits.Reverse8(p.fetcherData[1])
@@ -1232,10 +1355,15 @@ const (
 func (p *PPU) stepObjectFetcher() {
 	switch p.objectFetcherState {
 	case OBJGetTileNoT1:
-		p.objFetcherTileNo = p.fetchingObj.id
+		// The first OBJ fetch dot advances the interrupted BG/window fetcher;
+		// OAM's tile/attribute word is sampled on the following fetch phase.
 		p.stepPixelFetcher()
 	case OBJGetTileNoT2:
-		p.objFetcherTileAttr = p.fetchingObj.attr // TODO verify timings
+		base := uint16(0xfe00) + uint16(p.fetchingObj.index)*4
+		p.objFetcherTileNo = p.b.PPUReadOAMFetch(base + 2)
+		p.objFetcherTileAttr = p.b.PPUReadOAMFetch(base + 3)
+		p.fetchingObj.id = p.objFetcherTileNo
+		p.fetchingObj.attr = p.objFetcherTileAttr
 		p.stepPixelFetcher()
 	case OBJGetTileDataLowT2:
 		p.objFetcherData[0] = p.b.GetVRAM(p.getObjectTileAddress(), p.objFetcherTileAttr&types.Bit3>>3)
@@ -1323,10 +1451,16 @@ func (p *PPU) getObjectTileAddress() uint16 {
 		tileY = ^tileY & (p.objSize - 1)
 	}
 
-	// determine where the tile is in VRAM
+	// determine where the tile is in VRAM. In 8x16 mode the hardware
+	// ignores tile-number bit 0; tileY (0..15) naturally crosses into the
+	// second 16-byte tile.
+	tileNo := p.objFetcherTileNo
+	if p.objSize == 16 {
+		tileNo &^= 1
+	}
 	address := uint16(0x0000)
-	address |= uint16(p.objFetcherTileNo) << 4 // Tile ID offset
-	address |= uint16(tileY) << 1              // Y pos
+	address |= uint16(tileNo) << 4 // Tile ID offset
+	address |= uint16(tileY) << 1  // Y pos
 
 	return address
 }
@@ -1368,7 +1502,7 @@ func (p *PPU) statUpdate() {
 	}
 
 	// update LYC_EQ_LY flag
-	if p.lyForComparison != 0xffff || p.b.Model() <= types.CGBABC && !p.s.DoubleSpeed() {
+	if p.lyForComparison != 0xffff || (p.b.Model() <= types.DMGABC || p.b.Model().IsCGB()) && !p.s.DoubleSpeed() {
 		if uint8(p.lyForComparison) == p.lyCompare {
 			p.lycInt = true
 			p.status |= types.Bit2
@@ -1472,5 +1606,6 @@ func (p *PPU) resetFetcher() {
 	p.winTriggerWx = false
 
 	p.fetcherState = BGWinActivating
+	p.tileSelectGlitch = false
 	p.lx = 0
 }
