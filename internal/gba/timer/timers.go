@@ -460,38 +460,14 @@ func (t *Timers) Counter(index int) uint16 {
 	return t.timer[index].counter
 }
 
-// CounterForCPURead returns the timer value at GomeBoy's CPU data-sampling
-// phase. The CPU core has already consumed the current instruction-fetch phase
-// before issuing this data callback, so an ordinary timer/cascade tick on that
-// exact timestamp is sampled one phase earlier. An overflow event is different:
-// overflow/reload has already won the same-cycle scheduler priority and is
-// visible to an ordinary timer read.
+// CounterForCPURead returns the timer value visible at the start of the CPU
+// I/O data phase. timedMemory asks for this value before consuming the read's
+// bus cycles, which already places the sample at the hardware-visible edge.
+// Materialize to the current timer timestamp and do not subtract a synthetic
+// "pre-tick" value; doing so makes exact-edge reads one count late.
 func (t *Timers) CounterForCPURead(index int) uint16 {
 	t.syncCounter(index)
-	s := &t.timer[index]
-	if s.control&controlEnable == 0 {
-		return s.counter
-	}
-
-	now := t.scheduler.Now()
-	if index > 0 && s.control&controlCountUp != 0 {
-		// Count-up is clocked by the parent timer's overflow event. By the time
-		// the CPU data phase samples TMxCNT_L, that cascade event has committed,
-		// so expose the post-cascade counter (including a child's reload on its
-		// own overflow) instead of manufacturing a pre-edge value.
-		return s.counter
-	}
-
-	if s.lastTickAt == now {
-		if s.lastOverflowAt == now {
-			// The overflow/reload event has updated internal state, but a CPU data
-			// read sampling this exact master-clock edge still sees the pre-edge
-			// counter value. This is the same rule used for cascade overflow reads.
-			return 0xffff
-		}
-		return s.counter - 1
-	}
-	return s.counter
+	return t.timer[index].counter
 }
 
 // Reload returns the programmed reload latch.
