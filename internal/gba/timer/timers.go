@@ -39,15 +39,18 @@ type Hooks struct {
 }
 
 type state struct {
-	reload           uint16
-	pendingReload    uint16
-	counter          uint16
-	control          uint16
-	pendingControl   uint16
-	timestampStarted uint64
-	lastTickAt       uint64
-	lastOverflowAt   uint64
-	overflowEvent    gbascheduler.Handle
+	reload         uint16
+	counter        uint16
+	control        uint16
+	lastEvent      uint64
+	lastTickAt     uint64
+	lastOverflowAt uint64
+	overflowEvent  gbascheduler.Handle
+}
+
+type pendingWrite struct {
+	index int
+	value uint16
 }
 
 // Timers owns TM0-TM3 register state and deterministic cycle advancement.
@@ -59,7 +62,9 @@ type Timers struct {
 	timer  [4]state
 	active uint8
 
-	deferWrites bool
+	deferWrites      bool
+	pendingWrites    []pendingWrite
+	pendingBusWrites []pendingWrite
 }
 
 // New maps TM0-TM3 onto b.
@@ -107,8 +112,9 @@ func (t *Timers) install(io *bus.IO) {
 	}
 }
 
-// BeginWriteAccess marks timer writes performed by a CPU instruction. Hardware
-// register effects are timestamped one master cycle after the I/O write.
+// BeginWriteAccess marks timer writes performed by a CPU instruction. Reload
+// latches are bus-phase visible, while control transitions commit at the same
+// CPU boundaries used by the established timer model.
 func (t *Timers) BeginWriteAccess() {
 	if t.deferWrites {
 		return
@@ -116,32 +122,54 @@ func (t *Timers) BeginWriteAccess() {
 	t.deferWrites = true
 }
 
-// EndWriteBusAccess is retained for the CPU bus adapter. Timestamped timer
-// events make the bus-completion boundary explicit in scheduler time.
-func (t *Timers) EndWriteBusAccess() {}
+// EndWriteBusAccess commits a running timer disable at the end of the I/O bus
+// transfer. The commit is a same-timestamp scheduler event so timer overflow
+// and control edges have deterministic ordering without inventing an extra
+// master cycle.
+func (t *Timers) EndWriteBusAccess() {
+	if len(t.pendingBusWrites) == 0 {
+		return
+	}
+	pending := t.pendingBusWrites
+	t.pendingBusWrites = t.pendingBusWrites[:0]
+	for _, write := range pending {
+		t.commitControl(write.index, write.value)
+	}
+}
 
-// EndWriteAccess ends CPU-write deferral. Scheduled register events remain in
-// the queue and commit at their timestamp.
+// EndWriteAccess commits starts and other control changes at the instruction
+// boundary. This preserves the CPU-visible timing that already scores best on
+// the pinned suite while still representing the effect as a scheduler event.
 func (t *Timers) EndWriteAccess() {
+	if !t.deferWrites {
+		return
+	}
+	t.EndWriteBusAccess()
 	t.deferWrites = false
+	pending := t.pendingWrites
+	t.pendingWrites = t.pendingWrites[:0]
+	for _, write := range pending {
+		t.commitControl(write.index, write.value)
+	}
+}
+
+func (t *Timers) commitControl(index int, value uint16) {
+	t.scheduler.Schedule(0, gbascheduler.PriorityLate, func() {
+		t.applyControl(index, value)
+	})
+	// Dispatch this boundary event without moving master time. Any earlier
+	// priority hardware edge already due at this timestamp wins first.
+	t.scheduler.Advance(0)
 }
 
 func (t *Timers) writeReload(index int, value uint16) {
-	s := &t.timer[index]
-	s.pendingReload = value
-	// TMxCNT_L is a reload latch, not a start/stop control. In GomeBoy's CPU
-	// memory callback ordering the I/O write is sampled before the bus phase is
-	// consumed, so make the latch visible here. If an overflow lands during the
-	// same transfer it must see the newly written reload value.
-	s.reload = value
+	// TMxCNT_L is a reload latch, not a start/stop control. CPU writes are
+	// visible in the I/O bus phase, including to an overflow on that transfer.
+	t.timer[index].reload = value
 }
 
 func (t *Timers) reloadForWrite(index int) uint16 {
-	s := &t.timer[index]
-	if t.deferWrites {
-		return s.pendingReload
-	}
-	return s.reload
+	return t.timer[index].reload
 }
 
 func controlMask(index int) uint16 {
@@ -152,24 +180,26 @@ func controlMask(index int) uint16 {
 }
 
 func (t *Timers) writeControl(index int, value uint16) {
-	s := &t.timer[index]
-	s.pendingControl = value & controlMask(index)
+	value &= controlMask(index)
 	if t.deferWrites {
-		// The CPU core invokes MMIO writes before consuming the transfer's bus
-		// phase. Starts/config changes commit one scheduler cycle later.
-		delay := uint64(1)
-		t.scheduler.Schedule(delay, gbascheduler.PriorityLate, func() {
-			t.applyControl(index, s.pendingControl, true)
-		})
+		// Disables remain active through the store's bus cycles and become
+		// visible at transfer completion. Starts/config changes commit at the
+		// instruction boundary, matching the established CPU timer phase.
+		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
+			t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, value: value})
+			return
+		}
+		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, value: value})
 		return
 	}
-	t.applyControl(index, s.pendingControl, false)
+	t.applyControl(index, value)
 }
 
-// applyControl mirrors the event-based timer model used by mature GBA cores:
-// the prescaler is a free-running divider of the global master clock, so starts
-// and frequency changes align to scheduler time instead of a timer-local phase.
-func (t *Timers) applyControl(index int, value uint16, cpuWrite bool) {
+// applyControl first materializes the old timer at the current master timestamp,
+// then applies the new mode. Independently-clocked timers are anchored to the
+// free-running global prescaler grid, following the event/deadline model used
+// by mature GBA cores rather than a timer-local Advance() phase.
+func (t *Timers) applyControl(index int, value uint16) {
 	s := &t.timer[index]
 	oldControl := s.control
 	newControl := value & controlMask(index)
@@ -178,16 +208,12 @@ func (t *Timers) applyControl(index int, value uint16, cpuWrite bool) {
 	oldCascade := index > 0 && oldControl&controlCountUp != 0
 	newCascade := index > 0 && newControl&controlCountUp != 0
 
-	// Materialize the old independently-clocked timer before changing its mode.
-	// Count-up timers have no local clock to materialize.
 	if oldEnabled && !oldCascade {
 		t.syncCounter(index)
 		t.cancelOverflow(index)
 	}
 
 	s.control = newControl
-	s.pendingControl = newControl
-
 	bit := uint8(1 << index)
 	if newEnabled {
 		t.active |= bit
@@ -199,64 +225,51 @@ func (t *Timers) applyControl(index int, value uint16, cpuWrite bool) {
 		return
 	}
 
-	if oldEnabled {
-		// Rewriting control while enabled preserves the live counter, but a
-		// non-cascade timer is realigned to the global prescaler phase.
-		if !newCascade {
-			offset := int64(t.scheduler.Now() % uint64(prescalers[newControl&controlPrescalerMask]))
-			t.startChannel(index, offset)
-		}
-		return
+	if !oldEnabled {
+		s.counter = s.reload
 	}
 
-	// A 0->1 enable edge loads the reload latch. Cascade timers begin waiting
-	// for their parent immediately; ordinary timers spend one extra cycle
-	// loading on a CPU write before their first prescaler tick can count.
 	if newCascade {
-		s.counter = s.reload
-		s.timestampStarted = t.scheduler.Now()
+		// A newly enabled count-up timer loads reload. A mode change while
+		// already enabled preserves the materialized live counter.
+		s.lastEvent = t.scheduler.Now()
 		return
 	}
 
-	divisor := uint64(prescalers[newControl&controlPrescalerMask])
-	offset := int64(t.scheduler.Now() % divisor)
-	stoppedCounter := s.counter
-
-	if cpuWrite {
-		// Hardware edge case: when the stopped counter is already FFFF and the
-		// enable event lands exactly on a prescaler tick, that tick can occur
-		// during the reload-load cycle before the new reload value is latched.
-		if stoppedCounter == 0xffff && offset == 0 {
-			t.startChannel(index, 0)
-			return
-		}
-		s.counter = s.reload
-		t.startChannel(index, offset-1)
-		return
+	// Re-anchor only when a start or clock-source configuration changes.
+	// IRQ-only rewrites keep the existing counter/deadline phase.
+	oldClock := oldControl & (controlPrescalerMask | controlCountUp)
+	newClock := newControl & (controlPrescalerMask | controlCountUp)
+	if !oldEnabled || oldCascade || oldClock != newClock {
+		t.anchorChannel(index)
+	} else {
+		t.scheduleOverflow(index)
 	}
-
-	// Direct/debug writes do not model the CPU bus delay. Keep their historical
-	// immediate-start behavior while still using global prescaler alignment.
-	s.counter = s.reload
-	t.startChannel(index, offset)
 }
 
-func (t *Timers) startChannel(index int, cycleOffset int64) {
+func (t *Timers) anchorChannel(index int) {
 	s := &t.timer[index]
-	divisor := int64(prescalers[s.control&controlPrescalerMask])
-	cycles := int64(0x10000-uint32(s.counter))*divisor - cycleOffset
-	if cycles <= 0 {
-		panic("gba timer: non-positive overflow delay")
-	}
-
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
 	now := t.scheduler.Now()
-	if cycleOffset >= 0 {
-		s.timestampStarted = now - uint64(cycleOffset)
-	} else {
-		s.timestampStarted = now + uint64(-cycleOffset)
-	}
+	s.lastEvent = now - now%divisor
+	t.scheduleOverflow(index)
+}
 
-	s.overflowEvent = t.scheduler.Schedule(uint64(cycles), gbascheduler.PriorityEarly, func() {
+func (t *Timers) scheduleOverflow(index int) {
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
+		return
+	}
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	deadline := s.lastEvent + uint64(0x10000-uint32(s.counter))*divisor
+	now := t.scheduler.Now()
+	if deadline <= now {
+		// A live timer's due overflow should normally have been dispatched by
+		// Scheduler.AdvanceTo. Keep restore/control paths deterministic if a
+		// snapshot lands exactly on the boundary.
+		deadline = now + divisor
+	}
+	s.overflowEvent = t.scheduler.Schedule(deadline-now, gbascheduler.PriorityEarly, func() {
 		t.onOverflow(index)
 	})
 }
@@ -277,7 +290,7 @@ func (t *Timers) onOverflow(index int) {
 	}
 
 	s.counter = s.reload
-	s.timestampStarted = t.scheduler.Now()
+	s.lastEvent = t.scheduler.Now()
 	s.lastTickAt = t.scheduler.Now()
 	s.lastOverflowAt = t.scheduler.Now()
 	if t.hooks.Overflow != nil {
@@ -287,7 +300,7 @@ func (t *Timers) onOverflow(index int) {
 		t.irq.Request(irqSources[index])
 	}
 	t.cascade(index + 1)
-	t.startChannel(index, 0)
+	t.scheduleOverflow(index)
 }
 
 func (t *Timers) cascade(index int) {
@@ -324,19 +337,28 @@ func (t *Timers) syncCounter(index int) {
 	}
 
 	now := t.scheduler.Now()
-	if now <= s.timestampStarted {
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	aligned := now - now%divisor
+	if aligned <= s.lastEvent {
 		return
 	}
 
-	divisor := uint64(prescalers[s.control&controlPrescalerMask])
-	ticks := (now - s.timestampStarted) / divisor
+	ticks := (aligned - s.lastEvent) / divisor
 	if ticks == 0 {
 		return
 	}
-
+	// Overflow deadlines are explicit scheduler events, so a normal sync never
+	// crosses a wrap. Keep the arithmetic bounded defensively for restored state.
+	untilOverflow := uint64(0x10000 - uint32(s.counter))
+	if ticks >= untilOverflow {
+		ticks = untilOverflow - 1
+	}
+	if ticks == 0 {
+		return
+	}
 	s.counter += uint16(ticks)
-	s.timestampStarted += ticks * divisor
-	s.lastTickAt = s.timestampStarted
+	s.lastEvent += ticks * divisor
+	s.lastTickAt = s.lastEvent
 }
 
 // NeedsAdvance reports whether timer hardware has live state or queued events.
@@ -415,6 +437,8 @@ func (t *Timers) Reset() {
 	t.timer = [4]state{}
 	t.active = 0
 	t.deferWrites = false
+	t.pendingWrites = t.pendingWrites[:0]
+	t.pendingBusWrites = t.pendingBusWrites[:0]
 }
 
 // Active reports whether at least one timer is enabled.
