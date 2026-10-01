@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/91/?scale=100&title=passing%20230,%20failing%2022&width=500)
+![progress](https://progress-bar.xyz/92/?scale=100&title=passing%20231,%20failing%2021&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 230 |
-| XFAIL | 22 |
+| PASS | 231 |
+| XFAIL | 21 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -47,7 +47,7 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | acid2 | 75% | 3 | 1 | 4 |
 | blarrg | 100% | 43 | 0 | 43 |
-| bully | 50% | 1 | 1 | 2 |
+| bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
 | mooneye | 99% | 113 | 1 | 114 |
 | samesuite | 75% | 59 | 19 | 78 |
@@ -148,7 +148,7 @@ is compared against a reference image from a known good emulator.
 #### bully
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| bully (CGB) | fail | fail | xfail | Known failure imported from tests/README.md |
+| bully (CGB) | pass | pass | pass |  |
 | bully (DMG) | pass | pass | pass |  |
 
 ### little-things-gb
