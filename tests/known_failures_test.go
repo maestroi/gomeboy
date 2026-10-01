@@ -9,11 +9,8 @@ import "testing"
 // under the "test" build tag (used by CI's Test_Regressions) they remain
 // failures so the regression table stays honest.
 var knownFailures = map[string]bool{
-	"bully (CGB)":                           true,
 	"tellinglys (DMG)":                      true,
 	"tellinglys (CGB)":                      true,
-	"strikethrough (DMG)":                   true,
-	"strikethrough (CGB)":                   true,
 }
 
 // skipKnownFailure skips the named test when known-failure skipping is
