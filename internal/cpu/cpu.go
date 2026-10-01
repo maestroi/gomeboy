@@ -200,8 +200,25 @@ func (c *CPU) skipHALT() {
 
 	c.s.Halted = true
 	c.Halted = true
+	haltStart := c.s.Cycle()
+	skipped := false
 	for !c.hasFrame && !c.b.HasInterrupts() {
 		c.s.Skip()
+		skipped = true
+	}
+
+	// CGB samples the interrupt queue while HALTed on machine-cycle
+	// boundaries. Scheduler events still occur at dot precision, so an
+	// interrupt raised between those sampling points must wait until the
+	// end of the current four-cycle HALT slot before the CPU resumes.
+	//
+	// Only align a wake after the CPU actually spent time halted. A pending
+	// interrupt already visible when HALT executes follows the separate
+	// HALT/prefetch path and is already covered by the AGE prefetch tests.
+	if skipped && !c.hasFrame && c.b.HasInterrupts() && c.b.Model().IsCGB() {
+		if phase := (c.s.Cycle() - haltStart) & 3; phase != 0 {
+			c.s.Tick(4 - phase)
+		}
 	}
 
 	// if we came out of the halt skip because a frame was rendered
