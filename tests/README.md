@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/85/?scale=100&title=passing%20267,%20failing%2044&width=500)
+![progress](https://progress-bar.xyz/86/?scale=100&title=passing%20269,%20failing%2042&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 267 |
-| XFAIL | 44 |
+| PASS | 269 |
+| XFAIL | 42 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -50,7 +50,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 20% | 11 | 44 | 55 |
+| age | 23% | 13 | 42 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -83,8 +83,8 @@ is compared against a reference image from a known good emulator.
 | ei-halt-dmgC-cgbBCE@CGBBC | pass | pass | pass |  |
 | ei-halt-dmgC-cgbBCE@CGBDE | pass | pass | pass |  |
 | ei-halt-dmgC-cgbBCE@DMG | pass | pass | pass |  |
-| halt-m0-interrupt-dmgC-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| halt-m0-interrupt-dmgC-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| halt-m0-interrupt-dmgC-cgbBCE@CGBBC | pass | pass | pass |  |
+| halt-m0-interrupt-dmgC-cgbBCE@CGBDE | pass | pass | pass |  |
 | halt-m0-interrupt-dmgC-cgbBCE@DMG | pass | pass | pass |  |
 | halt-prefetch-dmgC-cgbBCE@CGBBC | pass | pass | pass |  |
 | halt-prefetch-dmgC-cgbBCE@CGBDE | pass | pass | pass |  |
