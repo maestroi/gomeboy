@@ -249,6 +249,12 @@ func (b *Bus) Map(m types.Model) {
 		})
 		b.ReserveAddress(types.FF72, func(v byte) byte { return v })
 		b.ReserveAddress(types.FF73, func(v byte) byte { return v })
+		// FF74 exists only in native CGB mode. Its power-on value is 0x00 and
+		// all eight bits are read/write. In DMG compatibility mode the address
+		// remains unhandled, so the generic IO path keeps it locked at 0xff.
+		if b.IsGBCCart() {
+			b.ReserveAddress(types.FF74, func(v byte) byte { return v })
+		}
 		b.ReserveAddress(types.FF75, func(v byte) byte { return v&0x70 | 0x8F })
 		b.Set(types.FF75, 0x8F)
 
