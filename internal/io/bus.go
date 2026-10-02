@@ -49,6 +49,14 @@ type Bus struct {
 	writeHandlers [0x100]func(byte) byte
 	lazyReaders   [0x100]func() byte
 
+	// CPU-visible PPU memory access windows are sampled at the memory access
+	// itself, not just at coarse STAT mode transitions. These callbacks are
+	// installed by the PPU and are intentionally configuration rather than
+	// snapshot state.
+	ppuVRAMReadOpen func() bool
+	ppuOAMReadOpen  func() bool
+	ppuOAMWriteOpen func() bool
+
 	bootHandlers []func()
 
 	c *Cartridge
@@ -378,6 +386,15 @@ func (b *Bus) Boot() {
 
 func (b *Bus) ReserveAddress(addr uint16, f func(byte) byte) { b.writeHandlers[addr&0xff] = f }             // reserve IO address
 func (b *Bus) ReserveLazyReader(addr uint16, f func() byte)  { b.lazyReaders[addr&0xff] = f }               // reserve IO lazy reader
+
+ // RegisterPPUAccessHandlers installs the CPU-side VRAM/OAM access predicates.
+ // Reads/writes still obey OAM-DMA conflicts first; these predicates replace
+ // only the PPU's coarse region-lock decision for the covered access.
+func (b *Bus) RegisterPPUAccessHandlers(vramRead, oamRead, oamWrite func() bool) {
+	b.ppuVRAMReadOpen = vramRead
+	b.ppuOAMReadOpen = oamRead
+	b.ppuOAMWriteOpen = oamWrite
+}
 func (b *Bus) RegisterBootHandler(f func())                  { b.bootHandlers = append(b.bootHandlers, f) } // called after boot ROM
 func (b *Bus) RegisterGBCHandler(f func())                   { b.gbcHandlers = append(b.gbcHandlers, f) }   // called when model is CGB
 func (b *Bus) RegisterAGBHandler(f func())                   { b.agbHandlers = append(b.agbHandlers, f) }   // called for AGB GB-compatibility hardware
@@ -490,13 +507,27 @@ func (b *Bus) Write(addr uint16, value byte) {
 			return
 		// 0xFE00-0xFE9F OAM
 		case addr <= 0xFE9F:
-			if (b.regionLocks<<8)&OAM > 0 || b.isDMATransferring() {
+			if b.isDMATransferring() {
+				return
+			}
+			if b.ppuOAMWriteOpen != nil {
+				if !b.ppuOAMWriteOpen() {
+					return
+				}
+			} else if (b.regionLocks<<8)&OAM > 0 {
 				return
 			}
 		// 0xFEA0-0xFEFF extra/unusable OAM. CGB 0-A/B/C revisions expose
 		// a small aliased RAM here; later hardware ignores writes.
 		case addr <= 0xFEFF:
-			if (b.regionLocks<<8)&OAM > 0 || b.isDMATransferring() {
+			if b.isDMATransferring() {
+				return
+			}
+			if b.ppuOAMWriteOpen != nil {
+				if !b.ppuOAMWriteOpen() {
+					return
+				}
+			} else if (b.regionLocks<<8)&OAM > 0 {
 				return
 			}
 			switch b.model {
@@ -581,9 +612,15 @@ func (b *Bus) Read(addr uint16) byte {
 
 	switch {
 	case addr <= 0x9FFF || addr >= 0xC000 && addr <= 0xFDFF:
-		addrBitmask := uint16(1 << (addr >> 12))
-		if b.regionLocks&0xff00&(addrBitmask&0x7fff) > 0 {
-			return b.dmaConflict
+		if addr >= 0x8000 && addr <= 0x9fff && b.ppuVRAMReadOpen != nil {
+			if !b.ppuVRAMReadOpen() {
+				return 0xff
+			}
+		} else {
+			addrBitmask := uint16(1 << (addr >> 12))
+			if b.regionLocks&0xff00&(addrBitmask&0x7fff) > 0 {
+				return b.dmaConflict
+			}
 		}
 	case addr <= 0xBFFF:
 		switch b.c.CartridgeType {
@@ -617,11 +654,25 @@ func (b *Bus) Read(addr uint16) byte {
 		}
 	// OAM and the extra/unusable OAM range share the PPU bus lock.
 	case addr <= 0xFE9F:
-		if b.regionLocks&OAM > 0 || b.isDMATransferring() {
+		if b.isDMATransferring() {
+			return 0xff
+		}
+		if b.ppuOAMReadOpen != nil {
+			if !b.ppuOAMReadOpen() {
+				return 0xff
+			}
+		} else if b.regionLocks&OAM > 0 {
 			return 0xff
 		}
 	case addr <= 0xFEFF:
-		if b.regionLocks&OAM > 0 || b.isDMATransferring() {
+		if b.isDMATransferring() {
+			return 0xff
+		}
+		if b.ppuOAMReadOpen != nil {
+			if !b.ppuOAMReadOpen() {
+				return 0xff
+			}
+		} else if b.regionLocks&OAM > 0 {
 			return 0xff
 		}
 		switch b.model {
