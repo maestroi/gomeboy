@@ -247,6 +247,35 @@ func TestCentralClockDelaysTimerIRQPropagation(t *testing.T) {
 	}
 }
 
+func TestPendingIRQRestoreRebuildsSharedSchedulerEvent(t *testing.T) {
+	m := New(nil, nil)
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	m.IRQ.Request(gbairq.VBlank)
+
+	m.Advance(3)
+	s := m.Snapshot()
+	if !s.IRQScheduled {
+		t.Fatal("snapshot lost pending IRQ propagation event")
+	}
+
+	m.Advance(uint32(IRQPropagationLatency))
+	if !m.CPU.IRQLine() {
+		t.Fatal("original machine did not deliver pending IRQ")
+	}
+
+	if err := m.Restore(s); err != nil {
+		t.Fatal(err)
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("restored pending IRQ was delivered too early")
+	}
+	m.Advance(uint32(IRQPropagationLatency - 3))
+	if !m.CPU.IRQLine() {
+		t.Fatal("restored shared-scheduler IRQ event did not fire")
+	}
+}
+
 func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
