@@ -88,35 +88,29 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		var instruction uint16
 		instruction, fetch = mem.Read16(c.pc, access)
 		// The ARM7TDMI samples interrupt inputs at the instruction boundary.
-		// In this non-pipelined executor an IRQ can become visible while the
-		// opcode fetch advances hardware time. Re-sample before executing the
-		// fetched opcode so that fetch-phase IRQ edges do not gain a whole extra
-		// instruction of latency.
-		if fetch > 1 {
-			if kind, ok := c.pendingInterrupt(); ok {
-				if err := c.EnterException(kind, c.pc+4); err != nil {
-					return StepResult{FetchCycles: fetch}, err
-				}
-				return StepResult{
-					FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
-					PipelineFlush: true, ExceptionTaken: true, Exception: kind,
-				}, nil
+		// An IRQ edge can become visible during even a one-cycle opcode fetch,
+		// so re-sample after every fetch before the fetched opcode executes.
+		if kind, ok := c.pendingInterrupt(); ok {
+			if err := c.EnterException(kind, c.pc+4); err != nil {
+				return StepResult{FetchCycles: fetch}, err
 			}
+			return StepResult{
+				FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
+				PipelineFlush: true, ExceptionTaken: true, Exception: kind,
+			}, nil
 		}
 		exec, err = c.ExecuteThumbWithMemory(instruction, mem)
 	} else {
 		var instruction uint32
 		instruction, fetch = mem.Read32(c.pc, access)
-		if fetch > 1 {
-			if kind, ok := c.pendingInterrupt(); ok {
-				if err := c.EnterException(kind, c.pc+4); err != nil {
-					return StepResult{FetchCycles: fetch}, err
-				}
-				return StepResult{
-					FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
-					PipelineFlush: true, ExceptionTaken: true, Exception: kind,
-				}, nil
+		if kind, ok := c.pendingInterrupt(); ok {
+			if err := c.EnterException(kind, c.pc+4); err != nil {
+				return StepResult{FetchCycles: fetch}, err
 			}
+			return StepResult{
+				FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
+				PipelineFlush: true, ExceptionTaken: true, Exception: kind,
+			}, nil
 		}
 		exec, err = c.ExecuteARMWithMemory(instruction, mem)
 	}
