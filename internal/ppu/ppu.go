@@ -674,6 +674,18 @@ func (p *PPU) scanOAMEntry() {
 	})
 }
 
+// enterHBlankDelay returns the number of PPU dots between exposing Mode 0
+// and the HBlank entry edge that raises the Mode-0 STAT interrupt and releases
+// the PPU buses. Hardware-backed AGE timing shows one additional dot on
+// normal-speed CGB compared with the DMG path. The remaining HBlank duration is
+// derived from lineDot, so this does not change the 456-dot scanline length.
+func (p *PPU) enterHBlankDelay() uint64 {
+	if p.cgbMode && !p.s.DoubleSpeed() {
+		return 2
+	}
+	return 1
+}
+
 func (p *PPU) handleVisualLine() {
 	switch p.lineState {
 	case StartOAMScan:
@@ -793,7 +805,7 @@ func (p *PPU) handleVisualLine() {
 		}
 
 		p.lineState = EnterHBlank
-		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 		return
 	case EnterHBlank: // variable
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
