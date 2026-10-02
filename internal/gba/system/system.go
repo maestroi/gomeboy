@@ -23,7 +23,7 @@ const (
 
 	// IRQPropagationLatency is the GBA interrupt-controller delay from an
 	// enabled pending request (IE & IF) to the CPU-visible IRQ delivery event.
-	IRQPropagationLatency uint64 = 7
+	IRQPropagationLatency uint64 = 5
 )
 
 // StepResult describes one architectural CPU step plus any DMA stalls that
