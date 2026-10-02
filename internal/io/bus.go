@@ -53,9 +53,9 @@ type Bus struct {
 	// itself, not just at coarse STAT mode transitions. These callbacks are
 	// installed by the PPU and are intentionally configuration rather than
 	// snapshot state.
-	ppuVRAMReadOpen func() bool
-	ppuOAMReadOpen  func() bool
-	ppuOAMWriteOpen func() bool
+	ppuVRAMReadOpen func(defaultOpen bool) bool
+	ppuOAMReadOpen  func(defaultOpen bool) bool
+	ppuOAMWriteOpen func(defaultOpen bool) bool
 
 	bootHandlers []func()
 
@@ -390,7 +390,7 @@ func (b *Bus) ReserveLazyReader(addr uint16, f func() byte)  { b.lazyReaders[add
  // RegisterPPUAccessHandlers installs the CPU-side VRAM/OAM access predicates.
  // Reads/writes still obey OAM-DMA conflicts first; these predicates replace
  // only the PPU's coarse region-lock decision for the covered access.
-func (b *Bus) RegisterPPUAccessHandlers(vramRead, oamRead, oamWrite func() bool) {
+func (b *Bus) RegisterPPUAccessHandlers(vramRead, oamRead, oamWrite func(defaultOpen bool) bool) {
 	b.ppuVRAMReadOpen = vramRead
 	b.ppuOAMReadOpen = oamRead
 	b.ppuOAMWriteOpen = oamWrite
@@ -510,11 +510,12 @@ func (b *Bus) Write(addr uint16, value byte) {
 			if b.isDMATransferring() {
 				return
 			}
+			defaultOpen := (b.regionLocks<<8)&OAM == 0
 			if b.ppuOAMWriteOpen != nil {
-				if !b.ppuOAMWriteOpen() {
+				if !b.ppuOAMWriteOpen(defaultOpen) {
 					return
 				}
-			} else if (b.regionLocks<<8)&OAM > 0 {
+			} else if !defaultOpen {
 				return
 			}
 		// 0xFEA0-0xFEFF extra/unusable OAM. CGB 0-A/B/C revisions expose
@@ -657,11 +658,12 @@ func (b *Bus) Read(addr uint16) byte {
 		if b.isDMATransferring() {
 			return 0xff
 		}
+		defaultOpen := b.regionLocks&OAM == 0
 		if b.ppuOAMReadOpen != nil {
-			if !b.ppuOAMReadOpen() {
+			if !b.ppuOAMReadOpen(defaultOpen) {
 				return 0xff
 			}
-		} else if b.regionLocks&OAM > 0 {
+		} else if !defaultOpen {
 			return 0xff
 		}
 	case addr <= 0xFEFF:
