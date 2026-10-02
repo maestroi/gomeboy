@@ -524,11 +524,12 @@ func (b *Bus) Write(addr uint16, value byte) {
 			if b.isDMATransferring() {
 				return
 			}
+			defaultOpen := (b.regionLocks<<8)&OAM == 0
 			if b.ppuOAMWriteOpen != nil {
-				if !b.ppuOAMWriteOpen() {
+				if !b.ppuOAMWriteOpen(defaultOpen) {
 					return
 				}
-			} else if (b.regionLocks<<8)&OAM > 0 {
+			} else if !defaultOpen {
 				return
 			}
 			switch b.model {
@@ -613,15 +614,14 @@ func (b *Bus) Read(addr uint16) byte {
 
 	switch {
 	case addr <= 0x9FFF || addr >= 0xC000 && addr <= 0xFDFF:
+		addrBitmask := uint16(1 << (addr >> 12))
+		defaultOpen := b.regionLocks&0xff00&(addrBitmask&0x7fff) == 0
 		if addr >= 0x8000 && addr <= 0x9fff && b.ppuVRAMReadOpen != nil {
-			if !b.ppuVRAMReadOpen() {
+			if !b.ppuVRAMReadOpen(defaultOpen) {
 				return 0xff
 			}
-		} else {
-			addrBitmask := uint16(1 << (addr >> 12))
-			if b.regionLocks&0xff00&(addrBitmask&0x7fff) > 0 {
-				return b.dmaConflict
-			}
+		} else if !defaultOpen {
+			return b.dmaConflict
 		}
 	case addr <= 0xBFFF:
 		switch b.c.CartridgeType {
@@ -670,11 +670,12 @@ func (b *Bus) Read(addr uint16) byte {
 		if b.isDMATransferring() {
 			return 0xff
 		}
+		defaultOpen := b.regionLocks&OAM == 0
 		if b.ppuOAMReadOpen != nil {
-			if !b.ppuOAMReadOpen() {
+			if !b.ppuOAMReadOpen(defaultOpen) {
 				return 0xff
 			}
-		} else if b.regionLocks&OAM > 0 {
+		} else if !defaultOpen {
 			return 0xff
 		}
 		switch b.model {
