@@ -80,6 +80,7 @@ func TestMode0ReadOpenEdges(t *testing.T) {
 		b.Write(0x8000, 0x5a)
 		b.Write(0xfe00, 0x66)
 		beginAccessMode3(p, s, false)
+		s.Tick(10)
 		p.mode = ModeHBlank
 		p.accessMode0Cycle = s.Cycle()
 		b.RLock(gbio.VRAM | gbio.OAM)
@@ -103,6 +104,7 @@ func TestMode0ReadOpenEdges(t *testing.T) {
 		p, b, s := newAccessTimingTest(t, types.CGBDE, false)
 		b.Write(0xfe00, 0x66)
 		beginAccessMode3(p, s, false)
+		s.Tick(10)
 		p.mode = ModeHBlank
 		p.accessMode0Cycle = s.Cycle()
 		b.RLock(gbio.OAM)
