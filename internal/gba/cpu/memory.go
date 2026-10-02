@@ -66,8 +66,8 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 			return StepResult{}, err
 		}
 		return StepResult{
-			InternalCycles: 2,
-			TotalCycles:    2,
+			InternalCycles: 1,
+			TotalCycles:    1,
 			PipelineFlush:  true,
 			ExceptionTaken: true,
 			Exception:      kind,
@@ -95,7 +95,7 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 				return StepResult{FetchCycles: fetch}, err
 			}
 			return StepResult{
-				FetchCycles: fetch, InternalCycles: 2, TotalCycles: fetch + 2,
+				FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
 				PipelineFlush: true, ExceptionTaken: true, Exception: kind,
 			}, nil
 		}
@@ -108,7 +108,7 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 				return StepResult{FetchCycles: fetch}, err
 			}
 			return StepResult{
-				FetchCycles: fetch, InternalCycles: 2, TotalCycles: fetch + 2,
+				FetchCycles: fetch, InternalCycles: 1, TotalCycles: fetch + 1,
 				PipelineFlush: true, ExceptionTaken: true, Exception: kind,
 			}, nil
 		}
