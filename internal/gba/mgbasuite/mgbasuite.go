@@ -427,6 +427,8 @@ func handleSuiteSWI(m *system.Machine) (byte, bool, error) {
 		return number, true, err
 	}
 	m.CPU.SetPC(lr)
+
+
 	// The real BIOS leaves this instruction in the protected BIOS read latch
 	// when returning from its SWI dispatcher. The suite relies on that value
 	// for BIOS data-read tests even though this harness HLEs the service body.
