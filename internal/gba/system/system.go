@@ -64,6 +64,7 @@ type Machine struct {
 	dmaStalls    uint64
 
 	irqEventAt   uint64
+	irqEvent     gbascheduler.Handle
 	irqScheduled bool
 	haltWakeSeq  uint64
 
@@ -260,6 +261,10 @@ func (m *Machine) enterStop() {
 	// STOP freezes the interrupt controller clock as well. Existing IF state is
 	// preserved but cannot propagate until an external STOP wake signal restarts
 	// the clock.
+	if m.irqEvent != 0 {
+		m.scheduler.Cancel(m.irqEvent)
+		m.irqEvent = 0
+	}
 	m.irqScheduled = false
 	m.CPU.SetIRQLine(false)
 }
@@ -301,23 +306,35 @@ func (m *Machine) scheduleIRQEvent() {
 	if m.irqScheduled {
 		return
 	}
-	m.irqEventAt = m.cycles + IRQPropagationLatency
+	m.irqEventAt = m.scheduler.Now() + IRQPropagationLatency
 	m.irqScheduled = true
+	m.irqEvent = m.scheduler.Schedule(IRQPropagationLatency, gbascheduler.PriorityLate, m.deliverIRQ)
+}
+
+func (m *Machine) deliverIRQ() {
+	m.irqEvent = 0
+	if m.stopped {
+		return
+	}
+	m.irqScheduled = false
+
+	// Timer overflow/cascade events use an earlier same-cycle priority. IRQ
+	// propagation therefore observes the final IF/IE/IME state for that clock
+	// edge and releases HALT after the source event has committed.
+	if m.halted {
+		m.halted = false
+		m.haltWakeSeq++
+	}
+	m.CPU.SetIRQLine(m.IRQ.IRQAsserted())
 }
 
 func (m *Machine) serviceDueIRQ() {
 	if m.stopped || !m.irqScheduled || m.irqEventAt > m.cycles {
 		return
 	}
-	m.irqScheduled = false
-
-	// The propagation event releases HALT regardless of IME. At delivery time
-	// the current IE/IF/IME state decides whether the CPU-visible IRQ line rises.
-	if m.halted {
-		m.halted = false
-		m.haltWakeSeq++
-	}
-	m.CPU.SetIRQLine(m.IRQ.IRQAsserted())
+	// Normally advanceHardware dispatches the shared scheduler event exactly at
+	// its deadline. This fallback covers zero-length/current-cycle boundaries.
+	m.scheduler.AdvanceTo(m.cycles)
 }
 
 func (m *Machine) serviceDueEvents() {
