@@ -474,8 +474,72 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 
 	s.RegisterEvent(scheduler.PPUHandleVisualLine, p.handleVisualLine)
 	s.RegisterEvent(scheduler.PPUHandleGlitchedLine0, p.handleGlitchedLine0)
+	s.RegisterEvent(scheduler.PPULockVRAMRead, func() { p.b.RLock(io.VRAM) })
+	s.RegisterEvent(scheduler.PPUUnlockVRAMRead, func() { p.b.RUnlock(io.VRAM) })
+	s.RegisterEvent(scheduler.PPULockOAMRead, func() { p.b.RLock(io.OAM) })
+	s.RegisterEvent(scheduler.PPUUnlockOAMRead, func() { p.b.RUnlock(io.OAM) })
+	s.RegisterEvent(scheduler.PPULockOAMWrite, func() { p.b.WLock(io.OAM) })
+	s.RegisterEvent(scheduler.PPUUnlockOAMWrite, func() { p.b.WUnlock(io.OAM) })
 	s.RegisterEvent(scheduler.PPUHandleOffscreenLine, p.handleOffscreenLine)
 	return p
+}
+
+// scheduleAccessEdge replaces any pending edge of the same kind. PPU access
+// locks have independent read/write timing, so they cannot be represented by
+// the coarse STAT mode transition alone.
+func (p *PPU) scheduleAccessEdge(event scheduler.EventType, dots uint64) {
+	p.s.DescheduleEvent(event)
+	p.s.ScheduleEvent(event, dots)
+}
+
+func (p *PPU) cgbHardware() bool {
+	return p.b.Model().IsCGB()
+}
+
+func (p *PPU) vramReadCloseDelay() uint64 {
+	if p.s.DoubleSpeed() {
+		return 2
+	}
+	return 3
+}
+
+func (p *PPU) firstLineVRAMReadCloseDelay() uint64 {
+	if p.s.DoubleSpeed() {
+		return 2
+	}
+	return 5
+}
+
+func (p *PPU) vramReadOpenDelay() uint64 {
+	if p.s.DoubleSpeed() {
+		return 3
+	}
+	return 2
+}
+
+func (p *PPU) oamReadOpenDelay() uint64 {
+	delay := uint64(2)
+	if p.s.DoubleSpeed() {
+		delay = 3
+	}
+	// AGE distinguishes CGB-E from B/C at the Mode-3 -> Mode-0 read edge.
+	if p.b.Model() == types.CGBDE {
+		delay++
+	}
+	return delay
+}
+
+func (p *PPU) oamWriteOpenDelay() uint64 {
+	if p.s.DoubleSpeed() {
+		return 3
+	}
+	return 2
+}
+
+func (p *PPU) scheduleMode0AccessRelease(after uint64) {
+	p.scheduleAccessEdge(scheduler.PPUUnlockVRAMRead, after+p.vramReadOpenDelay())
+	p.scheduleAccessEdge(scheduler.PPUUnlockOAMRead, after+p.oamReadOpenDelay())
+	p.scheduleAccessEdge(scheduler.PPUUnlockOAMWrite, after+p.oamWriteOpenDelay())
 }
 
 // GlitchedLineState represents the progression states for handling the peculiar first line
@@ -536,13 +600,43 @@ func (p *PPU) handleGlitchedLine0() {
 		// here rather than in writes to LCDC. TODO verify how&why
 		p.lineDot = p.s.Cycle()
 	case GlitchedLineOAMWBlock:
-		p.b.WLock(io.OAM)
+		// The LCD-enable line has no real Mode-2 OAM ownership. Keep OAM
+		// CPU-visible until the delayed Mode-3 close edge below.
+		p.b.Unlock(io.OAM)
 	case GlitchedLineEndOAM:
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
-		p.b.Lock(io.OAM)
-		p.b.Block(io.VRAM, p.s.DoubleSpeed() || !p.cgbMode)
+
+		// OAM closes several dots after the first Mode-3 edge. Reads use the
+		// five-dot hardware edge; CGB writes close at five dots in normal
+		// speed and three in double speed. DMG writes expose the four-dot
+		// Mode-2/3 gap measured by AGE/Gambatte.
+		p.b.Unlock(io.OAM)
+		p.scheduleAccessEdge(scheduler.PPULockOAMRead, 5)
+		if p.cgbHardware() {
+			writeClose := uint64(5)
+			if p.s.DoubleSpeed() {
+				writeClose = 3
+			}
+			p.scheduleAccessEdge(scheduler.PPULockOAMWrite, writeClose)
+		} else {
+			p.scheduleAccessEdge(scheduler.PPULockOAMWrite, 4)
+		}
+
+		// DMG locks VRAM at the Mode-3 edge. CGB hardware leaves the read
+		// side visible briefly; this remains true in DMG-compatibility mode.
+		if p.cgbHardware() {
+			p.b.RUnlock(io.VRAM)
+			p.scheduleAccessEdge(scheduler.PPULockVRAMRead, p.firstLineVRAMReadCloseDelay())
+			p.b.WBlock(io.VRAM, p.s.DoubleSpeed())
+		} else {
+			p.b.Lock(io.VRAM)
+		}
 	case GlitchedLineStartPixelTransfer:
-		p.b.Lock(io.VRAM)
+		p.b.WLock(io.VRAM)
+
+		// We skip rendering this invisible line, so schedule its Mode-0 access
+		// releases explicitly relative to the synthetic 168-dot transfer.
+		p.scheduleMode0AccessRelease(168)
 
 		// we can just skip the expensive pixel transfer as
 		// the first frame will never be displayed anyway
@@ -693,7 +787,22 @@ func (p *PPU) handleVisualLine() {
 		// implementation took a single snapshot at dot 80, which made DMA
 		// overlapping the scan impossible to model.
 		if p.oamScanIndex == 0 {
-			p.b.Lock(io.OAM)
+			// Read and write ownership at the Mode-2 edge is revision/speed
+			// dependent. CGB B/C at double speed exposes OAM reads for two
+			// dots; DMG exposes writes for the first four dots.
+			if p.cgbHardware() {
+				p.b.WLock(io.OAM)
+				if p.s.DoubleSpeed() && p.b.Model() != types.CGBDE {
+					p.b.RUnlock(io.OAM)
+					p.scheduleAccessEdge(scheduler.PPULockOAMRead, 2)
+				} else {
+					p.b.RLock(io.OAM)
+				}
+			} else {
+				p.b.RLock(io.OAM)
+				p.b.WUnlock(io.OAM)
+				p.scheduleAccessEdge(scheduler.PPULockOAMWrite, 4)
+			}
 			p.checkWindowTriggerWY()
 			p.objBuffer = p.objBuffer[:0]
 
@@ -720,8 +829,8 @@ func (p *PPU) handleVisualLine() {
 		return
 	case ReleaseOAMBus: // dots 76 and 78
 		if p.oamScanIndex == 38 {
-			p.b.RBlock(io.VRAM, !p.cgbMode)
-			p.b.WBlock(io.OAM, p.cgbMode)
+			p.b.RBlock(io.VRAM, !p.cgbHardware())
+			p.b.WBlock(io.OAM, p.cgbHardware())
 			p.b.WUnlock(io.VRAM)
 		}
 
@@ -744,7 +853,26 @@ func (p *PPU) handleVisualLine() {
 		p.resetFetcher()
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
 		p.statUpdate() // clear stat line
-		p.b.Lock(io.OAM | io.VRAM)
+
+		// VRAM writes close with Mode 3. CGB reads close a few dots later,
+		// including when the CGB is running a DMG-only cartridge.
+		p.b.WLock(io.VRAM)
+		if p.cgbHardware() {
+			p.b.RUnlock(io.VRAM)
+			p.scheduleAccessEdge(scheduler.PPULockVRAMRead, p.vramReadCloseDelay())
+		} else {
+			p.b.RLock(io.VRAM)
+		}
+
+		// OAM reads stay closed from Mode 2. CGB writes do as well; DMG has
+		// a short write-visible gap at the Mode-2 -> Mode-3 transition.
+		p.b.RLock(io.OAM)
+		if p.cgbHardware() {
+			p.b.WLock(io.OAM)
+		} else {
+			p.b.WUnlock(io.OAM)
+			p.scheduleAccessEdge(scheduler.PPULockOAMWrite, 4)
+		}
 	case PixelTransferDummy: // on dot 85
 		p.bgFIFO.Size = 8
 
@@ -851,7 +979,7 @@ func (p *PPU) handleVisualLine() {
 		p.lineState = HBlankUpdateOAM
 		fallthrough
 	case HBlankUpdateOAM: // dot 452 these 4 dots overlap with the beginning of OAM scan (to handle STAT delay)
-		p.b.WBlock(io.OAM, p.cgbMode && !p.s.DoubleSpeed())
+		p.b.WBlock(io.OAM, p.cgbHardware() && !p.s.DoubleSpeed())
 	case HBlankUpdateVisibleLY: // dot 454
 		p.b.Set(types.LY, p.ly)
 	case HBlankEnd: // dot 455
