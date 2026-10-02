@@ -329,9 +329,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			// the HLE boot profile writes that hardware-visible LY value.
 			if b.IsGBCCart() && v >= 144 && v <= 153 &&
 				(b.Model().IsCGB() || b.Model() == types.AGB) {
-				p.s.DescheduleEvent(scheduler.PPUHandleVisualLine)
-				p.s.DescheduleEvent(scheduler.PPUHandleGlitchedLine0)
-				p.s.DescheduleEvent(scheduler.PPUHandleOffscreenLine)
+				for event := scheduler.PPUHandleVisualLine; event <= scheduler.PPUHandleOffscreenLine; event++ {
+					p.s.DescheduleEvent(event)
+				}
 				p.mode, p.modeToInt = ModeVBlank, ModeVBlank
 				p.offscreenLineState = StartVBlank
 				p.handleOffscreenLine()
@@ -503,13 +503,6 @@ func (p *PPU) vramReadCloseDelay() uint64 {
 	return 3
 }
 
-func (p *PPU) firstLineVRAMReadCloseDelay() uint64 {
-	if p.s.DoubleSpeed() {
-		return 2
-	}
-	return 5
-}
-
 func (p *PPU) vramReadOpenDelay() uint64 {
 	if p.s.DoubleSpeed() {
 		return 3
@@ -600,43 +593,13 @@ func (p *PPU) handleGlitchedLine0() {
 		// here rather than in writes to LCDC. TODO verify how&why
 		p.lineDot = p.s.Cycle()
 	case GlitchedLineOAMWBlock:
-		// The LCD-enable line has no real Mode-2 OAM ownership. Keep OAM
-		// CPU-visible until the delayed Mode-3 close edge below.
-		p.b.Unlock(io.OAM)
+		p.b.WLock(io.OAM)
 	case GlitchedLineEndOAM:
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
-
-		// OAM closes several dots after the first Mode-3 edge. Reads use the
-		// five-dot hardware edge; CGB writes close at five dots in normal
-		// speed and three in double speed. DMG writes expose the four-dot
-		// Mode-2/3 gap measured by AGE/Gambatte.
-		p.b.Unlock(io.OAM)
-		p.scheduleAccessEdge(scheduler.PPULockOAMRead, 5)
-		if p.cgbHardware() {
-			writeClose := uint64(5)
-			if p.s.DoubleSpeed() {
-				writeClose = 3
-			}
-			p.scheduleAccessEdge(scheduler.PPULockOAMWrite, writeClose)
-		} else {
-			p.scheduleAccessEdge(scheduler.PPULockOAMWrite, 4)
-		}
-
-		// DMG locks VRAM at the Mode-3 edge. CGB hardware leaves the read
-		// side visible briefly; this remains true in DMG-compatibility mode.
-		if p.cgbHardware() {
-			p.b.RUnlock(io.VRAM)
-			p.scheduleAccessEdge(scheduler.PPULockVRAMRead, p.firstLineVRAMReadCloseDelay())
-			p.b.WBlock(io.VRAM, p.s.DoubleSpeed())
-		} else {
-			p.b.Lock(io.VRAM)
-		}
+		p.b.Lock(io.OAM)
+		p.b.Block(io.VRAM, p.s.DoubleSpeed() || !p.cgbHardware())
 	case GlitchedLineStartPixelTransfer:
-		p.b.WLock(io.VRAM)
-
-		// We skip rendering this invisible line, so schedule its Mode-0 access
-		// releases explicitly relative to the synthetic 168-dot transfer.
-		p.scheduleMode0AccessRelease(168)
+		p.b.Lock(io.VRAM)
 
 		// we can just skip the expensive pixel transfer as
 		// the first frame will never be displayed anyway
