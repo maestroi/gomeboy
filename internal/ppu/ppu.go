@@ -928,6 +928,10 @@ func (p *PPU) handleVisualLine() {
 			return // remain in the PixelTransferLX state until we reach LX==168
 		}
 
+		// CPU-visible buses reopen after their own delayed edges rather than
+		// exactly when STAT changes to Mode 0.
+		p.scheduleMode0AccessRelease(0)
+
 		if !p.s.DoubleSpeed() {
 			p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		}
@@ -938,7 +942,9 @@ func (p *PPU) handleVisualLine() {
 	case EnterHBlank: // variable
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
-		p.b.Unlock(io.OAM | io.VRAM)
+		// VRAM writes follow Mode-0 entry. Read-side VRAM and OAM edges are
+		// released by the independently scheduled access events.
+		p.b.WUnlock(io.VRAM)
 
 		dotsPassed := p.s.Cycle() - p.lineDot
 
