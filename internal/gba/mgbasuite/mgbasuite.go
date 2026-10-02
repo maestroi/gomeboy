@@ -500,6 +500,12 @@ func hleIntrWait(m *system.Machine) error {
 				return fmt.Errorf("mGBA-suite BIOS IntrWait IRQ handler did not return")
 			}
 			if requested {
+				// The HLE stops executing BIOS code once the forwarded user IRQ
+				// returns to the IntrWait frame. Preserve the final BIOS return
+				// boundary on the hardware timeline so timer phase at the SWI
+				// caller matches a real IntrWait return instead of being one
+				// cycle early.
+				m.Advance(1)
 				return nil
 			}
 			continue
