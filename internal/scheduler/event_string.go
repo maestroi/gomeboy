@@ -18,22 +18,28 @@ func _() {
 	_ = x[EIHaltDelay-7]
 	_ = x[PPUHandleVisualLine-8]
 	_ = x[PPUHandleGlitchedLine0-9]
-	_ = x[PPUHandleOffscreenLine-10]
-	_ = x[DMAStartTransfer-11]
-	_ = x[DMAEndTransfer-12]
-	_ = x[DMATransfer-13]
-	_ = x[TimerTIMAReload-14]
-	_ = x[TimerTIMAFinishReload-15]
-	_ = x[TimerTIMAIncrement-16]
-	_ = x[SerialBitTransfer-17]
-	_ = x[SerialBitInterrupt-18]
-	_ = x[CameraShoot-19]
-	_ = x[SerialExternalClock-20]
+	_ = x[PPULockVRAMRead-10]
+	_ = x[PPUUnlockVRAMRead-11]
+	_ = x[PPULockOAMRead-12]
+	_ = x[PPUUnlockOAMRead-13]
+	_ = x[PPULockOAMWrite-14]
+	_ = x[PPUUnlockOAMWrite-15]
+	_ = x[PPUHandleOffscreenLine-16]
+	_ = x[DMAStartTransfer-17]
+	_ = x[DMAEndTransfer-18]
+	_ = x[DMATransfer-19]
+	_ = x[TimerTIMAReload-20]
+	_ = x[TimerTIMAFinishReload-21]
+	_ = x[TimerTIMAIncrement-22]
+	_ = x[SerialBitTransfer-23]
+	_ = x[SerialBitInterrupt-24]
+	_ = x[CameraShoot-25]
+	_ = x[SerialExternalClock-26]
 }
 
-const _EventType_name = "APUFrameSequencerAPUFrameSequencer2APUChannel1APUChannel2APUChannel3APUSampleEIPendingEIHaltDelayPPUHandleVisualLinePPUHandleGlitchedLine0PPUHandleOffscreenLineDMAStartTransferDMAEndTransferDMATransferTimerTIMAReloadTimerTIMAFinishReloadTimerTIMAIncrementSerialBitTransferSerialBitInterruptCameraShootSerialExternalClock"
+const _EventType_name = "APUFrameSequencerAPUFrameSequencer2APUChannel1APUChannel2APUChannel3APUSampleEIPendingEIHaltDelayPPUHandleVisualLinePPUHandleGlitchedLine0PPULockVRAMReadPPUUnlockVRAMReadPPULockOAMReadPPUUnlockOAMReadPPULockOAMWritePPUUnlockOAMWritePPUHandleOffscreenLineDMAStartTransferDMAEndTransferDMATransferTimerTIMAReloadTimerTIMAFinishReloadTimerTIMAIncrementSerialBitTransferSerialBitInterruptCameraShootSerialExternalClock"
 
-var _EventType_index = [...]uint16{0, 17, 35, 46, 57, 68, 77, 86, 97, 116, 138, 160, 176, 190, 201, 216, 237, 255, 272, 290, 301, 320}
+var _EventType_index = [...]uint16{0, 17, 35, 46, 57, 68, 77, 86, 97, 116, 138, 153, 170, 184, 200, 215, 232, 254, 270, 284, 295, 310, 331, 349, 366, 384, 395, 414}
 
 func (i EventType) String() string {
 	if i >= EventType(len(_EventType_index)-1) {
