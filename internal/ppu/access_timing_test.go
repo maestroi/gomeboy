@@ -13,8 +13,8 @@ func newAccessTimingTest(t *testing.T, model types.Model, doubleSpeed bool) (*PP
 
 	s := scheduler.NewScheduler()
 	b := gbio.NewBus(s, make([]byte, 0x8000))
-	p := New(b, s)
 	b.Map(model)
+	p := New(b, s)
 	if doubleSpeed {
 		s.ChangeSpeed(true)
 	}
@@ -22,112 +22,94 @@ func newAccessTimingTest(t *testing.T, model types.Model, doubleSpeed bool) (*PP
 	return p, b, s
 }
 
-func TestCGBCompatibilityModeKeepsCGBVRAMReadTail(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		model types.Model
-		open  bool
-	}{
-		{name: "CGB hardware in compatibility mode", model: types.CGBBC, open: true},
-		{name: "DMG hardware", model: types.DMGABC, open: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			p, b, _ := newAccessTimingTest(t, tc.model, false)
-			p.cgbMode = false
-			b.Write(0x8000, 0x5a)
-			b.RLock(gbio.VRAM)
-
-			p.lineState = ReleaseOAMBus
-			p.oamScanIndex = 38
-			p.handleVisualLine()
-
-			got := b.Read(0x8000)
-			if tc.open && got != 0x5a {
-				t.Fatalf("VRAM read at OAM tail = %#02x, want %#02x", got, 0x5a)
-			}
-			if !tc.open && got != 0xff {
-				t.Fatalf("VRAM read at OAM tail = %#02x, want blocked %#02x", got, 0xff)
-			}
-		})
+func beginAccessMode3(p *PPU, s *scheduler.Scheduler, firstLine bool) {
+	if s.Cycle() < 100 {
+		s.Tick(100 - s.Cycle())
 	}
+	p.accessFirstLine = firstLine
+	p.accessMode0Cycle = 0
+	p.accessMode3Cycle = s.Cycle()
+	p.lineDot = s.Cycle() - 80
+	p.mode = ModeVRAM
 }
 
-func TestCGBVRAMReadCloseLagsMode3(t *testing.T) {
-	t.Run("normal speed", func(t *testing.T) {
+func TestVRAMReadAccessEdges(t *testing.T) {
+	t.Run("CGB single-speed close trails Mode 3 by four dots", func(t *testing.T) {
 		p, b, s := newAccessTimingTest(t, types.CGBBC, false)
-		p.cgbMode = false // NCM still uses CGB bus timing.
 		b.Write(0x8000, 0x5a)
-		p.lineState = StartPixelTransfer
-		p.handleVisualLine()
+		beginAccessMode3(p, s, false)
+		b.RLock(gbio.VRAM) // coarse lock is deliberately overridden by the access predicate
 
 		if got := b.Read(0x8000); got != 0x5a {
-			t.Fatalf("VRAM closed at Mode-3 edge: got %#02x", got)
+			t.Fatalf("VRAM closed on the CGB Mode-3 edge: got %#02x", got)
 		}
-		s.Tick(2)
-		if got := b.Read(0x8000); got != 0x5a {
-			t.Fatalf("VRAM closed before three-dot CGB edge: got %#02x", got)
-		}
-		s.Tick(1)
-		if got := b.Read(0x8000); got != 0xff {
-			t.Fatalf("VRAM still open at three-dot CGB edge: got %#02x", got)
-		}
-	})
-
-	t.Run("double speed", func(t *testing.T) {
-		p, b, s := newAccessTimingTest(t, types.CGBBC, true)
-		b.Write(0x8000, 0x5a)
-		p.lineState = StartPixelTransfer
-		p.handleVisualLine()
-
-		// Two PPU dots map to four scheduler/CPU clocks in double speed.
 		s.Tick(3)
 		if got := b.Read(0x8000); got != 0x5a {
-			t.Fatalf("VRAM closed before double-speed edge: got %#02x", got)
+			t.Fatalf("VRAM closed before four-dot edge: got %#02x", got)
 		}
 		s.Tick(1)
 		if got := b.Read(0x8000); got != 0xff {
-			t.Fatalf("VRAM still open at double-speed edge: got %#02x", got)
+			t.Fatalf("VRAM still open at four-dot edge: got %#02x", got)
+		}
+	})
+
+	t.Run("DMG closes on live Mode 3", func(t *testing.T) {
+		p, b, s := newAccessTimingTest(t, types.DMGABC, false)
+		b.Write(0x8000, 0x5a)
+		beginAccessMode3(p, s, false)
+		if got := b.Read(0x8000); got != 0xff {
+			t.Fatalf("DMG VRAM read stayed open in Mode 3: got %#02x", got)
+		}
+	})
+
+	t.Run("CGB compatibility mode keeps physical CGB timing", func(t *testing.T) {
+		p, b, s := newAccessTimingTest(t, types.CGBBC, false)
+		p.cgbMode = false
+		b.Write(0x8000, 0x5a)
+		beginAccessMode3(p, s, false)
+		b.RLock(gbio.VRAM)
+		if got := b.Read(0x8000); got != 0x5a {
+			t.Fatalf("NCM VRAM read used DMG timing: got %#02x", got)
 		}
 	})
 }
 
-func TestMode0ReadOpenEdgesIncludeCGBERevisionDelay(t *testing.T) {
-	t.Run("CGB B/C", func(t *testing.T) {
+func TestMode0ReadOpenEdges(t *testing.T) {
+	t.Run("CGB B/C VRAM and OAM open after two dots", func(t *testing.T) {
 		p, b, s := newAccessTimingTest(t, types.CGBBC, false)
 		b.Write(0x8000, 0x5a)
 		b.Write(0xfe00, 0x66)
+		beginAccessMode3(p, s, false)
+		p.mode = ModeHBlank
+		p.accessMode0Cycle = s.Cycle()
 		b.RLock(gbio.VRAM | gbio.OAM)
 
-		p.scheduleMode0AccessRelease(0)
-		s.Tick(1)
 		if got := b.Read(0x8000); got != 0xff {
-			t.Fatalf("VRAM opened one dot early: got %#02x", got)
+			t.Fatalf("VRAM opened on Mode-0 edge: got %#02x", got)
 		}
 		if got := b.Read(0xfe00); got != 0xff {
-			t.Fatalf("OAM opened one dot early: got %#02x", got)
+			t.Fatalf("OAM opened on Mode-0 edge: got %#02x", got)
 		}
-		s.Tick(1)
+		s.Tick(2)
 		if got := b.Read(0x8000); got != 0x5a {
-			t.Fatalf("VRAM did not open at two-dot edge: got %#02x", got)
+			t.Fatalf("VRAM did not open after two dots: got %#02x", got)
 		}
 		if got := b.Read(0xfe00); got != 0x66 {
-			t.Fatalf("OAM did not open at two-dot edge: got %#02x", got)
+			t.Fatalf("OAM did not open after two dots: got %#02x", got)
 		}
 	})
 
-	t.Run("CGB D/E", func(t *testing.T) {
+	t.Run("CGB D/E OAM read opens one dot later", func(t *testing.T) {
 		p, b, s := newAccessTimingTest(t, types.CGBDE, false)
-		b.Write(0x8000, 0x5a)
 		b.Write(0xfe00, 0x66)
-		b.RLock(gbio.VRAM | gbio.OAM)
+		beginAccessMode3(p, s, false)
+		p.mode = ModeHBlank
+		p.accessMode0Cycle = s.Cycle()
+		b.RLock(gbio.OAM)
 
-		p.scheduleMode0AccessRelease(0)
 		s.Tick(2)
-		if got := b.Read(0x8000); got != 0x5a {
-			t.Fatalf("VRAM did not open at common two-dot edge: got %#02x", got)
-		}
 		if got := b.Read(0xfe00); got != 0xff {
-			t.Fatalf("CGB D/E OAM opened before revision edge: got %#02x", got)
+			t.Fatalf("CGB D/E OAM opened at B/C edge: got %#02x", got)
 		}
 		s.Tick(1)
 		if got := b.Read(0xfe00); got != 0x66 {
@@ -136,31 +118,103 @@ func TestMode0ReadOpenEdgesIncludeCGBERevisionDelay(t *testing.T) {
 	})
 }
 
-func TestDoubleSpeedCGBBCOAMReadMode2Lag(t *testing.T) {
+func TestOAMMode2ReadRevisionEdge(t *testing.T) {
 	p, b, s := newAccessTimingTest(t, types.CGBBC, true)
 	b.Write(0xfe00, 0x66)
-	p.lineState = StartOAMScan
-	p.oamScanIndex = 0
-	p.handleVisualLine()
+	s.Tick(100)
+	p.accessFirstLine = false
+	p.lineDot = s.Cycle()
+	p.mode = ModeOAM
+	b.RLock(gbio.OAM)
 
 	if got := b.Read(0xfe00); got != 0x66 {
-		t.Fatalf("OAM read closed at double-speed Mode-2 edge: got %#02x", got)
+		t.Fatalf("CGB B/C double-speed OAM read closed at Mode-2 edge: got %#02x", got)
 	}
-	s.Tick(3)
+	s.Tick(2) // one PPU dot in double speed
 	if got := b.Read(0xfe00); got != 0x66 {
-		t.Fatalf("OAM read closed before two PPU dots: got %#02x", got)
+		t.Fatalf("CGB B/C double-speed OAM read closed one dot early: got %#02x", got)
 	}
-	s.Tick(1)
+	s.Tick(2)
 	if got := b.Read(0xfe00); got != 0xff {
-		t.Fatalf("OAM read still open after two PPU dots: got %#02x", got)
+		t.Fatalf("CGB B/C double-speed OAM read remained open after two dots: got %#02x", got)
 	}
 
-	pE, bE, _ := newAccessTimingTest(t, types.CGBDE, true)
+	pE, bE, sE := newAccessTimingTest(t, types.CGBDE, true)
 	bE.Write(0xfe00, 0x66)
-	pE.lineState = StartOAMScan
-	pE.oamScanIndex = 0
-	pE.handleVisualLine()
+	sE.Tick(100)
+	pE.accessFirstLine = false
+	pE.lineDot = sE.Cycle()
+	pE.mode = ModeOAM
+	bE.RLock(gbio.OAM)
 	if got := bE.Read(0xfe00); got != 0xff {
-		t.Fatalf("CGB D/E OAM read should close immediately: got %#02x", got)
+		t.Fatalf("CGB D/E double-speed OAM read should close immediately: got %#02x", got)
+	}
+}
+
+func TestLCDEnableLineAccessCloseEdges(t *testing.T) {
+	p, b, s := newAccessTimingTest(t, types.CGBBC, false)
+	b.Write(0x8000, 0x5a)
+	b.Write(0xfe00, 0x66)
+	beginAccessMode3(p, s, true)
+	b.Lock(gbio.VRAM | gbio.OAM)
+
+	if got := b.Read(0xfe00); got != 0x66 {
+		t.Fatalf("first-line OAM read closed on Mode-3 flag edge: got %#02x", got)
+	}
+	b.Write(0xfe00, 0x77)
+	if got := b.Get(0xfe00); got != 0x77 {
+		t.Fatalf("first-line OAM write closed on Mode-3 flag edge: got %#02x", got)
+	}
+	if got := b.Read(0x8000); got != 0x5a {
+		t.Fatalf("first-line VRAM read closed on Mode-3 flag edge: got %#02x", got)
+	}
+
+	s.Tick(5)
+	if got := b.Read(0xfe00); got != 0xff {
+		t.Fatalf("first-line OAM read still open at five-dot edge: got %#02x", got)
+	}
+	b.Set(0xfe00, 0x77)
+	b.Write(0xfe00, 0x88)
+	if got := b.Get(0xfe00); got != 0x77 {
+		t.Fatalf("first-line OAM write still open at five-dot edge: got %#02x", got)
+	}
+
+	// CGB VRAM reads keep two additional dots of LCD-enable-line grace.
+	if got := b.Read(0x8000); got != 0x5a {
+		t.Fatalf("first-line VRAM read closed at OAM edge: got %#02x", got)
+	}
+	s.Tick(2)
+	if got := b.Read(0x8000); got != 0xff {
+		t.Fatalf("first-line VRAM read still open at seven-dot edge: got %#02x", got)
+	}
+}
+
+func TestDMGOAMWriteMode2AndMode3Gaps(t *testing.T) {
+	p, b, s := newAccessTimingTest(t, types.DMGABC, false)
+	b.Set(0xfe00, 0x11)
+	s.Tick(100)
+	p.accessFirstLine = false
+	p.lineDot = s.Cycle()
+	p.mode = ModeOAM
+	b.WLock(gbio.OAM)
+
+	b.Write(0xfe00, 0x22)
+	if got := b.Get(0xfe00); got != 0x22 {
+		t.Fatalf("DMG OAM write blocked at start of Mode 2: got %#02x", got)
+	}
+
+	// At the Mode-3 edge the DMG exposes a four-dot write gap even though
+	// the coarse PPU lock is already closed.
+	s.Tick(80)
+	p.mode = ModeVRAM
+	p.accessMode3Cycle = s.Cycle()
+	b.Write(0xfe00, 0x33)
+	if got := b.Get(0xfe00); got != 0x33 {
+		t.Fatalf("DMG OAM write blocked at Mode-3 gap: got %#02x", got)
+	}
+	s.Tick(4)
+	b.Write(0xfe00, 0x44)
+	if got := b.Get(0xfe00); got != 0x33 {
+		t.Fatalf("DMG OAM write remained open after Mode-3 gap: got %#02x", got)
 	}
 }
