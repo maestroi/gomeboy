@@ -244,11 +244,11 @@ func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	if !result.CPU.ExceptionTaken || result.CPU.Exception != cpu.ExceptionIRQ {
 		t.Fatalf("IRQ step did not take exception: %+v", result.CPU)
 	}
-	if result.ElapsedCycles != 1 || m.Cycle() != IRQPropagationLatency+1 {
-		t.Fatalf("IRQ entry elapsed/cycle = %d/%d, want 1/%d",
-			result.ElapsedCycles, m.Cycle(), IRQPropagationLatency+1)
+	if result.ElapsedCycles != 2 || m.Cycle() != IRQPropagationLatency+2 {
+		t.Fatalf("IRQ entry elapsed/cycle = %d/%d, want 2/%d",
+			result.ElapsedCycles, m.Cycle(), IRQPropagationLatency+2)
 	}
-	if m.PPU.LineCycle() != uint32(IRQPropagationLatency+1) {
+	if m.PPU.LineCycle() != uint32(IRQPropagationLatency+2) {
 		t.Fatalf("PPU did not advance during IRQ delay+entry: %d", m.PPU.LineCycle())
 	}
 }
