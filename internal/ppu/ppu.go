@@ -148,6 +148,13 @@ type PPU struct {
 	lineDot  uint64 // Cycle at which the current line began
 	frameDot uint64 // Cycle at which the current frame began
 
+	// CPU-visible PPU bus timing. The memory-access predicates below sample
+	// these edges at the end of the CPU M-cycle, which is more precise than
+	// flipping a shared region lock at STAT mode transitions.
+	accessFirstLine  bool
+	accessMode3Cycle uint64
+	accessMode0Cycle uint64
+
 	// CGB-specific features
 	cgbMode       bool  // CGB mode
 	bcpsIndex     uint8 // BG palette index
@@ -204,6 +211,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
 		objFIFO: utils.NewFIFO[FIFOEntry](8),
 	}
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpen, p.cpuOAMReadOpen, p.cpuOAMWriteOpen)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
@@ -234,6 +242,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		// is the screen turning off?
 		if p.enabled && v&types.Bit7 == 0 {
 			p.enabled = false
+			p.accessFirstLine = false
+			p.accessMode3Cycle = 0
+			p.accessMode0Cycle = 0
 
 			// the screen should only be turned off in VBlank
 			if p.mode != ModeVBlank {
@@ -257,6 +268,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		} else if !p.enabled && v&types.Bit7 != 0 {
 			p.enabled = true
 			p.cgbMode = b.IsGBCCart() && b.IsGBC()
+			p.accessFirstLine = true
+			p.accessMode3Cycle = 0
+			p.accessMode0Cycle = 0
 
 			p.frameDot = p.s.Cycle()
 
@@ -478,6 +492,193 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	return p
 }
 
+// accessDotsSince converts scheduler cycles to PPU dots. In double-speed
+// mode a PPU dot spans two scheduler/CPU clocks.
+func (p *PPU) accessDotsSince(cycle uint64) uint64 {
+	if cycle == 0 || p.s.Cycle() < cycle {
+		return 0
+	}
+	dots := p.s.Cycle() - cycle
+	if p.s.DoubleSpeed() {
+		dots >>= 1
+	}
+	return dots
+}
+
+func (p *PPU) currentLineDot() uint64 {
+	if p.s.Cycle() < p.lineDot {
+		return 0
+	}
+	dots := p.s.Cycle() - p.lineDot
+	if p.s.DoubleSpeed() {
+		dots >>= 1
+	}
+	return dots
+}
+
+func (p *PPU) cgbAccessHardware() bool {
+	return p.b.Model().IsCGB() || p.b.Model() == types.AGB
+}
+
+func (p *PPU) afterMode0AccessEdge() bool {
+	return p.accessMode0Cycle != 0 &&
+		p.accessMode0Cycle > p.accessMode3Cycle &&
+		p.s.Cycle() >= p.accessMode0Cycle
+}
+
+func (p *PPU) lateHBlankAccessBoundary() bool {
+	return !p.accessFirstLine && p.currentLineDot() >= 452
+}
+
+// cpuVRAMReadOpen models the CPU read side of the VRAM bus. AGE samples the
+// close/open edges inside CPU M-cycles: DMG closes on the live Mode-3 edge,
+// while CGB reads retain a short grace period and reopen shortly after the
+// Mode-3 -> Mode-0 flag edge. The physical CGB model is used even for a
+// DMG-only cartridge (AGE's NCM cases).
+func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
+	if !p.enabled || p.mode == ModeVBlank {
+		return true
+	}
+	if p.lateHBlankAccessBoundary() {
+		return defaultOpen
+	}
+
+	if p.afterMode0AccessEdge() {
+		delay := uint64(2)
+		if p.s.DoubleSpeed() {
+			delay = 3
+		}
+		if p.accessFirstLine {
+			delay += 2
+		}
+		return p.accessDotsSince(p.accessMode0Cycle) >= delay
+	}
+
+	if p.mode != ModeVRAM {
+		// VRAM is CPU-visible throughout Mode 2; the old coarse DMG lock
+		// begins several dots too early for the AGE read probes.
+		return true
+	}
+
+	if !p.cgbAccessHardware() {
+		return false
+	}
+
+	closeDelay := uint64(4)
+	if p.s.DoubleSpeed() {
+		closeDelay = 2
+	}
+	if p.accessFirstLine {
+		// The LCD-enable line's bus lock trails the renderer's Mode-3 edge.
+		if p.s.DoubleSpeed() {
+			closeDelay = 5
+		} else {
+			closeDelay = 7
+		}
+	}
+	return p.accessDotsSince(p.accessMode3Cycle) < closeDelay
+}
+
+// cpuOAMReadOpen models OAM read ownership. CGB B/C has a two-dot Mode-2
+// read grace in double speed; CGB D/E closes immediately. At the other end
+// of Mode 3, D/E opens one dot later than B/C/DMG.
+func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
+	if !p.enabled || p.mode == ModeVBlank {
+		return true
+	}
+	if p.lateHBlankAccessBoundary() {
+		return defaultOpen
+	}
+
+	if p.afterMode0AccessEdge() {
+		delay := uint64(2)
+		if p.s.DoubleSpeed() {
+			delay = 3
+		}
+		if p.b.Model() == types.CGBDE {
+			delay++
+		}
+		if p.accessFirstLine {
+			delay += 2
+		}
+		return p.accessDotsSince(p.accessMode0Cycle) >= delay
+	}
+
+	if p.accessFirstLine {
+		if p.mode != ModeVRAM {
+			return true
+		}
+		return p.accessDotsSince(p.accessMode3Cycle) < 5
+	}
+
+	switch p.mode {
+	case ModeOAM:
+		if p.s.DoubleSpeed() && p.cgbAccessHardware() && p.b.Model() != types.CGBDE &&
+			p.currentLineDot() < 2 {
+			return true
+		}
+		return false
+	case ModeVRAM:
+		return false
+	default:
+		return defaultOpen
+	}
+}
+
+// cpuOAMWriteOpen models the separately sampled write side of OAM. DMG has
+// short write-visible gaps at both Mode-2 edges; CGB owns OAM continuously
+// through Modes 2/3. Writes reopen after the same delayed Mode-0 edge used
+// by reads.
+func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
+	if !p.enabled || p.mode == ModeVBlank {
+		return true
+	}
+	if p.lateHBlankAccessBoundary() {
+		return defaultOpen
+	}
+
+	if p.afterMode0AccessEdge() {
+		delay := uint64(2)
+		if p.s.DoubleSpeed() {
+			delay = 3
+		}
+		if p.accessFirstLine {
+			delay += 2
+		}
+		return p.accessDotsSince(p.accessMode0Cycle) >= delay
+	}
+
+	if p.accessFirstLine {
+		if p.mode != ModeVRAM {
+			return true
+		}
+		closeDelay := uint64(4)
+		if p.cgbAccessHardware() {
+			closeDelay = 5
+			if p.s.DoubleSpeed() {
+				closeDelay = 3
+			}
+		}
+		return p.accessDotsSince(p.accessMode3Cycle) < closeDelay
+	}
+
+	switch p.mode {
+	case ModeOAM:
+		if p.cgbAccessHardware() {
+			return false
+		}
+		dot := p.currentLineDot()
+		return dot < 4 || dot+4 > 80
+	case ModeVRAM:
+		if !p.cgbAccessHardware() && p.accessDotsSince(p.accessMode3Cycle) < 4 {
+			return true
+		}
+		return false
+	default:
+		return defaultOpen
+	}
+}
+
 // GlitchedLineState represents the progression states for handling the peculiar first line
 // that occurs immediately after enabling the LCD. This glitched line has different timings and
 // behaviour compared to normal lines, requiring special state management to accurately emulate
@@ -539,6 +740,7 @@ func (p *PPU) handleGlitchedLine0() {
 		p.b.WLock(io.OAM)
 	case GlitchedLineEndOAM:
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
+		p.accessMode3Cycle = p.s.Cycle()
 		p.b.Lock(io.OAM)
 		p.b.Block(io.VRAM, p.s.DoubleSpeed() || !p.cgbMode)
 	case GlitchedLineStartPixelTransfer:
@@ -693,6 +895,9 @@ func (p *PPU) handleVisualLine() {
 		// implementation took a single snapshot at dot 80, which made DMA
 		// overlapping the scan impossible to model.
 		if p.oamScanIndex == 0 {
+			p.accessFirstLine = false
+			p.accessMode3Cycle = 0
+			p.accessMode0Cycle = 0
 			p.b.Lock(io.OAM)
 			p.checkWindowTriggerWY()
 			p.objBuffer = p.objBuffer[:0]
@@ -741,6 +946,7 @@ func (p *PPU) handleVisualLine() {
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 2)
 		return
 	case StartPixelTransfer: // on dot 80
+		p.accessMode3Cycle = p.s.Cycle()
 		p.resetFetcher()
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
 		p.statUpdate() // clear stat line
@@ -800,6 +1006,7 @@ func (p *PPU) handleVisualLine() {
 			return // remain in the PixelTransferLX state until we reach LX==168
 		}
 
+		p.accessMode0Cycle = p.s.Cycle()
 		if !p.s.DoubleSpeed() {
 			p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		}
@@ -808,6 +1015,9 @@ func (p *PPU) handleVisualLine() {
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 		return
 	case EnterHBlank: // variable
+		if p.accessFirstLine && p.accessMode0Cycle <= p.accessMode3Cycle {
+			p.accessMode0Cycle = p.s.Cycle()
+		}
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
