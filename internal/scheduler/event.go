@@ -16,6 +16,12 @@ const (
 
 	PPUHandleVisualLine
 	PPUHandleGlitchedLine0
+	PPULockVRAMRead
+	PPUUnlockVRAMRead
+	PPULockOAMRead
+	PPUUnlockOAMRead
+	PPULockOAMWrite
+	PPUUnlockOAMWrite
 	PPUHandleOffscreenLine
 
 	DMAStartTransfer
