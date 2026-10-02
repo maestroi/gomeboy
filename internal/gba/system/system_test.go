@@ -145,6 +145,31 @@ func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
 	}
 }
 
+func TestTimerEventsShareMachineMasterClock(t *testing.T) {
+	m := New(nil, nil)
+
+	// Even with every timer disabled, the event scheduler is the machine clock
+	// used by future timer deadlines rather than a private timer-local epoch.
+	m.Advance(37)
+	s := m.Snapshot()
+	if s.Cycles != 37 || s.Timers.SchedulerNow != s.Cycles {
+		t.Fatalf("machine/timer scheduler cycles = %d/%d, want shared 37",
+			s.Cycles, s.Timers.SchedulerNow)
+	}
+
+	m.Bus.Write16(bus.IOStart+0x100, 0xfffe, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x102, 1<<7, bus.Access{})
+	m.Advance(2)
+	s = m.Snapshot()
+	if s.Cycles != 39 || s.Timers.SchedulerNow != s.Cycles {
+		t.Fatalf("machine/timer scheduler after overflow = %d/%d, want shared 39",
+			s.Cycles, s.Timers.SchedulerNow)
+	}
+	if got := m.Timers.Counter(0); got != 0xfffe {
+		t.Fatalf("timer counter after shared-clock overflow = %04x, want fffe", got)
+	}
+}
+
 func TestPPUHBlankDMAUsesCentralStartLatency(t *testing.T) {
 	m := New(nil, nil)
 
