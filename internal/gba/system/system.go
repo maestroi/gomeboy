@@ -13,6 +13,7 @@ import (
 	gbamemory "github.com/maestroi/gomeboy/internal/gba/memory"
 	"github.com/maestroi/gomeboy/internal/gba/ppu"
 	"github.com/maestroi/gomeboy/internal/gba/power"
+	gbascheduler "github.com/maestroi/gomeboy/internal/gba/scheduler"
 	"github.com/maestroi/gomeboy/internal/gba/timer"
 )
 
@@ -53,8 +54,9 @@ type Machine struct {
 
 	Cartridge cartridge.Setup
 
-	cycles uint64
-	memory timedMemory
+	cycles    uint64
+	scheduler *gbascheduler.Scheduler
+	memory    timedMemory
 
 	dmaStartAt   [4]uint64
 	dmaScheduled uint8
@@ -81,7 +83,7 @@ func New(bios, rom []byte) *Machine {
 // NewWithCartridgeConfig creates a wired GBA timing domain with an explicit
 // cartridge save configuration. Non-auto save types override ROM detection.
 func NewWithCartridgeConfig(bios, rom []byte, config cartridge.Config) *Machine {
-	m := &Machine{}
+	m := &Machine{scheduler: gbascheduler.New()}
 	m.Bus = bus.New(bios, rom)
 	m.Cartridge = cartridge.Configure(m.Bus, rom, config)
 	m.CPU = cpu.New()
@@ -114,9 +116,9 @@ func NewWithCartridgeConfig(bios, rom []byte, config cartridge.Config) *Machine 
 			}
 		},
 	})
-	m.Timers = timer.New(m.Bus, m.IRQ, timer.Hooks{
+	m.Timers = timer.NewWithScheduler(m.Bus, m.IRQ, timer.Hooks{
 		Overflow: m.Audio.TimerOverflow,
-	})
+	}, m.scheduler)
 	m.PPU = ppu.New(m.Bus, ppu.Hooks{
 		HBlank: func() {
 			m.DMA.Trigger(dma.StartHBlank)
@@ -521,7 +523,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		m.cycles += uint64(cycles)
 		m.Cartridge.Advance(cycles)
 		m.Audio.Advance(cycles)
-		m.Timers.Advance(cycles)
+		m.scheduler.Advance(uint64(cycles))
 		m.PPU.Advance(cycles)
 		return
 	}
@@ -549,7 +551,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		// end; timer overflow then updates the Direct Sound latch for the next
 		// interval.
 		m.Audio.Advance(step)
-		m.Timers.Advance(step)
+		m.scheduler.Advance(uint64(step))
 		m.PPU.Advance(step)
 		remaining -= step
 		m.serviceDueIRQ()
