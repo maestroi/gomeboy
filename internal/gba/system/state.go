@@ -10,6 +10,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/gba/keypad"
 	"github.com/maestroi/gomeboy/internal/gba/power"
 	"github.com/maestroi/gomeboy/internal/gba/ppu"
+	gbascheduler "github.com/maestroi/gomeboy/internal/gba/scheduler"
 	"github.com/maestroi/gomeboy/internal/gba/timer"
 )
 
@@ -112,7 +113,15 @@ func (m *Machine) Restore(s State) error {
 	m.dmaRunning = s.DMARunning
 	m.dmaStalls = s.DMAStalls
 	m.irqEventAt = s.IRQEventAt
+	m.irqEvent = 0
 	m.irqScheduled = s.IRQScheduled
+	if m.irqScheduled {
+		delay := uint64(0)
+		if m.irqEventAt > m.scheduler.Now() {
+			delay = m.irqEventAt - m.scheduler.Now()
+		}
+		m.irqEvent = m.scheduler.Schedule(delay, gbascheduler.PriorityLate, m.deliverIRQ)
+	}
 	m.haltWakeSeq = s.HaltWakeSeq
 	m.halted = s.Halted
 	m.stopped = s.Stopped

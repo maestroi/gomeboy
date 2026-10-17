@@ -6,6 +6,7 @@ import (
 
 	"github.com/maestroi/gomeboy/internal/gba/bus"
 	gbairq "github.com/maestroi/gomeboy/internal/gba/interrupt"
+	gbascheduler "github.com/maestroi/gomeboy/internal/gba/scheduler"
 )
 
 const (
@@ -33,37 +34,30 @@ type IRQSink interface {
 }
 
 // Hooks expose timer overflow counts to later audio/system integration.
-// One callback may represent multiple overflows when Advance is called with a
-// large cycle interval.
 type Hooks struct {
 	Overflow func(timer int, count uint32)
 }
 
 type state struct {
-	reload            uint16
-	counter           uint16
-	control           uint16
-	phase             uint32
-	lastTickOverflow  bool
+	reload         uint16
+	counter        uint16
+	control        uint16
+	lastEvent      uint64
+	lastTickAt     uint64
+	lastOverflowAt uint64
+	overflowEvent  gbascheduler.Handle
 }
-
-type pendingWriteKind uint8
-
-const (
-	pendingReload pendingWriteKind = iota
-	pendingControl
-)
 
 type pendingWrite struct {
 	index int
-	kind  pendingWriteKind
 	value uint16
 }
 
 // Timers owns TM0-TM3 register state and deterministic cycle advancement.
 type Timers struct {
-	irq   IRQSink
-	hooks Hooks
+	irq       IRQSink
+	hooks     Hooks
+	scheduler *gbascheduler.Scheduler
 
 	timer  [4]state
 	active uint8
@@ -75,10 +69,18 @@ type Timers struct {
 
 // New maps TM0-TM3 onto b.
 func New(b *bus.Bus, irq IRQSink, hooks Hooks) *Timers {
+	return NewWithScheduler(b, irq, hooks, gbascheduler.New())
+}
+
+// NewWithScheduler creates timers on a shared GBA master-clock scheduler.
+func NewWithScheduler(b *bus.Bus, irq IRQSink, hooks Hooks, scheduler *gbascheduler.Scheduler) *Timers {
 	if b == nil {
 		panic("gba timer: nil bus")
 	}
-	t := &Timers{irq: irq, hooks: hooks}
+	if scheduler == nil {
+		panic("gba timer: nil scheduler")
+	}
+	t := &Timers{irq: irq, hooks: hooks, scheduler: scheduler}
 	t.install(b.IO())
 	return t
 }
@@ -90,7 +92,7 @@ func (t *Timers) install(io *bus.IO) {
 		high := low + 2
 
 		io.Register16WithByteWrite(low,
-			func() uint16 { return t.timer[index].counter },
+			func() uint16 { return t.Counter(index) },
 			func(value uint16) { t.writeReload(index, value) },
 			func(byteOffset uint32, value byte) {
 				current := t.reloadForWrite(index)
@@ -110,10 +112,9 @@ func (t *Timers) install(io *bus.IO) {
 	}
 }
 
-// BeginWriteAccess marks timer writes performed by a CPU instruction. Timer
-// starts and ordinary control changes remain deferred to EndWriteAccess, while
-// disabling a running timer commits at the end of the individual I/O bus
-// access via EndWriteBusAccess.
+// BeginWriteAccess marks timer writes performed by a CPU instruction. Reload
+// latches are bus-phase visible, while control transitions commit at the same
+// CPU boundaries used by the established timer model.
 func (t *Timers) BeginWriteAccess() {
 	if t.deferWrites {
 		return
@@ -121,10 +122,10 @@ func (t *Timers) BeginWriteAccess() {
 	t.deferWrites = true
 }
 
-// EndWriteBusAccess commits timer side effects that become visible only after
-// the current CPU I/O transfer has consumed its bus cycles. In particular, a
-// TMxCNT_H disable keeps the timer running through the store itself but is
-// visible before the next CPU phase.
+// EndWriteBusAccess commits a running timer disable at the end of the I/O bus
+// transfer. The commit is a same-timestamp scheduler event so timer overflow
+// and control edges have deterministic ordering without inventing an extra
+// master cycle.
 func (t *Timers) EndWriteBusAccess() {
 	if len(t.pendingBusWrites) == 0 {
 		return
@@ -132,48 +133,42 @@ func (t *Timers) EndWriteBusAccess() {
 	pending := t.pendingBusWrites
 	t.pendingBusWrites = t.pendingBusWrites[:0]
 	for _, write := range pending {
-		t.applyControl(write.index, write.value)
+		t.commitControl(write.index, write.value)
 	}
 }
 
-// EndWriteAccess commits control changes whose hardware effect is delayed until
-// the CPU instruction boundary. Direct bus/debug writes remain immediate
-// because they do not call BeginWriteAccess.
+// EndWriteAccess flushes any timer control write not already committed by the
+// CPU bus adapter. Normal CPU writes commit at EndWriteBusAccess, the transfer
+// completion edge, rather than waiting for the later instruction boundary.
 func (t *Timers) EndWriteAccess() {
 	if !t.deferWrites {
 		return
 	}
-	// A caller that does not model individual bus completion still gets a
-	// deterministic final commit at the instruction edge.
 	t.EndWriteBusAccess()
 	t.deferWrites = false
 	pending := t.pendingWrites
 	t.pendingWrites = t.pendingWrites[:0]
 	for _, write := range pending {
-		switch write.kind {
-		case pendingReload:
-			t.timer[write.index].reload = write.value
-		case pendingControl:
-			t.applyControl(write.index, write.value)
-		}
+		t.commitControl(write.index, write.value)
 	}
 }
 
+func (t *Timers) commitControl(index int, value uint16) {
+	t.scheduler.Schedule(0, gbascheduler.PriorityLate, func() {
+		t.applyControl(index, value)
+	})
+	// Dispatch this boundary event without moving master time. Any earlier
+	// priority hardware edge already due at this timestamp wins first.
+	t.scheduler.Advance(0)
+}
+
 func (t *Timers) writeReload(index int, value uint16) {
-	// TMxCNT_L is a reload latch rather than a start/stop control. CPU writes
-	// are visible at the I/O bus phase even while the timer is running, so an
-	// overflow during that same access can reload the newly written value.
-	// Enable/control transitions still commit at the instruction boundary.
+	// TMxCNT_L is a reload latch, not a start/stop control. CPU writes are
+	// visible in the I/O bus phase, including to an overflow on that transfer.
 	t.timer[index].reload = value
 }
 
 func (t *Timers) reloadForWrite(index int) uint16 {
-	for i := len(t.pendingWrites) - 1; i >= 0; i-- {
-		write := t.pendingWrites[i]
-		if write.index == index && write.kind == pendingReload {
-			return write.value
-		}
-	}
 	return t.timer[index].reload
 }
 
@@ -185,128 +180,233 @@ func controlMask(index int) uint16 {
 }
 
 func (t *Timers) writeControl(index int, value uint16) {
+	value &= controlMask(index)
 	if t.deferWrites {
-		// A disable is sampled by the I/O write but does not stop the timer until
-		// that transfer completes. Starts and other control changes remain
-		// deferred to the instruction boundary.
-		if t.timer[index].control&controlEnable != 0 && value&controlEnable == 0 {
-			t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, kind: pendingControl, value: value})
-			return
-		}
-		t.pendingWrites = append(t.pendingWrites, pendingWrite{index: index, kind: pendingControl, value: value})
+		// Timer control is sampled by the I/O transfer and becomes effective at
+		// that transfer's completion edge. Keeping enables/config changes until
+		// the architectural instruction boundary starts TMx one CPU phase late
+		// for STR/STRH sequences in the hardware timer suite.
+		t.pendingBusWrites = append(t.pendingBusWrites, pendingWrite{index: index, value: value})
 		return
 	}
 	t.applyControl(index, value)
 }
 
+// applyControl first materializes the old timer at the current master timestamp,
+// then applies the new mode. Independently-clocked timers are anchored to the
+// free-running global prescaler grid, following the event/deadline model used
+// by mature GBA cores rather than a timer-local Advance() phase.
 func (t *Timers) applyControl(index int, value uint16) {
 	s := &t.timer[index]
 	oldControl := s.control
-	s.control = value & controlMask(index)
-
+	newControl := value & controlMask(index)
 	oldEnabled := oldControl&controlEnable != 0
-	newEnabled := s.control&controlEnable != 0
+	newEnabled := newControl&controlEnable != 0
+	oldCascade := index > 0 && oldControl&controlCountUp != 0
+	newCascade := index > 0 && newControl&controlCountUp != 0
+
+	if oldEnabled && !oldCascade {
+		t.syncCounter(index)
+		t.cancelOverflow(index)
+	}
+
+	s.control = newControl
 	bit := uint8(1 << index)
 	if newEnabled {
 		t.active |= bit
 	} else {
 		t.active &^= bit
 	}
-	if !oldEnabled && newEnabled {
-		s.counter = s.reload
-		s.phase = 0
-		return
-	}
-	if oldEnabled && !newEnabled {
-		s.phase = 0
+
+	if !newEnabled {
 		return
 	}
 
-	// Keep the accumulated prescaler position valid when software changes the
-	// divisor while the timer remains enabled.
-	if newEnabled && s.control&controlCountUp == 0 {
-		divisor := prescalers[s.control&controlPrescalerMask]
-		if divisor != 0 {
-			s.phase %= divisor
+	if !oldEnabled {
+		s.counter = s.reload
+	}
+
+	if newCascade {
+		// A newly enabled count-up timer loads reload. A mode change while
+		// already enabled preserves the materialized live counter.
+		s.lastEvent = t.scheduler.Now()
+		return
+	}
+
+	// Re-anchor only when a start or clock-source configuration changes.
+	// IRQ-only rewrites keep the existing counter/deadline phase.
+	oldClock := oldControl & (controlPrescalerMask | controlCountUp)
+	newClock := newControl & (controlPrescalerMask | controlCountUp)
+	if !oldEnabled || oldCascade {
+		t.anchorChannel(index, 0)
+	} else if oldClock != newClock {
+		// Preserve the accumulated prescaler remainder when changing divisors.
+		oldDivisor := uint64(prescalers[oldControl&controlPrescalerMask])
+		remainder := uint64(0)
+		if oldDivisor != 0 && t.scheduler.Now() >= s.lastEvent {
+			remainder = (t.scheduler.Now() - s.lastEvent) % oldDivisor
 		}
+		newDivisor := uint64(prescalers[newControl&controlPrescalerMask])
+		if newDivisor != 0 {
+			remainder %= newDivisor
+		}
+		t.anchorChannel(index, remainder)
+	} else {
+		t.scheduleOverflow(index)
 	}
 }
 
-// CyclesUntilEvent returns the master-clock distance to the next overflow of
-// any independently clocked timer. Count-up timers are driven by their parent
-// overflow at that same edge and therefore do not need a separate deadline.
+func (t *Timers) anchorChannel(index int, phase uint64) {
+	s := &t.timer[index]
+	now := t.scheduler.Now()
+	if phase > now {
+		phase = now
+	}
+	s.lastEvent = now - phase
+	t.scheduleOverflow(index)
+}
+
+func (t *Timers) scheduleOverflow(index int) {
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
+		return
+	}
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	deadline := s.lastEvent + uint64(0x10000-uint32(s.counter))*divisor
+	now := t.scheduler.Now()
+	if deadline <= now {
+		// A live timer's due overflow should normally have been dispatched by
+		// Scheduler.AdvanceTo. Keep restore/control paths deterministic if a
+		// snapshot lands exactly on the boundary.
+		deadline = now + divisor
+	}
+	s.overflowEvent = t.scheduler.Schedule(deadline-now, gbascheduler.PriorityEarly, func() {
+		t.onOverflow(index)
+	})
+}
+
+func (t *Timers) cancelOverflow(index int) {
+	s := &t.timer[index]
+	if s.overflowEvent != 0 {
+		t.scheduler.Cancel(s.overflowEvent)
+		s.overflowEvent = 0
+	}
+}
+
+func (t *Timers) onOverflow(index int) {
+	s := &t.timer[index]
+	s.overflowEvent = 0
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
+		return
+	}
+
+	s.counter = s.reload
+	s.lastEvent = t.scheduler.Now()
+	s.lastTickAt = t.scheduler.Now()
+	s.lastOverflowAt = t.scheduler.Now()
+	if t.hooks.Overflow != nil {
+		t.hooks.Overflow(index, 1)
+	}
+	if s.control&controlIRQ != 0 && t.irq != nil {
+		t.irq.Request(irqSources[index])
+	}
+	t.cascade(index + 1)
+	t.scheduleOverflow(index)
+}
+
+func (t *Timers) cascade(index int) {
+	if index >= len(t.timer) {
+		return
+	}
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || s.control&controlCountUp == 0 {
+		return
+	}
+
+	now := t.scheduler.Now()
+	s.lastTickAt = now
+	if s.counter != 0xffff {
+		s.counter++
+		return
+	}
+
+	s.counter = s.reload
+	s.lastOverflowAt = now
+	if t.hooks.Overflow != nil {
+		t.hooks.Overflow(index, 1)
+	}
+	if s.control&controlIRQ != 0 && t.irq != nil {
+		t.irq.Request(irqSources[index])
+	}
+	t.cascade(index + 1)
+}
+
+func (t *Timers) syncCounter(index int) {
+	s := &t.timer[index]
+	if s.control&controlEnable == 0 || (index > 0 && s.control&controlCountUp != 0) {
+		return
+	}
+
+	now := t.scheduler.Now()
+	if now <= s.lastEvent {
+		return
+	}
+	divisor := uint64(prescalers[s.control&controlPrescalerMask])
+	ticks := (now - s.lastEvent) / divisor
+	if ticks == 0 {
+		return
+	}
+
+	// Overflow deadlines are explicit scheduler events, so a normal sync never
+	// crosses a wrap. Keep the arithmetic bounded defensively for restored state.
+	untilOverflow := uint64(0x10000 - uint32(s.counter))
+	if ticks >= untilOverflow {
+		ticks = untilOverflow - 1
+	}
+	if ticks == 0 {
+		return
+	}
+	s.counter += uint16(ticks)
+	s.lastEvent += ticks * divisor
+	s.lastTickAt = s.lastEvent
+}
+
+// NeedsAdvance reports whether timer hardware has live state or queued events.
+// It is retained for callers/tests; scheduler time itself must advance even
+// when this returns false so later timer starts observe the global clock phase.
+func (t *Timers) NeedsAdvance() bool {
+	if t.active != 0 {
+		return true
+	}
+	_, ok := t.scheduler.Next()
+	return ok
+}
+
+// CyclesUntilEvent returns the distance to the next timestamped timer event.
 func (t *Timers) CyclesUntilEvent() uint32 {
-	if t.active == 0 {
+	at, ok := t.scheduler.Next()
+	if !ok {
 		return math.MaxUint32
 	}
-	best := uint64(math.MaxUint32)
-	for index := 0; index < 4; index++ {
-		s := &t.timer[index]
-		if s.control&controlEnable == 0 {
-			continue
-		}
-		if index > 0 && s.control&controlCountUp != 0 {
-			continue
-		}
-
-
-		divisor := uint64(prescalers[s.control&controlPrescalerMask])
-		ticks := uint64(0x10000 - uint32(s.counter))
-		cycles := ticks*divisor - uint64(s.phase)
-		if cycles < best {
-			best = cycles
-		}
+	now := t.scheduler.Now()
+	if at <= now {
+		return 0
 	}
-	return uint32(best)
+	delta := at - now
+	if delta > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(delta)
 }
 
-// Advance advances all enabled timers by GBA master-clock cycles.
-//
-// Normal timers derive ticks from their prescaler. Count-up timers 1-3 ignore
-// the prescaler and receive one tick per overflow of the previous timer.
+// Advance advances the timer master timestamp. Live counters are derived lazily
+// from this timestamp; only scheduled overflow/register events need dispatch.
 func (t *Timers) Advance(cycles uint32) {
-	if t.active == 0 || cycles == 0 {
-		return
-	}
-	var overflows [4]uint32
-
-	for index := 0; index < 4; index++ {
-		s := &t.timer[index]
-		if s.control&controlEnable == 0 {
-			continue
-		}
-
-
-		var ticks uint64
-		if index > 0 && s.control&controlCountUp != 0 {
-			ticks = uint64(overflows[index-1])
-		} else {
-			divisor := prescalers[s.control&controlPrescalerMask]
-			total := uint64(s.phase) + uint64(cycles)
-			ticks = total / uint64(divisor)
-			s.phase = uint32(total % uint64(divisor))
-		}
-
-		if ticks == 0 {
-			s.lastTickOverflow = false
-			continue
-		}
-
-		s.lastTickOverflow = finalTickOverflows(s.counter, s.reload, ticks)
-		overflows[index] = t.advanceCounter(index, ticks)
-		if overflows[index] == 0 {
-			continue
-		}
-
-		if t.hooks.Overflow != nil {
-			t.hooks.Overflow(index, overflows[index])
-		}
-		if s.control&controlIRQ != 0 && t.irq != nil {
-			t.irq.Request(irqSources[index])
-		}
-	}
+	t.scheduler.Advance(uint64(cycles))
 }
 
+// finalTickOverflows and advanceCounter remain as compact arithmetic helpers
+// used by regression tests and by callers that need batched timer math.
 func finalTickOverflows(counter, reload uint16, ticks uint64) bool {
 	if ticks == 0 {
 		return false
@@ -339,8 +439,11 @@ func (t *Timers) advanceCounter(index int, ticks uint64) uint32 {
 	return uint32(overflows)
 }
 
-// Reset clears timer reload/counter/control/prescaler state.
+// Reset clears timer reload/counter/control state.
 func (t *Timers) Reset() {
+	for index := range t.timer {
+		t.cancelOverflow(index)
+	}
 	t.timer = [4]state{}
 	t.active = 0
 	t.deferWrites = false
@@ -352,37 +455,35 @@ func (t *Timers) Reset() {
 func (t *Timers) Active() bool { return t.active != 0 }
 
 // Counter returns the current live/frozen counter for tests/debugging.
-func (t *Timers) Counter(index int) uint16 { return t.timer[index].counter }
+func (t *Timers) Counter(index int) uint16 {
+	t.syncCounter(index)
+	return t.timer[index].counter
+}
 
-// CounterForCPURead returns the timer value visible to a CPU data read at the
-// current bus edge. An ordinary timer increment on that same edge is observed
-// after the read sample, while an overflow/reload edge is already visible.
+// CounterForCPURead returns the timer value at GomeBoy's CPU data-sampling
+// phase. The CPU core has already consumed the current instruction-fetch phase
+// before issuing this data callback, so an ordinary timer tick on that exact
+// timestamp is sampled one phase earlier. Cascaded timers are already committed
+// by their parent's explicit overflow event.
 func (t *Timers) CounterForCPURead(index int) uint16 {
+	t.syncCounter(index)
 	s := &t.timer[index]
 	if s.control&controlEnable == 0 {
 		return s.counter
 	}
+
+	now := t.scheduler.Now()
 	if index > 0 && s.control&controlCountUp != 0 {
-		// A cascade tick is sourced by the previous timer's overflow at the same
-		// master-clock edge. CPU data reads sample before that count-up tick, just
-		// like they sample before an ordinary prescaler tick.
-		parent := &t.timer[index-1]
-		if !parent.lastTickOverflow {
-			return s.counter
-		}
-		if s.lastTickOverflow {
+		return s.counter
+	}
+
+	if s.lastTickAt == now {
+		if s.lastOverflowAt == now {
 			return 0xffff
 		}
 		return s.counter - 1
 	}
-	divisor := prescalers[s.control&controlPrescalerMask]
-	if divisor == 0 || s.phase != 0 {
-		return s.counter
-	}
-	if s.lastTickOverflow {
-		return 0xffff
-	}
-	return s.counter - 1
+	return s.counter
 }
 
 // Reload returns the programmed reload latch.

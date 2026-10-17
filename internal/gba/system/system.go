@@ -13,6 +13,7 @@ import (
 	gbamemory "github.com/maestroi/gomeboy/internal/gba/memory"
 	"github.com/maestroi/gomeboy/internal/gba/ppu"
 	"github.com/maestroi/gomeboy/internal/gba/power"
+	gbascheduler "github.com/maestroi/gomeboy/internal/gba/scheduler"
 	"github.com/maestroi/gomeboy/internal/gba/timer"
 )
 
@@ -53,8 +54,9 @@ type Machine struct {
 
 	Cartridge cartridge.Setup
 
-	cycles uint64
-	memory timedMemory
+	cycles    uint64
+	scheduler *gbascheduler.Scheduler
+	memory    timedMemory
 
 	dmaStartAt   [4]uint64
 	dmaScheduled uint8
@@ -62,6 +64,7 @@ type Machine struct {
 	dmaStalls    uint64
 
 	irqEventAt   uint64
+	irqEvent     gbascheduler.Handle
 	irqScheduled bool
 	haltWakeSeq  uint64
 
@@ -81,7 +84,7 @@ func New(bios, rom []byte) *Machine {
 // NewWithCartridgeConfig creates a wired GBA timing domain with an explicit
 // cartridge save configuration. Non-auto save types override ROM detection.
 func NewWithCartridgeConfig(bios, rom []byte, config cartridge.Config) *Machine {
-	m := &Machine{}
+	m := &Machine{scheduler: gbascheduler.New()}
 	m.Bus = bus.New(bios, rom)
 	m.Cartridge = cartridge.Configure(m.Bus, rom, config)
 	m.CPU = cpu.New()
@@ -114,9 +117,9 @@ func NewWithCartridgeConfig(bios, rom []byte, config cartridge.Config) *Machine 
 			}
 		},
 	})
-	m.Timers = timer.New(m.Bus, m.IRQ, timer.Hooks{
+	m.Timers = timer.NewWithScheduler(m.Bus, m.IRQ, timer.Hooks{
 		Overflow: m.Audio.TimerOverflow,
-	})
+	}, m.scheduler)
 	m.PPU = ppu.New(m.Bus, ppu.Hooks{
 		HBlank: func() {
 			m.DMA.Trigger(dma.StartHBlank)
@@ -258,6 +261,10 @@ func (m *Machine) enterStop() {
 	// STOP freezes the interrupt controller clock as well. Existing IF state is
 	// preserved but cannot propagate until an external STOP wake signal restarts
 	// the clock.
+	if m.irqEvent != 0 {
+		m.scheduler.Cancel(m.irqEvent)
+		m.irqEvent = 0
+	}
 	m.irqScheduled = false
 	m.CPU.SetIRQLine(false)
 }
@@ -299,23 +306,35 @@ func (m *Machine) scheduleIRQEvent() {
 	if m.irqScheduled {
 		return
 	}
-	m.irqEventAt = m.cycles + IRQPropagationLatency
+	m.irqEventAt = m.scheduler.Now() + IRQPropagationLatency
 	m.irqScheduled = true
+	m.irqEvent = m.scheduler.Schedule(IRQPropagationLatency, gbascheduler.PriorityLate, m.deliverIRQ)
+}
+
+func (m *Machine) deliverIRQ() {
+	m.irqEvent = 0
+	if m.stopped {
+		return
+	}
+	m.irqScheduled = false
+
+	// Timer overflow/cascade events use an earlier same-cycle priority. IRQ
+	// propagation therefore observes the final IF/IE/IME state for that clock
+	// edge and releases HALT after the source event has committed.
+	if m.halted {
+		m.halted = false
+		m.haltWakeSeq++
+	}
+	m.CPU.SetIRQLine(m.IRQ.IRQAsserted())
 }
 
 func (m *Machine) serviceDueIRQ() {
 	if m.stopped || !m.irqScheduled || m.irqEventAt > m.cycles {
 		return
 	}
-	m.irqScheduled = false
-
-	// The propagation event releases HALT regardless of IME. At delivery time
-	// the current IE/IF/IME state decides whether the CPU-visible IRQ line rises.
-	if m.halted {
-		m.halted = false
-		m.haltWakeSeq++
-	}
-	m.CPU.SetIRQLine(m.IRQ.IRQAsserted())
+	// Normally advanceHardware dispatches the shared scheduler event exactly at
+	// its deadline. This fallback covers zero-length/current-cycle boundaries.
+	m.scheduler.AdvanceTo(m.cycles)
 }
 
 func (m *Machine) serviceDueEvents() {
@@ -507,15 +526,21 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		return
 	}
 
-	// Most ARM bus/idle phases are only a handful of cycles long. If no timer
-	// or IRQ deadline can occur and the phase ends no later than the next PPU
-	// edge, advance all hardware directly instead of entering the generic
-	// event-splitting loop. PPU hooks at an edge still observe the exact master
-	// cycle because m.cycles is advanced before PPU.Advance.
-	if !m.irqScheduled && !m.Timers.Active() && cycles <= m.PPU.CyclesUntilEvent() {
+	// Keep the timer scheduler on the same continuously advancing master clock
+	// as the rest of the machine, even while all timers are disabled. Timer
+	// prescalers are phase-aligned to this global clock, so pausing the timer
+	// timestamp while inactive corrupts the first tick after a later enable.
+	//
+	// Most ARM bus/idle phases are only a handful of cycles long. If no IRQ,
+	// timer, or PPU deadline occurs before the end of the phase, advance all
+	// hardware directly without entering the generic event-splitting loop.
+	if !m.irqScheduled &&
+		cycles <= m.Timers.CyclesUntilEvent() &&
+		cycles <= m.PPU.CyclesUntilEvent() {
 		m.cycles += uint64(cycles)
 		m.Cartridge.Advance(cycles)
 		m.Audio.Advance(cycles)
+		m.scheduler.Advance(uint64(cycles))
 		m.PPU.Advance(cycles)
 		return
 	}
@@ -528,11 +553,8 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		if untilPPU := m.PPU.CyclesUntilEvent(); untilPPU < step {
 			step = untilPPU
 		}
-		timersActive := m.Timers.Active()
-		if timersActive {
-			if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
-				step = untilTimer
-			}
+		if untilTimer := m.Timers.CyclesUntilEvent(); untilTimer < step {
+			step = untilTimer
 		}
 		if m.irqScheduled && m.irqEventAt > m.cycles {
 			if untilIRQ := m.irqEventAt - m.cycles; untilIRQ < uint64(step) {
@@ -546,9 +568,7 @@ func (m *Machine) advanceHardware(cycles uint32) {
 		// end; timer overflow then updates the Direct Sound latch for the next
 		// interval.
 		m.Audio.Advance(step)
-		if timersActive {
-			m.Timers.Advance(step)
-		}
+		m.scheduler.Advance(uint64(step))
 		m.PPU.Advance(step)
 		remaining -= step
 		m.serviceDueIRQ()
