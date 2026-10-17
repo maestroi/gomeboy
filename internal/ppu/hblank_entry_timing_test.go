@@ -36,7 +36,7 @@ func TestHBlankSTATEntryEdgeTiming(t *testing.T) {
 		cgbMode bool
 		delay   uint64
 	}{
-		{name: "DMG", model: types.DMG, delay: 1},
+		{name: "DMG", model: types.DMGABC, delay: 1},
 		{name: "CGB B/C", model: types.CGBBC, cgbMode: true, delay: 2},
 		{name: "CGB D/E", model: types.CGBDE, cgbMode: true, delay: 2},
 	}

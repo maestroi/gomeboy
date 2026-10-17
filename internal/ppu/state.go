@@ -71,8 +71,11 @@ type State struct {
 	OAMScanXBus        uint8
 
 	// Timing counters
-	LineDot  uint64
-	FrameDot uint64
+	LineDot          uint64
+	FrameDot         uint64
+	AccessFirstLine  bool
+	AccessMode3Cycle uint64
+	AccessMode0Cycle uint64
 
 	// CGB-specific features
 	CGBMode       bool
@@ -149,6 +152,9 @@ func (p *PPU) Snapshot() State {
 		OAMScanXBus:              p.oamScanXBus,
 		LineDot:                  p.lineDot,
 		FrameDot:                 p.frameDot,
+		AccessFirstLine:          p.accessFirstLine,
+		AccessMode3Cycle:         p.accessMode3Cycle,
+		AccessMode0Cycle:         p.accessMode0Cycle,
 		CGBMode:                  p.cgbMode,
 		BCPSIndex:                p.bcpsIndex,
 		OCPSIndex:                p.ocpsIndex,
@@ -220,6 +226,9 @@ func (p *PPU) Restore(s State) {
 	p.oamScanXBus = s.OAMScanXBus
 	p.lineDot = s.LineDot
 	p.frameDot = s.FrameDot
+	p.accessFirstLine = s.AccessFirstLine
+	p.accessMode3Cycle = s.AccessMode3Cycle
+	p.accessMode0Cycle = s.AccessMode0Cycle
 	p.cgbMode = s.CGBMode
 	p.bcpsIndex = s.BCPSIndex
 	p.ocpsIndex = s.OCPSIndex
