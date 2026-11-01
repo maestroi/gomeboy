@@ -153,41 +153,45 @@ func TestOAMMode2ReadRevisionEdge(t *testing.T) {
 	}
 }
 
+// The first LCD-enabled line is shorter than an ordinary scanline and
+// follows dedicated bus-lock events. This exercises the real glitched-line
+// scheduler instead of synthetic Mode-3 edges: it must preserve the Mooneye
+// LCD-on timing behavior while normal lines use the AGE access predicates.
 func TestLCDEnableLineAccessCloseEdges(t *testing.T) {
 	p, b, s := newAccessTimingTest(t, types.CGBBC, false)
-	b.Write(0x8000, 0x5a)
-	b.Write(0xfe00, 0x66)
-	beginAccessMode3(p, s, true)
-	b.Lock(gbio.VRAM | gbio.OAM)
+	p.enabled = false
+	b.Set(0x8000, 0x5a)
+	b.Set(0xfe00, 0x66)
+	b.Write(types.LCDC, types.Bit7)
 
+	if !p.accessFirstLine {
+		t.Fatal("LCD enable did not start the special first line")
+	}
 	if got := b.Read(0xfe00); got != 0x66 {
-		t.Fatalf("first-line OAM read closed on Mode-3 flag edge: got %#02x", got)
+		t.Fatalf("OAM read closed before glitched-line acquisition: got %#02x", got)
 	}
+
+	s.Tick(76)
+	// The glitched line acquires the OAM write bus first, while reads
+	// remain available for two additional dots.
 	b.Write(0xfe00, 0x77)
-	if got := b.Get(0xfe00); got != 0x77 {
-		t.Fatalf("first-line OAM write closed on Mode-3 flag edge: got %#02x", got)
+	if got := b.Get(0xfe00); got != 0x66 {
+		t.Fatalf("OAM write lock overridden on the startup line: got %#02x", got)
 	}
-	if got := b.Read(0x8000); got != 0x5a {
-		t.Fatalf("first-line VRAM read closed on Mode-3 flag edge: got %#02x", got)
-	}
-
-	s.Tick(5)
-	if got := b.Read(0xfe00); got != 0xff {
-		t.Fatalf("first-line OAM read still open at five-dot edge: got %#02x", got)
-	}
-	b.Set(0xfe00, 0x77)
-	b.Write(0xfe00, 0x88)
-	if got := b.Get(0xfe00); got != 0x77 {
-		t.Fatalf("first-line OAM write still open at five-dot edge: got %#02x", got)
+	if got := b.Read(0xfe00); got != 0x66 {
+		t.Fatalf("OAM read locked at the earlier write-only edge: got %#02x", got)
 	}
 
-	// CGB VRAM reads keep two additional dots of LCD-enable-line grace.
-	if got := b.Read(0x8000); got != 0x5a {
-		t.Fatalf("first-line VRAM read closed at OAM edge: got %#02x", got)
-	}
 	s.Tick(2)
+	if got := b.Read(0xfe00); got != 0xff {
+		t.Fatalf("OAM read lock ignored at startup Mode-3 edge: got %#02x", got)
+	}
 	if got := b.Read(0x8000); got != 0xff {
-		t.Fatalf("first-line VRAM read still open at seven-dot edge: got %#02x", got)
+		t.Fatalf("VRAM read lock ignored at startup Mode-3 edge: got %#02x", got)
+	}
+	s.Tick(5)
+	if got := b.Read(0x8000); got != 0xff {
+		t.Fatalf("VRAM read lock ignored during startup transfer: got %#02x", got)
 	}
 }
 
