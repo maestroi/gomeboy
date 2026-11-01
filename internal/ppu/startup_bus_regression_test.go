@@ -1,0 +1,74 @@
+package ppu
+
+import (
+	"testing"
+
+	gbio "github.com/maestroi/gomeboy/internal/io"
+	"github.com/maestroi/gomeboy/internal/scheduler"
+	"github.com/maestroi/gomeboy/internal/types"
+)
+
+// TestLCDEnableBusLocks covers the shortened first scanline after LCDC.7 is
+// enabled. On DMG-compatible startup the PPU acquires the OAM write bus
+// before the OAM read bus and subsequently closes VRAM. These are observable
+// CPU access boundaries, not merely changes in the STAT mode value.
+//
+// Keep this test independent of experimental AGE timing predicates: it
+// exercises the existing glitched-line events and actual bus read/write API.
+func TestLCDEnableBusLocks(t *testing.T) {
+	for _, model := range []types.Model{types.DMGABC, types.CGBBC, types.CGBDE} {
+		t.Run(model.String(), func(t *testing.T) {
+			s := scheduler.NewScheduler()
+			b := gbio.NewBus(s, make([]byte, 0x8000))
+			b.Map(model)
+			p := New(b, s)
+
+			b.Set(0x8000, 0x5a)
+			b.Set(0xfe00, 0x66)
+			b.Write(types.LCDC, types.Bit7)
+			if !p.enabled {
+				t.Fatal("LCD did not enable")
+			}
+			if got := b.Read(0xfe00); got != 0x66 {
+				t.Fatalf("OAM read was blocked before the startup scan: got %#02x", got)
+			}
+
+			// The fixture has no CGB cartridge, so LCD startup uses the
+			// DMG-compatible path: one initial dot plus 76 scan dots.
+			s.Tick(77)
+			b.Write(0xfe00, 0x77)
+			if got := b.Get(0xfe00); got != 0x66 {
+				t.Fatalf("OAM write bypassed the startup write lock: got %#02x", got)
+			}
+			if got := b.Read(0xfe00); got != 0x66 {
+				t.Fatalf("OAM read closed at the earlier write-only edge: got %#02x", got)
+			}
+
+			s.Tick(2)
+			if got := b.Read(0xfe00); got != 0xff {
+				t.Fatalf("OAM read lock missing at startup Mode-3 edge: got %#02x", got)
+			}
+			if got := b.Read(0x8000); got != 0xff {
+				t.Fatalf("VRAM read lock missing at startup Mode-3 edge: got %#02x", got)
+			}
+			s.Tick(5)
+			if got := b.Read(0x8000); got != 0xff {
+				t.Fatalf("VRAM reopened during startup pixel transfer: got %#02x", got)
+			}
+
+			// LCD disable releases both buses immediately, regardless of
+			// the point within the shortened first scanline.
+			b.Write(types.LCDC, 0)
+			if p.enabled {
+				t.Fatal("LCD did not disable")
+			}
+			if got := b.Read(0x8000); got != 0x5a {
+				t.Fatalf("VRAM remained locked after LCD disable: got %#02x", got)
+			}
+			b.Write(0xfe00, 0x88)
+			if got := b.Read(0xfe00); got != 0x88 {
+				t.Fatalf("OAM remained locked after LCD disable: got %#02x", got)
+			}
+		})
+	}
+}
