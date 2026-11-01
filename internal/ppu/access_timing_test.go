@@ -171,7 +171,9 @@ func TestLCDEnableLineAccessCloseEdges(t *testing.T) {
 		t.Fatalf("OAM read closed before glitched-line acquisition: got %#02x", got)
 	}
 
-	s.Tick(76)
+	// The synthetic fixture has a DMG-only cartridge, so the initial
+	// glitched-line event is delayed one dot even on physical CGB hardware.
+	s.Tick(77)
 	// The glitched line acquires the OAM write bus first, while reads
 	// remain available for two additional dots.
 	b.Write(0xfe00, 0x77)
