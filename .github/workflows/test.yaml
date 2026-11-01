@@ -25,7 +25,7 @@ jobs:
       - name: install dependencies
         run: go mod download
       - name: extract test ROMs
-        run: go test -tags test ./tests -run '^$'
+        run: go test -count=1 -tags test ./tests -run '^$'
       - name: fetch pinned whichboot boot fingerprint ROM
         run: bash tests/fetch-whichboot.sh
       - name: test shared library and agent tooling packages
@@ -118,7 +118,7 @@ jobs:
       - name: install dependencies
         run: go mod download
       - name: extract test ROMs
-        run: go test -tags test ./tests -run '^$'
+        run: go test -count=1 -tags test ./tests -run '^$'
       - name: race detector
         env:
           GOMEBOY_MEMORY_STABILITY_FRAMES: '400'
