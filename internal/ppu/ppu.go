@@ -539,6 +539,13 @@ func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
 	if !p.enabled || p.mode == ModeVBlank {
 		return true
 	}
+	// The shortened LCD-enable line has its own per-dot OAM/VRAM lock
+	// sequence (handleGlitchedLine0). Respect those bus locks rather than
+	// applying the steady-state Mode 2/3 edges, which regress Mooneye's
+	// lcdon_timing and lcdon_write_timing tests.
+	if p.accessFirstLine {
+		return defaultOpen
+	}
 	if p.lateHBlankAccessBoundary() {
 		return defaultOpen
 	}
@@ -547,9 +554,6 @@ func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
 		delay := uint64(2)
 		if p.s.DoubleSpeed() {
 			delay = 3
-		}
-		if p.accessFirstLine {
-			delay += 2
 		}
 		return p.accessDotsSince(p.accessMode0Cycle) >= delay
 	}
@@ -568,14 +572,6 @@ func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
 	if p.s.DoubleSpeed() {
 		closeDelay = 2
 	}
-	if p.accessFirstLine {
-		// The LCD-enable line's bus lock trails the renderer's Mode-3 edge.
-		if p.s.DoubleSpeed() {
-			closeDelay = 5
-		} else {
-			closeDelay = 7
-		}
-	}
 	return p.accessDotsSince(p.accessMode3Cycle) < closeDelay
 }
 
@@ -585,6 +581,13 @@ func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
 func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 	if !p.enabled || p.mode == ModeVBlank {
 		return true
+	}
+	// The shortened LCD-enable line has its own per-dot OAM/VRAM lock
+	// sequence (handleGlitchedLine0). Respect those bus locks rather than
+	// applying the steady-state Mode 2/3 edges, which regress Mooneye's
+	// lcdon_timing and lcdon_write_timing tests.
+	if p.accessFirstLine {
+		return defaultOpen
 	}
 	if p.lateHBlankAccessBoundary() {
 		return defaultOpen
@@ -598,18 +601,9 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		if p.b.Model() == types.CGBDE {
 			delay++
 		}
-		if p.accessFirstLine {
-			delay += 2
-		}
 		return p.accessDotsSince(p.accessMode0Cycle) >= delay
 	}
 
-	if p.accessFirstLine {
-		if p.mode != ModeVRAM {
-			return true
-		}
-		return p.accessDotsSince(p.accessMode3Cycle) < 5
-	}
 
 	switch p.mode {
 	case ModeOAM:
@@ -633,6 +627,13 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 	if !p.enabled || p.mode == ModeVBlank {
 		return true
 	}
+	// The shortened LCD-enable line has its own per-dot OAM/VRAM lock
+	// sequence (handleGlitchedLine0). Respect those bus locks rather than
+	// applying the steady-state Mode 2/3 edges, which regress Mooneye's
+	// lcdon_timing and lcdon_write_timing tests.
+	if p.accessFirstLine {
+		return defaultOpen
+	}
 	if p.lateHBlankAccessBoundary() {
 		return defaultOpen
 	}
@@ -642,25 +643,9 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		if p.s.DoubleSpeed() {
 			delay = 3
 		}
-		if p.accessFirstLine {
-			delay += 2
-		}
 		return p.accessDotsSince(p.accessMode0Cycle) >= delay
 	}
 
-	if p.accessFirstLine {
-		if p.mode != ModeVRAM {
-			return true
-		}
-		closeDelay := uint64(4)
-		if p.cgbAccessHardware() {
-			closeDelay = 5
-			if p.s.DoubleSpeed() {
-				closeDelay = 3
-			}
-		}
-		return p.accessDotsSince(p.accessMode3Cycle) < closeDelay
-	}
 
 	switch p.mode {
 	case ModeOAM:
