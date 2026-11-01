@@ -540,10 +540,11 @@ func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
 		return true
 	}
 	// The shortened LCD-enable line has its own per-dot OAM/VRAM lock
-	// sequence (handleGlitchedLine0). Respect those bus locks rather than
-	// applying the steady-state Mode 2/3 edges, which regress Mooneye's
-	// lcdon_timing and lcdon_write_timing tests.
-	if p.accessFirstLine {
+	// sequence (handleGlitchedLine0). Preserve the existing DMG lock
+	// model for now: it passes the Mooneye LCD-on tests, whereas the
+	// experimental access-edge timings still need DMG-first-divergence
+	// validation against the AGE corpus.
+	if p.accessFirstLine || !p.cgbAccessHardware() {
 		return defaultOpen
 	}
 	if p.lateHBlankAccessBoundary() {
@@ -583,10 +584,11 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		return true
 	}
 	// The shortened LCD-enable line has its own per-dot OAM/VRAM lock
-	// sequence (handleGlitchedLine0). Respect those bus locks rather than
-	// applying the steady-state Mode 2/3 edges, which regress Mooneye's
-	// lcdon_timing and lcdon_write_timing tests.
-	if p.accessFirstLine {
+	// sequence (handleGlitchedLine0). Preserve the existing DMG lock
+	// model for now: it passes the Mooneye LCD-on tests, whereas the
+	// experimental access-edge timings still need DMG-first-divergence
+	// validation against the AGE corpus.
+	if p.accessFirstLine || !p.cgbAccessHardware() {
 		return defaultOpen
 	}
 	if p.lateHBlankAccessBoundary() {
@@ -628,10 +630,11 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		return true
 	}
 	// The shortened LCD-enable line has its own per-dot OAM/VRAM lock
-	// sequence (handleGlitchedLine0). Respect those bus locks rather than
-	// applying the steady-state Mode 2/3 edges, which regress Mooneye's
-	// lcdon_timing and lcdon_write_timing tests.
-	if p.accessFirstLine {
+	// sequence (handleGlitchedLine0). Preserve the existing DMG lock
+	// model for now: it passes the Mooneye LCD-on tests, whereas the
+	// experimental access-edge timings still need DMG-first-divergence
+	// validation against the AGE corpus.
+	if p.accessFirstLine || !p.cgbAccessHardware() {
 		return defaultOpen
 	}
 	if p.lateHBlankAccessBoundary() {
