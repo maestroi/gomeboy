@@ -703,9 +703,9 @@ func (b *Bus) ClockedRead(addr uint16) byte {
 	// unchanged, including PPU event processing after the sample. This is
 	// specific to VRAM: OAM, DMA and other buses retain their existing order.
 	if addr >= 0x8000 && addr <= 0x9fff && b.model.IsCGB() {
-		b.s.Tick(2)
+		b.s.Tick(3)
 		value := b.Read(addr)
-		b.s.Tick(2)
+		b.s.Tick(1)
 		return value
 	}
 	b.s.Tick(4)
