@@ -71,8 +71,9 @@ type State struct {
 	OAMScanXBus        uint8
 
 	// Timing counters
-	LineDot  uint64
-	FrameDot uint64
+	LineDot            uint64
+	FrameDot           uint64
+	VRAMCPUReadReadyAt uint64
 
 	// CGB-specific features
 	CGBMode       bool
@@ -149,6 +150,7 @@ func (p *PPU) Snapshot() State {
 		OAMScanXBus:              p.oamScanXBus,
 		LineDot:                  p.lineDot,
 		FrameDot:                 p.frameDot,
+		VRAMCPUReadReadyAt:       p.vramCPUReadReadyAt,
 		CGBMode:                  p.cgbMode,
 		BCPSIndex:                p.bcpsIndex,
 		OCPSIndex:                p.ocpsIndex,
@@ -220,6 +222,7 @@ func (p *PPU) Restore(s State) {
 	p.oamScanXBus = s.OAMScanXBus
 	p.lineDot = s.LineDot
 	p.frameDot = s.FrameDot
+	p.vramCPUReadReadyAt = s.VRAMCPUReadReadyAt
 	p.cgbMode = s.CGBMode
 	p.bcpsIndex = s.BCPSIndex
 	p.ocpsIndex = s.OCPSIndex
