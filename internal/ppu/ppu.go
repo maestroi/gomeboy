@@ -204,6 +204,8 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
 		objFIFO: utils.NewFIFO[FIFOEntry](8),
 	}
+	// Keep OAM reads/writes and VRAM writes on their existing bus locks.
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpen, nil, nil)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
