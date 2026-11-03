@@ -20,8 +20,8 @@ func TestCGBVRAMClockedReadNormalSpeedSamplePhase(t *testing.T) {
 				b.Map(model)
 				if speed { s.ChangeSpeed(true) }
 				b.Write(0x8000, 0x5a)
-				s.RegisterEvent(scheduler.EIHaltDelay, func() { b.RLock(VRAM) })
-				s.ScheduleEvent(scheduler.EIHaltDelay, 4)
+				s.RegisterEvent(scheduler.TimerTIMAReload, func() { b.RLock(VRAM) })
+				s.ScheduleEvent(scheduler.TimerTIMAReload, 4)
 				start := s.Cycle()
 				got := b.ClockedRead(0x8000)
 				want := byte(0x5a)
@@ -41,8 +41,8 @@ func TestCGBVRAMClockedReadNormalSpeedSamplePhase(t *testing.T) {
 				if speed { s.ChangeSpeed(true) }
 				b.Write(0x8000, 0x5a)
 				b.RLock(VRAM)
-				s.RegisterEvent(scheduler.EIHaltDelay, func() { b.RUnlock(VRAM) })
-				s.ScheduleEvent(scheduler.EIHaltDelay, 4)
+				s.RegisterEvent(scheduler.TimerTIMAReload, func() { b.RUnlock(VRAM) })
+				s.ScheduleEvent(scheduler.TimerTIMAReload, 4)
 				got := b.ClockedRead(0x8000)
 				want := byte(0xff)
 				if speed { want = 0x5a }
@@ -62,8 +62,8 @@ func TestDMGClockedVRAMReadRetainsEndOfCycleSample(t *testing.T) {
 	b := NewBus(s, make([]byte, 0x8000))
 	b.Map(types.DMGABC)
 	b.Write(0x8000, 0x5a)
-	s.RegisterEvent(scheduler.EIHaltDelay, func() { b.RLock(VRAM) })
-	s.ScheduleEvent(scheduler.EIHaltDelay, 4)
+	s.RegisterEvent(scheduler.TimerTIMAReload, func() { b.RLock(VRAM) })
+	s.ScheduleEvent(scheduler.TimerTIMAReload, 4)
 	if got := b.ClockedRead(0x8000); got != 0xff {
 		t.Fatalf("DMG VRAM read should observe lock at M-cycle end, got %02x", got)
 	}
