@@ -67,7 +67,7 @@ func TestClockedReadDMGVRAMAndCGBWRAMRetainEndOfCycleSample(t *testing.T) {
 			if tc.addr == 0x8000 {
 				b.RLock(VRAM)
 			} else {
-				b.RLock(WRAM)
+				b.RLock(cgbWRAMBus)
 			}
 		})
 		s.ScheduleEvent(scheduler.PPUHandleVisualLine, 3)
