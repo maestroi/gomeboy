@@ -22,6 +22,7 @@ func newMode3VRAMReadFixture(t *testing.T, model types.Model, doubleSpeed bool) 
 	p.cgbMode = model.IsCGB()
 	p.mode = ModeVRAM
 	p.lineState = PixelTransferDummy
+	p.ly = 1 // an ordinary visible line, not the shortened LCD startup line
 
 	b.Write(0x8000, 0x5a)
 	s.Tick(200)
@@ -94,5 +95,28 @@ func TestVRAMReadEdgeLeavesDMGAndOtherModesUnchanged(t *testing.T) {
 	b.RUnlock(gbio.VRAM)
 	if got := b.Read(0x8000); got != 0x5a {
 		t.Fatalf("unlocked HBlank VRAM read was blocked: got %#02x", got)
+	}
+}
+
+func TestCGBVRAMReadStartupLineKeepsCoarseLocks(t *testing.T) {
+	for _, speed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "normal", true: "double"}[speed], func(t *testing.T) {
+			p, b, s := newMode3VRAMReadFixture(t, types.CGBBC, speed)
+			p.ly = 0
+			p.frameDot = 0 // the fixture is at cycle 200, within first LCD-enabled line
+			if got := b.Read(0x8000); got != 0xff {
+				t.Fatalf("startup line VRAM read unexpectedly opened: %#02x", got)
+			}
+
+			// LY=0 on a subsequent frame is not the shortened startup line.
+			s.Tick(1000)
+			p.lineDot = s.Cycle() - 80
+			if speed {
+				p.lineDot = s.Cycle() - 160
+			}
+			if got := b.Read(0x8000); got != 0x5a {
+				t.Fatalf("subsequent frame LY=0 lost normal VRAM grace: %#02x", got)
+			}
+		})
 	}
 }
