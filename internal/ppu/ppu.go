@@ -204,6 +204,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
 		objFIFO: utils.NewFIFO[FIFOEntry](8),
 	}
+	// Only VRAM reads opt into the refined CGB access window. OAM reads,
+	// OAM writes and VRAM writes continue using their original bus locks.
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpen, nil, nil)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
