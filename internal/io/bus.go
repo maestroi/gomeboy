@@ -698,6 +698,16 @@ func (b *Bus) Read(addr uint16) byte {
 // ClockedRead clocks the Game Boy and reads a byte from the
 // bus.
 func (b *Bus) ClockedRead(addr uint16) byte {
+	// CGB normal-speed CPU reads sample VRAM during the final T-state,
+	// before PPU ownership transitions scheduled at the M-cycle endpoint.
+	// Double-speed CPU/PPU arbitration uses a different phase and retains
+	// the established end-of-cycle sample until separately measured.
+	if addr >= 0x8000 && addr <= 0x9fff && b.model.IsCGB() && !b.s.DoubleSpeed() {
+		b.s.Tick(3)
+		value := b.Read(addr)
+		b.s.Tick(1)
+		return value
+	}
 	b.s.Tick(4)
 	return b.Read(addr)
 }
