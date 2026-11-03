@@ -58,6 +58,7 @@ func (p *PPU) SnapshotInto(dst *State) {
 		GlitchedLineState:        p.glitchedLineState,
 		LineDot:                  p.lineDot,
 		FrameDot:                 p.frameDot,
+		VRAMCPUReadReadyAt:       p.vramCPUReadReadyAt,
 		CGBMode:                  p.cgbMode,
 		BCPSIndex:                p.bcpsIndex,
 		OCPSIndex:                p.ocpsIndex,
