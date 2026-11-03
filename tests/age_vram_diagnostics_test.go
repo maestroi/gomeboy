@@ -106,14 +106,41 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) {
 	// Locate it using the same verified source fingerprint, so we can
 	// compare *every* raw CPU sample without copying a 1,152-byte timing
 	// matrix into the emulator test suite.
-	expectedAt := bytes.Index(g.ROM, ageVRAMFirstSCXExpected[:])
 	const matrixBytes = (8*5 + 8*7) * 12
-	if expectedAt < 0 || expectedAt+matrixBytes > len(g.ROM) {
-		t.Logf("AGE raw VRAM expected matrix not found in ROM: fingerprint_offset=%d", expectedAt)
-		return
+	expectedAt, bestScore, secondScore := -1, -1, -1
+	candidates := 0
+	for from := 0; from < len(g.ROM); {
+		rel := bytes.Index(g.ROM[from:], ageVRAMFirstSCXExpected[:])
+		if rel < 0 {
+			break
+		}
+		candidate := from + rel
+		from = candidate + 1
+		if candidate+matrixBytes > len(g.ROM) {
+			continue
+		}
+		candidates++
+		score := 0
+		for i := 0; i < matrixBytes; i++ {
+			if g.ROM[candidate+i] == g.Bus.Get(base+uint16(i)) {
+				score++
+			}
+		}
+		if score > bestScore {
+			secondScore = bestScore
+			bestScore, expectedAt = score, candidate
+		} else if score > secondScore {
+			secondScore = score
+		}
 	}
-	if next := bytes.Index(g.ROM[expectedAt+1:], ageVRAMFirstSCXExpected[:]); next >= 0 {
-		t.Logf("AGE raw VRAM expected matrix not unique (additional match at %#x); refusing to guess", expectedAt+1+next)
+
+	// A matching prefix can occur more than once in the ROM. Select the
+	// matrix by its agreement across all 96 groups, and refuse low-confidence
+	// candidates rather than silently interpreting unrelated ROM constants.
+	t.Logf("AGE raw VRAM matrix candidates: count=%d best_offset=%#x matching_samples=%d/%d runner_up=%d",
+		candidates, expectedAt, bestScore, matrixBytes, secondScore)
+	if expectedAt < 0 || bestScore < matrixBytes*3/4 {
+		t.Log("AGE raw VRAM matrix candidates are low-confidence; skipping raw comparison")
 		return
 	}
 	t.Logf("AGE raw VRAM expected matrix: ROM offset=%#x, WRAM address=%#04x", expectedAt, base)
