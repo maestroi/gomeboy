@@ -5,11 +5,11 @@
   "models": {
     "CGBBC": {
       "sample_count": 1152,
-      "minimum_matching_samples": 1064
+      "minimum_matching_samples": 1088
     },
     "CGBDE": {
       "sample_count": 1152,
-      "minimum_matching_samples": 1064
+      "minimum_matching_samples": 1088
     }
   }
 }
