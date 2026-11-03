@@ -4,6 +4,8 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +13,36 @@ import (
 	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/types"
 )
+
+
+// ageVRAMSampleBaseline pins a minimum count of correct raw CPU read samples.
+// The whole-ROM AGE regression gate separately checks PASS/XPASS/XFAIL; this
+// floor also detects partial accuracy regressions hidden inside existing XFAILs.
+type ageVRAMSampleBaseline struct {
+	SchemaVersion   int    `json:"schema_version"`
+	SourceRevision string `json:"source_revision"`
+	ROM            string `json:"rom"`
+	Models         map[string]struct {
+		SampleCount            int `json:"sample_count"`
+		MinimumMatchingSamples int `json:"minimum_matching_samples"`
+	} `json:"models"`
+}
+
+func readAgeVRAMSampleBaseline() (ageVRAMSampleBaseline, error) {
+	data, err := os.ReadFile("age-vram-sample-baseline.json")
+	if err != nil {
+		return ageVRAMSampleBaseline{}, err
+	}
+	var baseline ageVRAMSampleBaseline
+	if err := json.Unmarshal(data, &baseline); err != nil {
+		return ageVRAMSampleBaseline{}, err
+	}
+	if baseline.SchemaVersion != 1 || baseline.SourceRevision != "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e" ||
+		baseline.ROM != "vram-read-cgbBCE.gb" {
+		return ageVRAMSampleBaseline{}, fmt.Errorf("unsupported AGE VRAM sample baseline identity")
+	}
+	return baseline, nil
+}
 
 // AGE writes per-SCX timing mismatch positions to its final BG tile map.
 // Each compact result is 0xFF when the entire probe group matches, or the
@@ -85,12 +117,13 @@ func ageVRAMRawTimingBase(g *gameboy.GameBoy) (uint16, int, bool) {
 	return address, best, best >= 45
 }
 
-func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) {
+func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) (int, bool) {
 	t.Helper()
 	base, score, ok := ageVRAMRawTimingBase(g)
 	t.Logf("AGE raw VRAM timing candidate: address=%#04x fingerprint_match=%d/%d accepted=%t", base, score, len(ageVRAMFirstSCXExpected), ok)
 	if !ok {
-		t.Log("AGE raw VRAM timing candidate is low-confidence; byte samples below are diagnostic only")
+		t.Log("AGE raw VRAM timing candidate is low-confidence; cannot enforce sample baseline")
+		return 0, false
 	}
 
 	for probe := 0; probe < 5; probe++ {
@@ -140,8 +173,8 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) {
 	t.Logf("AGE raw VRAM matrix candidates: count=%d best_offset=%#x matching_samples=%d/%d runner_up=%d",
 		candidates, expectedAt, bestScore, matrixBytes, secondScore)
 	if expectedAt < 0 || bestScore < matrixBytes*3/4 {
-		t.Log("AGE raw VRAM matrix candidates are low-confidence; skipping raw comparison")
-		return
+		t.Log("AGE raw VRAM matrix candidates are low-confidence; cannot enforce sample baseline")
+		return 0, false
 	}
 	t.Logf("AGE raw VRAM expected matrix: ROM offset=%#x, WRAM address=%#04x", expectedAt, base)
 	totalBadSamples := 0
@@ -180,8 +213,9 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) {
 			}
 		}
 	}
-	t.Logf("AGE VRAM raw matrix: groups_mismatched=%d samples_mismatched=%d total_groups=96 total_samples=%d",
-		totalBadGroups, totalBadSamples, matrixBytes)
+	t.Logf("AGE VRAM raw matrix: groups_mismatched=%d samples_mismatched=%d total_groups=96 total_samples=%d samples_matched=%d",
+		totalBadGroups, totalBadSamples, matrixBytes, matrixBytes-totalBadSamples)
+	return matrixBytes - totalBadSamples, true
 }
 
 // TestAgeVRAMReadDiagnostics is intentionally not part of the normal
@@ -189,8 +223,13 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) {
 // print the first failing byte of each AGE VRAM timing probe group.
 // It never adjusts the checked-in expected-failure baseline.
 func TestAgeVRAMReadDiagnostics(t *testing.T) {
+
 	if _, err := os.Stat(ageROMPath); err != nil {
 		t.Skipf("pinned AGE ROMs not present: %v", err)
+	}
+	baseline, err := readAgeVRAMSampleBaseline()
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, tc := range []struct {
 		rom     string
@@ -212,10 +251,22 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 			if !g.CPU.DebugBreakpoint {
 				t.Fatal("AGE test did not reach its final breakpoint")
 			}
-			// Dump an actual byte-for-byte timing trace for one CGB revision.
-			// Remaining revisions keep the existing compact diagnostics.
-			if tc.rom == "vram-read-cgbBCE.gb" && tc.model == types.CGBBC {
-				logAgeVRAMRawFirstSCX(t, g)
+			// Pin a raw per-sample accuracy floor on the production CGB B/C
+			// profile; log CGB D/E for a future measured baseline update.
+			if tc.rom == baseline.ROM && (tc.model == types.CGBBC || tc.model == types.CGBDE) {
+				matched, ok := logAgeVRAMRawFirstSCX(t, g)
+				if !ok {
+					t.Fatal("unable to decode AGE raw VRAM timing samples")
+				}
+				if floor, exists := baseline.Models[tc.model.String()]; exists {
+					if floor.SampleCount != 1152 || floor.MinimumMatchingSamples < 0 || floor.MinimumMatchingSamples > floor.SampleCount {
+						t.Fatalf("invalid AGE raw sample baseline for %s: %+v", tc.model, floor)
+					}
+					if matched < floor.MinimumMatchingSamples {
+						t.Errorf("AGE VRAM raw-sample regression: model=%s got %d/%d matching, baseline minimum %d/%d",
+							tc.model, matched, floor.SampleCount, floor.MinimumMatchingSamples, floor.SampleCount)
+					}
+				}
 			}
 
 			matches, failures := 0, 0
