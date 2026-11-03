@@ -540,7 +540,10 @@ func (p *PPU) handleGlitchedLine0() {
 	case GlitchedLineEndOAM:
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
 		p.b.Lock(io.OAM)
-		p.b.Block(io.VRAM, p.s.DoubleSpeed() || !p.cgbMode)
+		// Physical CGB colour mode leaves VRAM accessible until the later
+		// startup pixel-transfer fetch, including in double speed. DMG
+		// compatibility retains the earlier VRAM block.
+		p.b.Block(io.VRAM, !p.cgbMode)
 	case GlitchedLineStartPixelTransfer:
 		p.b.Lock(io.VRAM)
 
