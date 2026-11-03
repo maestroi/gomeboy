@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -100,6 +101,60 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) {
 		expected := ageVRAMFirstSCXExpected[12*probe : 12*(probe+1)]
 		t.Logf("AGE raw VRAM SCX=0 speed=normal probe=%d expected=% x observed=% x", probe, expected, actual)
 	}
+
+	// AGE embeds the entire EXPECTED_TIMING_RESULTS matrix in its ROM.
+	// Locate it using the same verified source fingerprint, so we can
+	// compare *every* raw CPU sample without copying a 1,152-byte timing
+	// matrix into the emulator test suite.
+	expectedAt := bytes.Index(g.ROM, ageVRAMFirstSCXExpected[:])
+	const matrixBytes = (8*5 + 8*7) * 12
+	if expectedAt < 0 || expectedAt+matrixBytes > len(g.ROM) {
+		t.Logf("AGE raw VRAM expected matrix not found in ROM: fingerprint_offset=%d", expectedAt)
+		return
+	}
+	if next := bytes.Index(g.ROM[expectedAt+1:], ageVRAMFirstSCXExpected[:]); next >= 0 {
+		t.Logf("AGE raw VRAM expected matrix not unique (additional match at %#x); refusing to guess", expectedAt+1+next)
+		return
+	}
+	t.Logf("AGE raw VRAM expected matrix: ROM offset=%#x, WRAM address=%#04x", expectedAt, base)
+	totalBadSamples := 0
+	totalBadGroups := 0
+	for row := 0; row < 16; row++ {
+		groups := 5
+		rowOffset := row * 5 * 12
+		if row >= 8 {
+			groups = 7
+			rowOffset = 8*5*12 + (row-8)*7*12
+		}
+		for probe := 0; probe < groups; probe++ {
+			off := rowOffset + probe*12
+			firstBad := -1
+			groupBad := 0
+			var wanted, observed byte
+			for i := 0; i < 12; i++ {
+				want := g.ROM[expectedAt+off+i]
+				got := g.Bus.Get(base + uint16(off+i))
+				if want != got {
+					if firstBad < 0 {
+						firstBad, wanted, observed = i, want, got
+					}
+					groupBad++
+				}
+			}
+			if groupBad > 0 {
+				totalBadGroups++
+				totalBadSamples += groupBad
+				speed := "normal"
+				if row >= 8 {
+					speed = "double"
+				}
+				t.Logf("AGE VRAM raw divergence: speed=%s scx=%d probe=%d first_bad_byte=%d expected=%02x observed=%02x bad_samples=%d",
+					speed, row%8, probe, firstBad, wanted, observed, groupBad)
+			}
+		}
+	}
+	t.Logf("AGE VRAM raw matrix: groups_mismatched=%d samples_mismatched=%d total_groups=96 total_samples=%d",
+		totalBadGroups, totalBadSamples, matrixBytes)
 }
 
 // TestAgeVRAMReadDiagnostics is intentionally not part of the normal
