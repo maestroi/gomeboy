@@ -72,3 +72,54 @@ func TestLCDEnableBusLocks(t *testing.T) {
 		})
 	}
 }
+
+func TestCGBCartridgeDoubleSpeedStartupVRAMReadEdge(t *testing.T) {
+	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
+		t.Run(model.String(), func(t *testing.T) {
+			s := scheduler.NewScheduler()
+			rom := make([]byte, 0x8000)
+			rom[0x143] = 0x80 // CGB-capable cartridge
+			b := gbio.NewBus(s, rom)
+			b.Map(model)
+			p := New(b, s)
+			s.ChangeSpeed(true)
+			b.Set(0x8000, 0x5a)
+
+			b.Write(types.LCDC, types.Bit7)
+			if !p.enabled || !p.cgbMode {
+				t.Fatalf("expected CGB colour-mode LCD startup, enabled=%t CGB=%t", p.enabled, p.cgbMode)
+			}
+			// CGB colour mode starts directly at dot zero. The Mode-3
+			// status and OAM read lock appear at dot 78, while its VRAM
+			// read lock does not arrive until dot 83.
+			s.Tick(156) // 78 PPU dots at double speed
+			if got := b.Read(0xfe00); got != 0xff {
+				t.Fatalf("OAM should close at early startup edge, got %02x", got)
+			}
+			if got := b.Read(0x8000); got != 0x5a {
+				t.Fatalf("VRAM should remain readable at early CGB Mode-3 edge, got %02x", got)
+			}
+			s.Tick(10) // reach 83 PPU dots
+			if got := b.Read(0x8000); got != 0xff {
+				t.Fatalf("VRAM should close at startup fetch edge, got %02x", got)
+			}
+		})
+	}
+}
+
+func TestCGBDMGCompatibilityDoubleSpeedStartupStillLocksVRAMEarly(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := gbio.NewBus(s, make([]byte, 0x8000)) // DMG-only cartridge
+	b.Map(types.CGBBC)
+	p := New(b, s)
+	s.ChangeSpeed(true)
+	b.Set(0x8000, 0x5a)
+	b.Write(types.LCDC, types.Bit7)
+	if !p.enabled || p.cgbMode {
+		t.Fatalf("expected DMG compatibility on physical CGB")
+	}
+	s.Tick(158) // one initial PPU dot, then 78 more in double speed
+	if got := b.Read(0x8000); got != 0xff {
+		t.Fatalf("DMG-compatibility VRAM lock should remain at early edge, got %02x", got)
+	}
+}
