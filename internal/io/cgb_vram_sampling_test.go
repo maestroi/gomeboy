@@ -19,7 +19,7 @@ func TestClockedVRAMReadCGBMidcycleBusOwnership(t *testing.T) {
 			b.Map(model)
 			b.Write(0x8000, 0x5a)
 			s.RegisterEvent(scheduler.PPUHandleVisualLine, func() { b.RLock(VRAM) })
-			s.ScheduleEvent(scheduler.PPUHandleVisualLine, 3)
+			s.ScheduleEvent(scheduler.PPUHandleVisualLine, 4)
 
 			start := s.Cycle()
 			if got := b.ClockedRead(0x8000); got != 0x5a {
@@ -39,7 +39,7 @@ func TestClockedVRAMReadCGBMidcycleBusOwnership(t *testing.T) {
 			b.Write(0x8000, 0x5a)
 			b.RLock(VRAM)
 			s.RegisterEvent(scheduler.PPUHandleVisualLine, func() { b.RUnlock(VRAM) })
-			s.ScheduleEvent(scheduler.PPUHandleVisualLine, 3)
+			s.ScheduleEvent(scheduler.PPUHandleVisualLine, 4)
 
 			if got := b.ClockedRead(0x8000); got != 0xff {
 				t.Fatalf("read should sample before HBlank bus release, got %02x", got)
