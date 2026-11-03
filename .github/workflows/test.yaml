@@ -157,6 +157,8 @@ jobs:
         run: go run ./cmd/gb-compat -manifest tests/gb/compatibility/smoke.json -output gb-gbc-compatibility.json -markdown gb-gbc-compatibility.md -commit "$GITHUB_SHA"
       - name: run GB/GBC conformance regression gate
         run: go test -tags test -v ./tests -run Test_Regressions
+      - name: diagnose AGE VRAM timing mismatches
+        run: go test -tags test -v ./tests -run '^TestAgeVRAMReadDiagnostics$'
       - name: benchmark GB/GBC whole-frame performance
         run: |
           set -o pipefail
