@@ -6,6 +6,10 @@
     "CGBBC": {
       "sample_count": 1152,
       "minimum_matching_samples": 1064
+    },
+    "CGBDE": {
+      "sample_count": 1152,
+      "minimum_matching_samples": 1064
     }
   }
 }
