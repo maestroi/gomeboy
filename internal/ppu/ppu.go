@@ -204,6 +204,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
 		objFIFO: utils.NewFIFO[FIFOEntry](8),
 	}
+	// CGB CPU reads get the measured Mode-3 entry window; all other
+	// PPU-facing accesses keep their existing bus ownership semantics.
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpen, nil, nil)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
