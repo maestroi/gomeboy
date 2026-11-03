@@ -89,9 +89,9 @@ func TestCGBCartridgeDoubleSpeedStartupVRAMReadEdge(t *testing.T) {
 			if !p.enabled || !p.cgbMode {
 				t.Fatalf("expected CGB colour-mode LCD startup, enabled=%t CGB=%t", p.enabled, p.cgbMode)
 			}
-			// CGB colour mode starts directly at dot zero. The Mode-3
-			// status and OAM read lock appear at dot 78, while its VRAM
-			// read lock does not arrive until dot 83.
+			// CGB colour mode starts directly at dot zero. OAM and VRAM
+			// writes lock at dot 78. VRAM reads remain available until
+			// the separate double-speed CPU read edge at dot 80.
 			s.Tick(156) // 78 PPU dots at double speed
 			if got := b.Read(0xfe00); got != 0xff {
 				t.Fatalf("OAM should close at early startup edge, got %02x", got)
@@ -99,9 +99,21 @@ func TestCGBCartridgeDoubleSpeedStartupVRAMReadEdge(t *testing.T) {
 			if got := b.Read(0x8000); got != 0x5a {
 				t.Fatalf("VRAM should remain readable at early CGB Mode-3 edge, got %02x", got)
 			}
-			s.Tick(10) // reach 83 PPU dots
+			b.Write(0x8000, 0x77)
+			if got := b.Read(0x8000); got != 0x5a {
+				t.Fatalf("VRAM write should already be blocked at dot 78, got %02x", got)
+			}
+			s.Tick(2) // dot 79
+			if got := b.Read(0x8000); got != 0x5a {
+				t.Fatalf("VRAM read closed before dot 80, got %02x", got)
+			}
+			s.Tick(2) // dot 80
 			if got := b.Read(0x8000); got != 0xff {
-				t.Fatalf("VRAM should close at startup fetch edge, got %02x", got)
+				t.Fatalf("VRAM read should close at dot 80, got %02x", got)
+			}
+			s.Tick(6) // dot 83
+			if got := b.Read(0x8000); got != 0xff {
+				t.Fatalf("VRAM must stay closed through startup fetch, got %02x", got)
 			}
 		})
 	}
