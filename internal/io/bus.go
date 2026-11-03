@@ -698,6 +698,16 @@ func (b *Bus) Read(addr uint16) byte {
 // ClockedRead clocks the Game Boy and reads a byte from the
 // bus.
 func (b *Bus) ClockedRead(addr uint16) byte {
+	// On CGB hardware the CPU samples the VRAM data bus during the memory
+	// cycle, rather than after the final T-state. Keep the M-cycle duration
+	// unchanged, including PPU event processing after the sample. This is
+	// specific to VRAM: OAM, DMA and other buses retain their existing order.
+	if addr >= 0x8000 && addr <= 0x9fff && b.model.IsCGB() {
+		b.s.Tick(2)
+		value := b.Read(addr)
+		b.s.Tick(2)
+		return value
+	}
 	b.s.Tick(4)
 	return b.Read(addr)
 }
