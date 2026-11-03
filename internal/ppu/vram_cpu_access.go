@@ -13,8 +13,19 @@ func (p *PPU) cpuVRAMReadOpen(defaultOpen bool) bool {
 		return defaultOpen
 	}
 
-	// The shortened first LCD-enabled line is driven by separate events and
-	// doesn't run the ordinary pixel-transfer states.
+	// The first line after enabling LCDC is shortened and uses special
+	// startup ownership transitions. Even if a normal pixel-transfer state
+	// becomes visible briefly, don't apply the ordinary Mode-3 grace to it.
+	// frameDot is reset on every LCD enable, so later frame-0 lines (LY=0)
+	// are not accidentally classified as startup.
+	firstLineCycles := uint64(452)
+	if p.s.DoubleSpeed() {
+		firstLineCycles *= 2
+	}
+	if p.ly == 0 && p.s.Cycle() >= p.frameDot &&
+		p.s.Cycle()-p.frameDot < firstLineCycles {
+		return defaultOpen
+	}
 	if p.lineState != PixelTransferDummy && p.lineState != PixelTransferLX {
 		return defaultOpen
 	}
