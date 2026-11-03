@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source_revision": "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e",
+  "rom": "vram-read-cgbBCE.gb",
+  "models": {
+    "CGBBC": {
+      "sample_count": 1152,
+      "minimum_matching_samples": 1064
+    }
+  }
+}
