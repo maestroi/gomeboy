@@ -503,6 +503,10 @@ const (
 	// GlitchedLineStartPixelTransfer initiates the beginning of the ModeVRAM pixel transfer phase.
 	// The actual pixel transfer processing is skipped, since this first frame will never be displayed.
 	GlitchedLineStartPixelTransfer
+
+	// Extra read-bus handover on CGB double-speed startup. Keep this
+	// enum at the end so existing snapshot values remain stable.
+	GlitchedLineVRAMReadLock
 )
 
 // glitchedLineCycles defines the duration (in dots) for each state in the glitched line
@@ -510,12 +514,13 @@ const (
 //
 //   - StartGlitchedLine:				76 dots (completes at 77)
 //   - GlitchedLineOAMWBlock:	 		 2 dots (completes at 79)
-//   - GlitchedLineEndOAM:		 		 5 dots (completes at 84)
+//   - GlitchedLineEndOAM:		 		 2 dots (CPU VRAM read handover)
+//   - GlitchedLineVRAMReadLock:			 3 dots (completes at pixel transfer)
 //   - GlitchedLineStartPixelTransfer:	 0 dots (-> enterPixelTransfer)
 var glitchedLineCycles = []uint64{
 	StartGlitchedLine:     76,
 	GlitchedLineOAMWBlock: 2,
-	GlitchedLineEndOAM:    5,
+	GlitchedLineEndOAM:    2,
 }
 
 // handleGlitchedLine0 handles the very first line after turning the LCD on. Behaviour is
@@ -540,10 +545,21 @@ func (p *PPU) handleGlitchedLine0() {
 	case GlitchedLineEndOAM:
 		p.mode, p.modeToInt = ModeVRAM, ModeVRAM
 		p.b.Lock(io.OAM)
-		// Physical CGB colour mode leaves VRAM accessible until the later
-		// startup pixel-transfer fetch, including in double speed. DMG
-		// compatibility retains the earlier VRAM block.
-		p.b.Block(io.VRAM, !p.cgbMode)
+		// At the initial Mode-3 edge CGB double speed takes the VRAM write
+		// bus first. The CPU read port closes two PPU dots later, while
+		// DMG-compatible startup retains its earlier read/write lock.
+		p.b.WBlock(io.VRAM, p.s.DoubleSpeed() || !p.cgbMode)
+		p.b.RBlock(io.VRAM, !p.cgbMode)
+		p.glitchedLineState = GlitchedLineVRAMReadLock
+		p.s.ScheduleEvent(scheduler.PPUHandleGlitchedLine0, 2)
+		return
+	case GlitchedLineVRAMReadLock:
+		if p.cgbMode && p.s.DoubleSpeed() {
+			p.b.RLock(io.VRAM)
+		}
+		p.glitchedLineState = GlitchedLineStartPixelTransfer
+		p.s.ScheduleEvent(scheduler.PPUHandleGlitchedLine0, 3)
+		return
 	case GlitchedLineStartPixelTransfer:
 		p.b.Lock(io.VRAM)
 
