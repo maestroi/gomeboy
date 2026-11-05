@@ -574,6 +574,18 @@ func (p *PPU) handleGlitchedLine0() {
 		scxDiscardDots := uint64(0)
 		if p.cgbMode {
 			scxDiscardDots = uint64(p.scx & 7)
+			// On the short LCD-enable scanline, the CPU samples the
+			// first HBlank read on different pixel-dot phases at
+			// normal and double speed. Keep the FIFO discard phase
+			// aligned to that CPU read boundary, without changing
+			// ordinary visible scanlines.
+			if p.s.DoubleSpeed() {
+				if p.scx&1 != 0 {
+					scxDiscardDots++
+				}
+			} else if p.scx&3 == 1 {
+				scxDiscardDots--
+			}
 		}
 		p.lineState = EnterHBlank
 		p.lineDot -= 4
