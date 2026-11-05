@@ -191,9 +191,11 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) (int, bool) {
 			firstBad := -1
 			groupBad := 0
 			var wanted, observed byte
-			for i := 0; i < 12; i++ {
+			var expectedBytes, observedBytes [12]byte
+			for i := 0; i < len(expectedBytes); i++ {
 				want := g.ROM[expectedAt+off+i]
 				got := g.Bus.Get(base + uint16(off+i))
+				expectedBytes[i], observedBytes[i] = want, got
 				if want != got {
 					if firstBad < 0 {
 						firstBad, wanted, observed = i, want, got
@@ -210,6 +212,12 @@ func logAgeVRAMRawFirstSCX(t *testing.T, g *gameboy.GameBoy) (int, bool) {
 				}
 				t.Logf("AGE VRAM raw divergence: speed=%s scx=%d probe=%d first_bad_byte=%d expected=%02x observed=%02x bad_samples=%d",
 					speed, row%8, probe, firstBad, wanted, observed, groupBad)
+				// The six byte pairs sample Mode-3/Mode-0 edges on the first,
+				// next, last visible, VBlank, and next-frame scanlines.
+				// Report the full byte pattern to distinguish early closure
+				// from late reopening without inventing a timing cutoff.
+				t.Logf("AGE VRAM raw edge bytes: speed=%s scx=%d probe=%d expected=% x observed=% x",
+					speed, row%8, probe, expectedBytes, observedBytes)
 			}
 		}
 	}
