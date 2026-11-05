@@ -14,7 +14,7 @@ import (
 func TestCGBStartupHBlankVRAMReleaseTracksSCX(t *testing.T) {
 	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
 		for _, doubleSpeed := range []bool{false, true} {
-			for _, scx := range []uint8{0, 1, 2, 3, 6, 7} {
+			for _, scx := range []uint8{0, 1, 2, 3, 4, 5, 6, 7} {
 				name := fmt.Sprintf("%s/double=%t/scx=%d", model, doubleSpeed, scx)
 				t.Run(name, func(t *testing.T) {
 					s := scheduler.NewScheduler()
@@ -37,9 +37,11 @@ func TestCGBStartupHBlankVRAMReleaseTracksSCX(t *testing.T) {
 					// its dummy transfer at dot 83. Unlike ordinary lines,
 					// this special first line enters HBlank directly after
 					// 168+SCX dots, with no extra EnterHBlankDelay event.
-					openDot := uint64(251) + uint64(scx)
+					normalDiscard := [...]uint64{0, 0, 2, 3, 4, 4, 6, 7}
+					doubleDiscard := [...]uint64{0, 2, 2, 4, 4, 6, 6, 8}
+					openDot := uint64(251) + normalDiscard[scx]
 					if doubleSpeed {
-						openDot *= 2
+						openDot = 2 * (251 + doubleDiscard[scx])
 					}
 					s.Tick(openDot - 1)
 					if got := b.Read(0x8000); got != 0xff {

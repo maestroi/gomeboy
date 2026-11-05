@@ -204,6 +204,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		bgFIFO:  utils.NewFIFO[FIFOEntry](8),
 		objFIFO: utils.NewFIFO[FIFOEntry](8),
 	}
+	// CPU VRAM reads have a short end-of-transfer access edge distinct
+	// from the PPU bus locks and from CPU VRAM writes/OAM arbitration.
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, nil, nil)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
@@ -571,6 +574,18 @@ func (p *PPU) handleGlitchedLine0() {
 		scxDiscardDots := uint64(0)
 		if p.cgbMode {
 			scxDiscardDots = uint64(p.scx & 7)
+			// On the short LCD-enable scanline, the CPU samples the
+			// first HBlank read on different pixel-dot phases at
+			// normal and double speed. Keep the FIFO discard phase
+			// aligned to that CPU read boundary, without changing
+			// ordinary visible scanlines.
+			if p.s.DoubleSpeed() {
+				if p.scx&1 != 0 {
+					scxDiscardDots++
+				}
+			} else if p.scx&3 == 1 {
+				scxDiscardDots--
+			}
 		}
 		p.lineState = EnterHBlank
 		p.lineDot -= 4
