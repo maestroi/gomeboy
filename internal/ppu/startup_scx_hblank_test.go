@@ -33,13 +33,13 @@ func TestCGBStartupHBlankVRAMReleaseTracksSCX(t *testing.T) {
 						t.Fatalf("failed to enter CGB LCD startup, enabled=%t colour=%t", p.enabled, p.cgbMode)
 					}
 
-					// On CGB colour mode the startup OAM bus handover is at
-					// dot 83; its dummy transfer lasts 168+SCX dots. The
-					// normal-speed HBlank event is delayed 2 dots and the
-					// double-speed event is delayed 1 dot.
-					openDot := uint64(253) + uint64(scx)
+					// On CGB colour mode the startup OAM handover reaches
+					// its dummy transfer at dot 83. Unlike ordinary lines,
+					// this special first line enters HBlank directly after
+					// 168+SCX dots, with no extra EnterHBlankDelay event.
+					openDot := uint64(251) + uint64(scx)
 					if doubleSpeed {
-						openDot = (252 + uint64(scx)) * 2
+						openDot *= 2
 					}
 					s.Tick(openDot - 1)
 					if got := b.Read(0x8000); got != 0xff {
@@ -72,9 +72,9 @@ func TestCGBCompatibilityStartupHBlankTimingUnchangedBySCX(t *testing.T) {
 		}
 		// DMG-compatible startup begins one dot after LCD enable and
 		// continues to use the established fixed-duration dummy transfer.
-		openDot := uint64(254)
+		openDot := uint64(252)
 		if doubleSpeed {
-			openDot = 508
+			openDot *= 2
 		}
 		s.Tick(openDot - 1)
 		if got := b.Read(0x8000); got != 0xff {
