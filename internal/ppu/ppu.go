@@ -564,12 +564,17 @@ func (p *PPU) handleGlitchedLine0() {
 		p.b.Lock(io.VRAM)
 
 		// The first frame is not displayed, so skip pixel generation, but
-		// keep the SCX discard dots that would still extend Mode 3 on the
-		// physical PPU. Otherwise the startup line releases the CPU VRAM
-		// bus too early as SCX changes, unlike subsequent visible lines.
+		// keep the SCX discard dots on CGB colour-mode hardware. These
+		// still extend the first Mode-3 bus ownership even though its
+		// pixels are not rendered. DMG/NCM retain their existing startup
+		// timing until their separate AGE traces are corrected.
+		scxDiscardDots := uint64(0)
+		if p.cgbMode {
+			scxDiscardDots = uint64(p.scx & 7)
+		}
 		p.lineState = EnterHBlank
 		p.lineDot -= 4
-		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 168+uint64(p.scx&7))
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 168+scxDiscardDots)
 		return
 	}
 
