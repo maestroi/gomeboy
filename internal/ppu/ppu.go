@@ -563,11 +563,13 @@ func (p *PPU) handleGlitchedLine0() {
 	case GlitchedLineStartPixelTransfer:
 		p.b.Lock(io.VRAM)
 
-		// we can just skip the expensive pixel transfer as
-		// the first frame will never be displayed anyway
+		// The first frame is not displayed, so skip pixel generation, but
+		// keep the SCX discard dots that would still extend Mode 3 on the
+		// physical PPU. Otherwise the startup line releases the CPU VRAM
+		// bus too early as SCX changes, unlike subsequent visible lines.
 		p.lineState = EnterHBlank
 		p.lineDot -= 4
-		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 168)
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 168+uint64(p.scx&7))
 		return
 	}
 
