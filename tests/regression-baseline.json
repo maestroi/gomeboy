@@ -188,8 +188,7 @@
       "collection": "oam",
       "name": "oam-read-dmgC-cgbBC@DMG",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/oam/oam-read-ncmBC@CGBBC",
