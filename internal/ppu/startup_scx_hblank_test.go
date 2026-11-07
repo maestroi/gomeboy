@@ -57,34 +57,44 @@ func TestCGBStartupHBlankVRAMReleaseTracksSCX(t *testing.T) {
 	}
 }
 
-func TestCGBCompatibilityStartupHBlankTimingUnchangedBySCX(t *testing.T) {
-	for _, doubleSpeed := range []bool{false, true} {
-		s := scheduler.NewScheduler()
-		b := gbio.NewBus(s, make([]byte, 0x8000)) // DMG-only cartridge
-		b.Map(types.CGBBC)
-		p := New(b, s)
-		if doubleSpeed {
-			s.ChangeSpeed(true)
-		}
-		b.Set(0x8000, 0x5a)
-		b.Write(types.SCX, 7)
-		b.Write(types.LCDC, types.Bit7)
-		if p.cgbMode {
-			t.Fatal("fixture unexpectedly entered CGB colour mode")
-		}
-		// DMG-compatible startup begins one dot after LCD enable and
-		// continues to use the established fixed-duration dummy transfer.
-		openDot := uint64(252)
-		if doubleSpeed {
-			openDot *= 2
-		}
-		s.Tick(openDot - 1)
-		if got := b.Read(0x8000); got != 0xff {
-			t.Fatalf("compatibility VRAM reopened too soon (double=%t): %#02x", doubleSpeed, got)
-		}
-		s.Tick(1)
-		if got := b.Read(0x8000); got != 0x5a {
-			t.Fatalf("compatibility VRAM still blocked (double=%t): %#02x", doubleSpeed, got)
+func TestCGBCompatibilityStartupHBlankReleaseTracksSCX(t *testing.T) {
+	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
+		for _, doubleSpeed := range []bool{false, true} {
+			for scx := uint8(0); scx < 8; scx++ {
+				t.Run(fmt.Sprintf("%s/double=%t/SCX=%d", model, doubleSpeed, scx), func(t *testing.T) {
+					s := scheduler.NewScheduler()
+					b := gbio.NewBus(s, make([]byte, 0x8000)) // DMG-only cartridge
+					b.Map(model)
+					p := New(b, s)
+					if doubleSpeed {
+						s.ChangeSpeed(true)
+					}
+					b.Set(0x8000, 0x5a)
+					b.Write(types.SCX, scx)
+					b.Write(types.LCDC, types.Bit7)
+					if p.cgbMode || !p.enabled {
+						t.Fatal("fixture must be LCD-enabled NCM on CGB")
+					}
+
+					// NCM has one initial PPU dot; pixel-transfer dummy
+					// begins at T84. At normal speed it runs 166+SCX
+					// dots. Artificial NCM double speed retains the old
+					// fixed 168-dot dummy transfer (hardware cannot
+					// switch NCM into double speed).
+					openClock := uint64(250) + uint64(scx)
+					if doubleSpeed {
+						openClock = 504
+					}
+					s.Tick(openClock - 1)
+					if got := b.Read(0x8000); got != 0xff {
+						t.Fatalf("NCM VRAM reopened before scheduled HBlank: got %#02x", got)
+					}
+					s.Tick(1)
+					if got := b.Read(0x8000); got != 0x5a {
+						t.Fatalf("NCM VRAM still blocked after HBlank release: got %#02x", got)
+					}
+				})
+			}
 		}
 	}
 }
