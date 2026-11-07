@@ -281,6 +281,11 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 				}
 			}
 
+			if tc.rom == "vram-read-dmgC.gb" {
+				if _, ok := logAgeDMGVRAMRaw(t, g); !ok {
+					t.Fatal("could not identify DMG AGE VRAM result buffer and expected matrix")
+				}
+			}
 			if tc.rom == ncmBaseline.ROM {
 				matched, ok := logAgeNCMVRAMRaw(t, g)
 				if !ok {
