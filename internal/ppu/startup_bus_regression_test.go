@@ -48,8 +48,19 @@ func TestLCDEnableBusLocks(t *testing.T) {
 			if got := b.Read(0xfe00); got != 0xff {
 				t.Fatalf("OAM read lock missing at startup Mode-3 edge: got %#02x", got)
 			}
-			if got := b.Read(0x8000); got != 0xff {
-				t.Fatalf("VRAM read lock missing at startup Mode-3 edge: got %#02x", got)
+			// On a physical CGB the CPU VRAM read bus stays available
+			// across the early Mode-3 handover even in DMG compatibility
+			// mode; the VRAM write bus still closes at this boundary.
+			want := byte(0xff)
+			if model.IsCGB() {
+				want = 0x5a
+			}
+			if got := b.Read(0x8000); got != want {
+				t.Fatalf("VRAM read access at startup Mode-3 edge: got %#02x, want %#02x", got, want)
+			}
+			b.Write(0x8000, 0xaa)
+			if got := b.Get(0x8000); got != 0x5a {
+				t.Fatalf("VRAM write bypassed startup write lock: got %#02x", got)
 			}
 			s.Tick(5)
 			if got := b.Read(0x8000); got != 0xff {
