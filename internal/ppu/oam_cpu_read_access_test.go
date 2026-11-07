@@ -22,9 +22,16 @@ func TestCPUOAMReadFinalPixelHandoverPreservesWrites(t *testing.T) {
 			p.bgFIFO.Size=1
 			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("early read: %02x",got)}
 			p.lx=167
-			if got:=b.Read(0xfe00);got!=0x5a {t.Fatalf("final buffered pixel read: %02x",got)}
+			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("last buffered pixel must retain OAM read lock: %02x",got)}
+			p.lineState=EnterHBlank
+			p.lx=168
+			if got:=b.Read(0xfe00);got!=0x5a {t.Fatalf("finished last pixel OAM read: %02x",got)}
 			b.Write(0xfe00,0xaa)
 			if got:=b.Get(0xfe00);got!=0x5a {t.Fatalf("OAM write unexpectedly opened: %02x",got)}
+			// A final pixel that has not been committed to HBlank
+			// cannot open the CPU OAM read bus, even with buffered data.
+			p.lineState=PixelTransferLX
+			p.lx=167
 			p.fetcherObj=true
 			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("OBJ fetch read: %02x",got)}
 			p.fetcherObj=false
@@ -34,7 +41,7 @@ func TestCPUOAMReadFinalPixelHandoverPreservesWrites(t *testing.T) {
 			p.lineState=StartOAMScan
 			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("OAM scan read: %02x",got)}
 			p.lineState=EnterHBlank
-			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("coarse HBlank lock unexpectedly released: %02x",got)}
+			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("LX167 cannot reopen the CPU OAM read bus: %02x",got)}
 		})
 	}
 }
