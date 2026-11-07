@@ -16,6 +16,9 @@ func TestDMGBufferedLastPixelVRAMReadIsReadOnly(t *testing.T) {
 			b.Map(model)
 			p := New(b, s)
 			p.enabled = true
+			if model == types.DMGABC {
+				p.scx = 3 // measured late-HBlank ownership phase
+			}
 			p.mode = ModeVRAM
 			p.lineState = PixelTransferLX
 			p.lx = 167
