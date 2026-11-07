@@ -563,7 +563,13 @@ func (p *PPU) handleGlitchedLine0() {
 		p.s.ScheduleEvent(scheduler.PPUHandleGlitchedLine0, 2)
 		return
 	case GlitchedLineVRAMReadLock:
-		if p.cgbMode && p.s.DoubleSpeed() {
+		// On physical CGB the CPU VRAM read port closes two dots after
+		// the early startup Mode-3 transition. Colour double-speed and
+		// NCM normal-speed take this path; the synthetic NCM double-speed
+		// case already closed the read port at the earlier transition.
+		cgbStartupReadEdge := p.b.Model().IsCGB() &&
+			(p.cgbMode && p.s.DoubleSpeed() || !p.cgbMode && !p.s.DoubleSpeed())
+		if cgbStartupReadEdge {
 			p.b.RLock(io.VRAM)
 		}
 		p.glitchedLineState = GlitchedLineStartPixelTransfer
