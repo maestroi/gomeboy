@@ -25,7 +25,9 @@ func TestNCMBufferedLastPixelCPUReadOwnership(t *testing.T) {
 			p.bgFIFO.Size = 1
 
 			want := byte(0xff)
-			if model.IsCGB() {
+			if model.IsCGB() || model == types.DMGABC {
+				// DMG-C now has the same independently measured
+				// final buffered-pixel read edge as CGB NCM.
 				want = 0x5a
 			}
 			if got := b.Read(0x8000); got != want {
