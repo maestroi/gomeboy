@@ -11,6 +11,9 @@ func (p *PPU) cpuOAMReadOpenAtLastPixel(defaultOpen bool) bool {
 	if defaultOpen || !p.enabled {
 		return defaultOpen
 	}
-	return p.lineState == PixelTransferLX && p.lx == 167 &&
-		p.bgFIFO.Size > 0 && !p.fetcherObj
+	// Opening OAM at LX=167 would expose the bus during the final
+	// object/pixel fetch and breaks existing OAM lock regression tests.
+	// The CPU read port may reopen only after that last pixel is pushed,
+	// while the scheduled PPU HBlank event still owns coarse bus locks.
+	return p.lineState == EnterHBlank && p.lx == 168
 }
