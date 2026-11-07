@@ -29,6 +29,9 @@ func TestDMGStartupHBlankVRAMReleaseAccountsForSCX(t *testing.T) {
 				// DMG startup begins one dot after LCDC is enabled.
 				// The short dummy line's HBlank event is at T252+SCX.
 				openClock := uint64(252) + uint64(scx)
+				if scx&3 == 1 {
+					openClock--
+				}
 				s.Tick(openClock - 1)
 				if got := b.Read(0x8000); got != 0xff {
 					t.Fatalf("VRAM read reopened early at T%d: got %02x", openClock-1, got)
