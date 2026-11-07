@@ -239,6 +239,10 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ncmBaseline, err := readAgeNCMVRAMSampleBaseline()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		rom     string
 		model   types.Model
@@ -277,8 +281,20 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 				}
 			}
 
-			if tc.rom == "vram-read-ncmBCE.gb" {
-				logAgeNCMVRAMRaw(t, g)
+			if tc.rom == ncmBaseline.ROM {
+				matched, ok := logAgeNCMVRAMRaw(t, g)
+				if !ok {
+					t.Fatal("unable to decode AGE NCM raw VRAM timing samples")
+				}
+				floor, exists := ncmBaseline.Models[tc.model.String()]
+				if !exists || floor.SampleCount != 480 ||
+					floor.MinimumMatchingSamples < 0 || floor.MinimumMatchingSamples > floor.SampleCount {
+					t.Fatalf("invalid or missing AGE NCM raw sample baseline for %s: %+v", tc.model, floor)
+				}
+				if matched < floor.MinimumMatchingSamples {
+					t.Errorf("AGE NCM VRAM raw-sample regression: model=%s got %d/%d matching, baseline minimum %d/%d",
+						tc.model, matched, floor.SampleCount, floor.MinimumMatchingSamples, floor.SampleCount)
+				}
 			}
 
 			matches, failures := 0, 0
