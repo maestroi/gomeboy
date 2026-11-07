@@ -11,7 +11,9 @@ func TestCGBClockedOAMWriteNormalSpeedSamplesBeforeFinalTState(t *testing.T) {
 	for _,model:=range []types.Model{types.CGBBC,types.CGBDE,types.DMGABC} {
 		for _,double:=range []bool{false,true} {
 			s:=scheduler.NewScheduler()
-			b:=NewBus(s,make([]byte,0x8000))
+			rom:=make([]byte,0x8000)
+			rom[0x143]=0x80 // CGB-colour-capable cartridge
+			b:=NewBus(s,rom)
 			b.Map(model)
 			if double {s.ChangeSpeed(true)}
 			s.RegisterEvent(scheduler.TimerTIMAReload,func(){b.WLock(OAM)})
