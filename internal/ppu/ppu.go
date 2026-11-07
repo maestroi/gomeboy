@@ -206,7 +206,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 	// CPU VRAM reads have a short end-of-transfer access edge distinct
 	// from the PPU bus locks and from CPU VRAM writes/OAM arbitration.
-	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, nil, nil)
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, p.cpuOAMReadOpenAtLastPixel, nil)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
