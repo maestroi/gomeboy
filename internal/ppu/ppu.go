@@ -583,9 +583,9 @@ func (p *PPU) handleGlitchedLine0() {
 		// still extend the first Mode-3 bus ownership even though its
 		// pixels are not rendered. DMG/NCM retain their existing startup
 		// timing until their separate AGE traces are corrected.
-		scxDiscardDots := uint64(0)
+		startupTransferDots := uint64(168)
 		if p.cgbMode {
-			scxDiscardDots = uint64(p.scx & 7)
+			scxDiscardDots := uint64(p.scx & 7)
 			// On the short LCD-enable scanline, the CPU samples the
 			// first HBlank read on different pixel-dot phases at
 			// normal and double speed. Keep the FIFO discard phase
@@ -598,10 +598,17 @@ func (p *PPU) handleGlitchedLine0() {
 			} else if p.scx&3 == 1 {
 				scxDiscardDots--
 			}
+			startupTransferDots += scxDiscardDots
+		} else if p.b.Model().IsCGB() && !p.s.DoubleSpeed() {
+			// The NCM PPU retains a DMG pixel pipeline, but its VRAM
+			// ownership is on physical CGB hardware. Its abbreviated
+			// first line starts the dummy transfer two dots earlier
+			// than CGB colour mode and still discards SCX fine pixels.
+			startupTransferDots = 166 + uint64(p.scx&7)
 		}
 		p.lineState = EnterHBlank
 		p.lineDot -= 4
-		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 168+scxDiscardDots)
+		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, startupTransferDots)
 		return
 	}
 
