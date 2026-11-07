@@ -14,6 +14,7 @@ func TestCPUOAMReadFinalPixelHandoverPreservesWrites(t *testing.T) {
 			b.Map(model)
 			p:=New(b,s)
 			p.enabled=true
+			p.scx=3
 			p.mode=ModeVRAM
 			p.lineState=PixelTransferLX
 			p.lx=166
