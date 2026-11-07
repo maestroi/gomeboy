@@ -25,9 +25,7 @@ func TestNCMBufferedLastPixelCPUReadOwnership(t *testing.T) {
 			p.bgFIFO.Size = 1
 
 			want := byte(0xff)
-			if model.IsCGB() || model == types.DMGABC {
-				// DMG-C now has the same independently measured
-				// final buffered-pixel read edge as CGB NCM.
+			if model.IsCGB() {
 				want = 0x5a
 			}
 			if got := b.Read(0x8000); got != want {
@@ -59,11 +57,6 @@ func TestNCMBufferedLastPixelCPUReadOwnership(t *testing.T) {
 			p.lx = 167
 			p.cgbMode = model.IsCGB()
 			want = 0xff
-			if model == types.DMGABC {
-				// DMG-C has no colour cartridge mode, so it retains
-				// the measured read-only buffered-pixel handover.
-				want = 0x5a
-			}
 			if got := b.Read(0x8000); got != want {
 				t.Fatalf("final pixel mode transition: got %#02x, want %#02x", got, want)
 			}
