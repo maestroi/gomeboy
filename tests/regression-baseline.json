@@ -501,8 +501,7 @@
       "collection": "vram",
       "name": "vram-read-ncmBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/vram/vram-read-ncmBCE@CGBDE",
@@ -510,8 +509,7 @@
       "collection": "vram",
       "name": "vram-read-ncmBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "blarrg/cgb_sound/01-registers",

@@ -17,5 +17,15 @@ func (p *PPU) cpuVRAMReadOpenAtLastPixel(defaultOpen bool) bool {
 	if defaultOpen || !p.enabled || !p.b.Model().IsCGB() {
 		return defaultOpen
 	}
-	return p.lineState == EnterHBlank && p.lx == 168
+	if p.lineState == EnterHBlank && p.lx == 168 {
+		return true
+	}
+	// The monochrome fetcher used on CGB hardware can have its final
+	// visible pixel already buffered while LX still points at 167.
+	// Once a BG pixel is ready and no OBJ fetch is in flight, the CPU
+	// read port may be released without unlocking VRAM writes or the
+	// PPU's internal VRAM bus. CGB-colour keeps its measured last-pixel
+	// release edge.
+	return !p.cgbMode && p.lineState == PixelTransferLX &&
+		p.lx == 167 && p.bgFIFO.Size > 0 && !p.fetcherObj
 }
