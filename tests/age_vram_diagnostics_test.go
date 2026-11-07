@@ -336,4 +336,5 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 		})
 	}
 	t.Run("OAM CPU read timing", runAgeOAMReadDiagnostics)
+	t.Run("OAM CPU write timing", runAgeOAMWriteDiagnostics)
 }
