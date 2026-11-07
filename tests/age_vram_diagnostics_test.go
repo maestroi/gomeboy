@@ -277,6 +277,10 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 				}
 			}
 
+			if tc.rom == "vram-read-ncmBCE.gb" {
+				logAgeNCMVRAMRaw(t, g)
+			}
+
 			matches, failures := 0, 0
 			for row := 0; row < tc.rows; row++ {
 				vals, inverse, ok := ageCompactResultsFromBG(g, row)
