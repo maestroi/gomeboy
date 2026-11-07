@@ -282,8 +282,15 @@ func TestAgeVRAMReadDiagnostics(t *testing.T) {
 			}
 
 			if tc.rom == "vram-read-dmgC.gb" {
-				if _, ok := logAgeDMGVRAMRaw(t, g); !ok {
+				floor, err := readAgeDMGVRAMSampleBaseline()
+				if err != nil { t.Fatal(err) }
+				matched, ok := logAgeDMGVRAMRaw(t, g)
+				if !ok {
 					t.Fatal("could not identify DMG AGE VRAM result buffer and expected matrix")
+				}
+				if matched < floor.MinimumMatchingSamples {
+					t.Errorf("AGE DMG VRAM raw-sample regression: got %d/%d, baseline minimum %d/%d",
+						matched, floor.SampleCount, floor.MinimumMatchingSamples, floor.SampleCount)
 				}
 			}
 			if tc.rom == ncmBaseline.ROM {
