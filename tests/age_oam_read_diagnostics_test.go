@@ -145,8 +145,12 @@ func TestAgeOAMReadDiagnostics(t *testing.T) {
 				if row>=8{count=7}
 				for i:=0;i<count;i++ {if values[i]==0xff{groupsMatched++}}
 			}
+			totalGroups := 40
+			if tc.rows == 16 {
+				totalGroups = 96
+			}
 			t.Logf("AGE OAM read compact: model=%s ROM=%s groups_matched=%d/%d",
-				tc.model,tc.rom,groupsMatched,tc.rows*5+func()int{if tc.rows==16{return 16};return 0}())
+				tc.model,tc.rom,groupsMatched,totalGroups)
 		})
 	}
 }
