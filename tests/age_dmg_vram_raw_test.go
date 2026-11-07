@@ -4,10 +4,37 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/maestroi/gomeboy/internal/gameboy"
 )
+
+
+// AGE DMG read accuracy is pinned independently of the CGB-colour and NCM
+// matrices so partial regressions inside an XFAIL cannot be merged.
+type ageDMGVRAMSampleBaseline struct {
+	SchemaVersion int `json:"schema_version"`
+	SourceRevision string `json:"source_revision"`
+	ROM string `json:"rom"`
+	Model string `json:"model"`
+	SampleCount int `json:"sample_count"`
+	MinimumMatchingSamples int `json:"minimum_matching_samples"`
+}
+func readAgeDMGVRAMSampleBaseline() (ageDMGVRAMSampleBaseline, error) {
+	data, err := os.ReadFile("age-dmg-vram-sample-baseline.json")
+	if err != nil { return ageDMGVRAMSampleBaseline{}, err }
+	var v ageDMGVRAMSampleBaseline
+	if err := json.Unmarshal(data, &v); err != nil { return v, err }
+	if v.SchemaVersion != 1 || v.SourceRevision != "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e" ||
+		v.ROM != "vram-read-dmgC.gb" || v.Model != "DMG" || v.SampleCount != 480 ||
+		v.MinimumMatchingSamples < 0 || v.MinimumMatchingSamples > v.SampleCount {
+		return v, fmt.Errorf("invalid pinned AGE DMG VRAM raw sample baseline: %+v", v)
+	}
+	return v, nil
+}
 
 // The DMG-C AGE VRAM ROM executes 40 normal-speed groups of 12 reads.
 // Unlike the CGB ROM, DMG_C compiles the CFF conditional expected bytes as
