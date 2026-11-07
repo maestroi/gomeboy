@@ -4,6 +4,8 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +13,27 @@ import (
 	"github.com/maestroi/gomeboy/internal/gameboy"
 	"github.com/maestroi/gomeboy/internal/types"
 )
+
+type ageOAMReadSampleBaseline struct {
+	SchemaVersion int `json:"schema_version"`
+	SourceRevision string `json:"source_revision"`
+	Cases map[string]struct {
+		SampleCount int `json:"sample_count"`
+		MinimumMatchingSamples int `json:"minimum_matching_samples"`
+	} `json:"cases"`
+}
+
+func readAgeOAMReadSampleBaseline() (ageOAMReadSampleBaseline, error) {
+	data, err := os.ReadFile("age-oam-read-sample-baseline.json")
+	if err != nil { return ageOAMReadSampleBaseline{}, err }
+	var baseline ageOAMReadSampleBaseline
+	if err := json.Unmarshal(data, &baseline); err != nil { return baseline, err }
+	if baseline.SchemaVersion != 1 ||
+		baseline.SourceRevision != "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e" {
+		return baseline, fmt.Errorf("unsupported AGE OAM read sample baseline")
+	}
+	return baseline, nil
+}
 
 // AGE's OAM CPU-read test writes twelve timing samples per probe into WRAM0.
 // Five normal-speed probes run at each SCX=0..7; full CGB-colour ROMs also
@@ -129,6 +152,8 @@ func runAgeOAMReadDiagnostics(t *testing.T) {
 	if _, err := os.Stat(ageROMPath); err != nil {
 		t.Skipf("pinned AGE ROMs not present: %v",err)
 	}
+	baseline, err := readAgeOAMReadSampleBaseline()
+	if err != nil { t.Fatal(err) }
 	for _, tc := range []struct{rom string; model types.Model; rows int}{
 		{"oam-read-cgbE.gb",types.CGBDE,16},
 		{"oam-read-dmgC-cgbBC.gb",types.DMGABC,8},
@@ -140,8 +165,19 @@ func runAgeOAMReadDiagnostics(t *testing.T) {
 			g,err:=runGameboy(filepath.Join(ageROMPath,"oam",tc.rom),5,DebugBreakpoint,gameboy.Debug(),gameboy.AsModel(tc.model))
 			if err!=nil { t.Fatal(err) }
 			if !g.CPU.DebugBreakpoint {t.Fatal("AGE OAM read ROM did not reach breakpoint")}
-			if _,ok:=logAGEOAMReadMatrix(t,g,tc.rows);!ok {
-				t.Log("AGE OAM read matrix could not be identified confidently; compact results remain authoritative")
+			matched, ok := logAGEOAMReadMatrix(t,g,tc.rows)
+			if !ok { t.Fatal("AGE OAM read raw matrix could not be independently validated") }
+			key := tc.rom+"@"+tc.model.String()
+			floor, exists := baseline.Cases[key]
+			samples := 480
+			if tc.rows == 16 { samples = 1152 }
+			if !exists || floor.SampleCount != samples ||
+				floor.MinimumMatchingSamples < 0 || floor.MinimumMatchingSamples > samples {
+				t.Fatalf("AGE OAM read missing or invalid baseline %s: %+v",key,floor)
+			}
+			if matched < floor.MinimumMatchingSamples {
+				t.Errorf("AGE OAM read raw-sample regression for %s: got %d/%d, minimum %d/%d",
+					key,matched,samples,floor.MinimumMatchingSamples,samples)
 			}
 			groupsMatched:=0
 			for row:=0;row<tc.rows;row++ {
