@@ -157,8 +157,55 @@ jobs:
         run: go run ./cmd/gb-compat -manifest tests/gb/compatibility/smoke.json -output gb-gbc-compatibility.json -markdown gb-gbc-compatibility.md -commit "$GITHUB_SHA"
       - name: run GB/GBC conformance regression gate
         run: go test -tags test -v ./tests -run Test_Regressions
-      - name: diagnose AGE VRAM timing mismatches
-        run: go test -tags test -v ./tests -run '^TestAgeVRAMReadDiagnostics$'
+      - name: diagnose AGE VRAM and OAM read timing mismatches
+        run: go test -tags test -v ./tests -run '^TestAge(VRAMRead|OAMRead)Diagnostics
+      - name: benchmark GB/GBC whole-frame performance
+        run: |
+          set -o pipefail
+          go test ./pkg/gomeboy -run '^$' -bench '^BenchmarkPerfStepFrame(Audio|Headless(NoVideo)?)$' -benchmem -benchtime=250ms -count=2 | tee gb-gbc-performance.txt
+      - name: upload GB/GBC regression report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gb-gbc-regression
+          path: |
+            tests/regression-results.json
+            tests/README.md
+            tests/external-corpus.json
+            tests/results/*.png
+            gb-gbc-compatibility.json
+            gb-gbc-compatibility.md
+            gb-gbc-performance.txt
+          if-no-files-found: ignore
+
+  test_desktop_glfw:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v7
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+      - name: install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            xorg-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            wayland-protocols \
+            libsdl2-dev
+      - name: install dependencies
+        run: go mod download
+      - name: test desktop display packages
+        run: go test ./pkg/display ./pkg/display/glfw
+
       - name: benchmark GB/GBC whole-frame performance
         run: |
           set -o pipefail
