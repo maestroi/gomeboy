@@ -552,12 +552,24 @@ func (p *PPU) handleGlitchedLine0() {
 		// bus first. The CPU read port closes two PPU dots later, while
 		// DMG-compatible startup retains its earlier read/write lock.
 		p.b.WBlock(io.VRAM, p.s.DoubleSpeed() || !p.cgbMode)
-		p.b.RBlock(io.VRAM, !p.cgbMode)
+		// Physical CGB VRAM read ownership also applies to a DMG-only
+		// cartridge at normal speed: NCM keeps its early write lock but
+		// the CPU read port closes at the actual startup pixel transfer.
+		// The synthetic double-speed NCM path retains its previous lock:
+		// hardware NCM cannot switch to double speed via KEY1.
+		ncmDoubleSpeed := !p.cgbMode && p.s.DoubleSpeed()
+		p.b.RBlock(io.VRAM, !p.b.Model().IsCGB() || ncmDoubleSpeed)
 		p.glitchedLineState = GlitchedLineVRAMReadLock
 		p.s.ScheduleEvent(scheduler.PPUHandleGlitchedLine0, 2)
 		return
 	case GlitchedLineVRAMReadLock:
-		if p.cgbMode && p.s.DoubleSpeed() {
+		// On physical CGB the CPU VRAM read port closes two dots after
+		// the early startup Mode-3 transition. Colour double-speed and
+		// NCM normal-speed take this path; the synthetic NCM double-speed
+		// case already closed the read port at the earlier transition.
+		cgbStartupReadEdge := p.b.Model().IsCGB() &&
+			(p.cgbMode && p.s.DoubleSpeed() || !p.cgbMode && !p.s.DoubleSpeed())
+		if cgbStartupReadEdge {
 			p.b.RLock(io.VRAM)
 		}
 		p.glitchedLineState = GlitchedLineStartPixelTransfer
