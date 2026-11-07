@@ -38,17 +38,18 @@ func logAGEOAMWriteMatrix(t *testing.T, g *gameboy.GameBoy, rows int, fingerprin
 	if rows == 16 { totalGroups = 8*5+8*7 }
 	matrixBytes := totalGroups*bytesPerGroup
 
-	// Identify the actual WRAM matrix from its mixed open and blocked reads.
-	base, fingerprintScore := uint16(0), -1
-	for offset := 0; offset <= 0x1000-len(fingerprint); offset++ {
-		addr, score := uint16(0xc000+offset), 0
-		for i, expected := range fingerprint {
-			if g.Bus.Get(addr+uint16(i)) == expected { score++ }
-		}
-		if score > fingerprintScore { fingerprintScore, base = score, addr }
+	// The pinned RGBDS AGE suite places its first WRAM0 timing-results
+	// section at 0xC000. Unlike reads, failed OAM writes leave zeros,
+	// so a fingerprint-only WRAM scan can prefer a later all-zero region
+	// instead of the actual timing buffer. Always read the known section
+	// base, and independently verify all groups against the ROM's own
+	// rendered first-mismatch verdicts before trusting its score.
+	const base = uint16(0xc000)
+	fingerprintScore := 0
+	for i, expected := range fingerprint {
+		if g.Bus.Get(base+uint16(i)) == expected { fingerprintScore++ }
 	}
-	t.Logf("AGE OAM write WRAM candidate: address=%#04x fingerprint=%d/60", base, fingerprintScore)
-	if fingerprintScore < 32 { return 0, false }
+	t.Logf("AGE OAM write WRAM section: address=%#04x fingerprint=%d/60",base,fingerprintScore)
 
 	var verdicts [16][7]byte
 	for row := 0; row < rows; row++ {
