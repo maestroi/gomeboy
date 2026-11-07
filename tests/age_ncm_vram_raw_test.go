@@ -4,10 +4,43 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/maestroi/gomeboy/internal/gameboy"
 )
+
+
+// Keep NCM's 40-group read accuracy distinct from the CGB-colour ROM's
+// separately enforced 96-group conformance matrix.
+type ageNCMVRAMSampleBaseline struct {
+	SchemaVersion   int    `json:"schema_version"`
+	SourceRevision string `json:"source_revision"`
+	ROM            string `json:"rom"`
+	Models         map[string]struct {
+		SampleCount            int `json:"sample_count"`
+		MinimumMatchingSamples int `json:"minimum_matching_samples"`
+	} `json:"models"`
+}
+
+func readAgeNCMVRAMSampleBaseline() (ageNCMVRAMSampleBaseline, error) {
+	data, err := os.ReadFile("age-ncm-vram-sample-baseline.json")
+	if err != nil {
+		return ageNCMVRAMSampleBaseline{}, err
+	}
+	var baseline ageNCMVRAMSampleBaseline
+	if err := json.Unmarshal(data, &baseline); err != nil {
+		return baseline, err
+	}
+	if baseline.SchemaVersion != 1 ||
+		baseline.SourceRevision != "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e" ||
+		baseline.ROM != "vram-read-ncmBCE.gb" {
+		return baseline, fmt.Errorf("unexpected AGE NCM sample baseline identity")
+	}
+	return baseline, nil
+}
 
 // NCM is CGB hardware booted with a DMG-only cartridge. AGE's pinned NCM ROM
 // runs eight SCX values x five *normal-speed* probes (480 individual reads).
@@ -15,7 +48,7 @@ import (
 // already guarded by the 1,152-sample floor in age_vram_diagnostics_test.go.
 //
 // The ROM itself judges pass/fail. This diagnostic does not change any xfails.
-func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
+func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) (int, bool) {
 	t.Helper()
 	const matrixBytes = 8 * 5 * 12
 	base, fingerprint, ok := ageVRAMRawTimingBase(g)
@@ -23,7 +56,7 @@ func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
 		base, fingerprint, len(ageVRAMFirstSCXExpected), ok)
 	if !ok {
 		t.Log("AGE NCM raw result buffer not confidently identified")
-		return
+		return 0, false
 	}
 
 	// The ROM contains two similar expected-data arrays. Selecting one by
@@ -36,7 +69,7 @@ func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
 		values, _, valid := ageCompactResultsFromBG(g, scx)
 		if !valid {
 			t.Logf("AGE NCM compact result row %d could not be decoded", scx)
-			return
+			return 0, false
 		}
 		copy(compact[scx][:], values[:5])
 	}
@@ -78,9 +111,9 @@ func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
 	}
 	t.Logf("AGE NCM VRAM selected expected matrix: rom_offset=%#x matching_samples=%d/%d compact_agreement=%d/40 candidates=%d",
 		bestAt, bestMatched, matrixBytes, bestAgreement, candidates)
-	if bestAt < 0 || bestMatched < matrixBytes/2 || bestAgreement < 39 {
+	if bestAt < 0 || bestMatched < matrixBytes/2 || bestAgreement != 40 {
 		t.Log("AGE NCM raw expected matrix does not agree with ROM's compact verdicts; refusing to guess")
-		return
+		return 0, false
 	}
 
 	badGroups, badSamples := 0, 0
@@ -109,4 +142,5 @@ func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
 	}
 	t.Logf("AGE NCM VRAM raw matrix: groups_mismatched=%d samples_mismatched=%d total_groups=40 total_samples=%d samples_matched=%d",
 		badGroups, badSamples, matrixBytes, matrixBytes-badSamples)
+	return matrixBytes - badSamples, true
 }
