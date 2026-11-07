@@ -24,8 +24,11 @@ func (p *PPU) cpuVRAMReadOpenAtLastPixel(defaultOpen bool) bool {
 	// ordinary HBlank bus locks. Do not generalize this measurement to
 	// MGB/SGB hardware, whose access-phase conformance is independent.
 	if p.b.Model() == types.DMGABC {
-		return p.lineState == PixelTransferLX && p.lx == 167 &&
-			p.bgFIFO.Size > 0 && !p.fetcherObj
+		// DMG-C has a different CPU/PPU read phase for fine-scroll
+		// residues 3 and 7. Earlier access at other SCX offsets
+		// breaks the LCD-enable ownership window (Mooneye).
+		return p.scx&3 == 3 && p.lineState == PixelTransferLX &&
+			p.lx == 167 && p.bgFIFO.Size > 0 && !p.fetcherObj
 	}
 	if !p.b.Model().IsCGB() {
 		return defaultOpen
