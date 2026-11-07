@@ -37,7 +37,7 @@ func TestCGBVRAMReadReleasesAfterLastPixelBeforeBusUnlock(t *testing.T) {
 				p.lineState = EnterHBlank
 				got := b.Read(0x8000)
 				want := byte(0xff)
-				if p.cgbMode {
+				if model.IsCGB() {
 					want = 0x5a
 				}
 				if got != want {
@@ -107,6 +107,43 @@ func TestCGBVRAMReadEndOfRealScanline(t *testing.T) {
 				b.Write(0x8000, 0xaa)
 				if got := b.Get(0x8000); got != 0x5a {
 					t.Fatalf("VRAM write opened before PPU HBlank event: %#02x", got)
+				}
+			})
+		}
+	}
+}
+
+func TestNCMVRAMReadOpensAtEndOfOrdinaryVisibleLine(t *testing.T) {
+	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
+		for _, scx := range []uint8{0, 2, 6} {
+			t.Run(fmt.Sprintf("%s/SCX=%d", model, scx), func(t *testing.T) {
+				s := scheduler.NewScheduler()
+				b := gbio.NewBus(s, make([]byte, 0x8000)) // DMG-only ROM
+				b.Map(model)
+				p := New(b, s)
+				b.Set(0x8000, 0x5a)
+				b.Write(types.SCX, scx)
+				b.Write(types.LCDC, types.Bit7)
+				if p.cgbMode || !p.enabled {
+					t.Fatalf("test fixture should be NCM with LCD enabled")
+				}
+				found := false
+				for i := 0; i < 1300; i++ {
+					s.Tick(1)
+					if p.ly == 1 && p.lineState == EnterHBlank && p.lx == 168 {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatal("NCM PPU did not enter normal scanline last-pixel handover")
+				}
+				if got := b.Read(0x8000); got != 0x5a {
+					t.Fatalf("NCM CPU VRAM read not released after last pixel: %#02x", got)
+				}
+				b.Write(0x8000, 0xaa)
+				if got := b.Get(0x8000); got != 0x5a {
+					t.Fatalf("NCM VRAM write improperly released before PPU HBlank event: %#02x", got)
 				}
 			})
 		}
