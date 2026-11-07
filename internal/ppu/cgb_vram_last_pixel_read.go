@@ -11,7 +11,10 @@ package ppu
 // The shortened LCD-enable scanline skips pixel generation and never
 // reaches lx=168, so it retains its dedicated startup access events.
 func (p *PPU) cpuVRAMReadOpenAtLastPixel(defaultOpen bool) bool {
-	if defaultOpen || !p.enabled || !p.cgbMode {
+	// The CPU VRAM port belongs to the physical CGB hardware even
+	// when a DMG-only cartridge is running in compatibility mode.
+	// DMG/MGB hardware retains its original HBlank ownership edge.
+	if defaultOpen || !p.enabled || !p.b.Model().IsCGB() {
 		return defaultOpen
 	}
 	return p.lineState == EnterHBlank && p.lx == 168
