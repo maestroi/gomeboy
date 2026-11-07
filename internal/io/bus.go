@@ -720,7 +720,8 @@ func (b *Bus) ClockedWrite(address uint16, value byte) {
 	// Mode-2/Mode-3 ownership can change at the M-cycle endpoint;
 	// preserve the full M-cycle duration after the bus sample.
 	// Double-speed and DMG hardware retain their existing phase.
-	if address >= 0xfe00 && address <= 0xfe9f && b.model.IsCGB() && !b.s.DoubleSpeed() {
+	if address >= 0xfe00 && address <= 0xfe9f && b.model.IsCGB() &&
+		b.IsGBCCart() && !b.s.DoubleSpeed() {
 		b.s.Tick(3)
 		b.Write(address, value)
 		b.s.Tick(1)
