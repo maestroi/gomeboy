@@ -605,6 +605,16 @@ func (p *PPU) handleGlitchedLine0() {
 			// first line starts the dummy transfer two dots earlier
 			// than CGB colour mode and still discards SCX fine pixels.
 			startupTransferDots = 166 + uint64(p.scx&7)
+		} else if !p.b.Model().IsCGB() {
+			// DMG hardware also discards fine-scroll pixels during the
+			// abbreviated first scanline. As on normal-speed CGB, the
+			// CPU's first HBlank read samples one dot earlier when the
+			// fine SCX offset is congruent to 1 modulo four.
+			scxDiscardDots := uint64(p.scx & 7)
+			if p.scx&3 == 1 {
+				scxDiscardDots--
+			}
+			startupTransferDots += scxDiscardDots
 		}
 		p.lineState = EnterHBlank
 		p.lineDot -= 4
