@@ -26,7 +26,22 @@ func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
 		return
 	}
 
-	bestAt, bestMatched, runnerUp, candidates := -1, -1, -1, 0
+	// The ROM contains two similar expected-data arrays. Selecting one by
+	// highest matching raw byte count alone can switch candidates whenever
+	// the emulator improves. AGE's final BG tile-map stores its *own* first
+	// mismatching byte for each group: use those independent ROM results to
+	// identify the expected-data array, not the byte score we're measuring.
+	var compact [8][5]byte
+	for scx := 0; scx < 8; scx++ {
+		values, _, valid := ageCompactResultsFromBG(g, scx)
+		if !valid {
+			t.Logf("AGE NCM compact result row %d could not be decoded", scx)
+			return
+		}
+		copy(compact[scx][:], values[:5])
+	}
+
+	bestAt, bestMatched, bestAgreement, candidates := -1, -1, -1, 0
 	for from := 0; from < len(g.ROM); {
 		rel := bytes.Index(g.ROM[from:], ageVRAMFirstSCXExpected[:])
 		if rel < 0 {
@@ -38,23 +53,33 @@ func logAgeNCMVRAMRaw(t *testing.T, g *gameboy.GameBoy) {
 			continue
 		}
 		candidates++
-		matched := 0
-		for i := 0; i < matrixBytes; i++ {
-			if g.ROM[romAt+i] == g.Bus.Get(base+uint16(i)) {
-				matched++
+		matched, agreement := 0, 0
+		for scx := 0; scx < 8; scx++ {
+			for probe := 0; probe < 5; probe++ {
+				off := (scx*5 + probe)*12
+				firstBad := byte(0xff)
+				for i := 0; i < 12; i++ {
+					if g.ROM[romAt+off+i] == g.Bus.Get(base+uint16(off+i)) {
+						matched++
+					} else if firstBad == 0xff {
+						firstBad = byte(i)
+					}
+				}
+				if firstBad == compact[scx][probe] {
+					agreement++
+				}
 			}
 		}
-		if matched > bestMatched {
-			runnerUp = bestMatched
-			bestAt, bestMatched = romAt, matched
-		} else if matched > runnerUp {
-			runnerUp = matched
+		t.Logf("AGE NCM VRAM expected candidate: rom_offset=%#x matching_samples=%d/%d compact_agreement=%d/40",
+			romAt, matched, matrixBytes, agreement)
+		if agreement > bestAgreement || (agreement == bestAgreement && matched > bestMatched) {
+			bestAt, bestMatched, bestAgreement = romAt, matched, agreement
 		}
 	}
-	t.Logf("AGE NCM VRAM expected matrix candidate: rom_offset=%#x matching_samples=%d/%d runner_up=%d candidates=%d",
-		bestAt, bestMatched, matrixBytes, runnerUp, candidates)
-	if bestAt < 0 || bestMatched < matrixBytes/2 {
-		t.Log("AGE NCM raw expected matrix unresolved; refusing to guess")
+	t.Logf("AGE NCM VRAM selected expected matrix: rom_offset=%#x matching_samples=%d/%d compact_agreement=%d/40 candidates=%d",
+		bestAt, bestMatched, matrixBytes, bestAgreement, candidates)
+	if bestAt < 0 || bestMatched < matrixBytes/2 || bestAgreement < 39 {
+		t.Log("AGE NCM raw expected matrix does not agree with ROM's compact verdicts; refusing to guess")
 		return
 	}
 
