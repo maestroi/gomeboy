@@ -761,7 +761,11 @@ func (p *PPU) handleVisualLine() {
 		return
 	case ReleaseOAMBus: // dots 76 and 78
 		if p.oamScanIndex == 38 {
-			p.b.RBlock(io.VRAM, !p.cgbMode)
+			// The CPU read port is owned by the physical CGB VRAM bus,
+			// even when the cartridge keeps the PPU in DMG compatibility
+			// mode. In that case VRAM must stay readable through late
+			// Mode 2 until actual pixel transfer starts at dot 80.
+			p.b.RBlock(io.VRAM, !p.b.Model().IsCGB())
 			p.b.WBlock(io.OAM, p.cgbMode)
 			p.b.WUnlock(io.VRAM)
 		}
