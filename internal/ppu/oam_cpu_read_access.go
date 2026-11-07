@@ -15,5 +15,8 @@ func (p *PPU) cpuOAMReadOpenAtLastPixel(defaultOpen bool) bool {
 	// object/pixel fetch and breaks existing OAM lock regression tests.
 	// The CPU read port may reopen only after that last pixel is pushed,
 	// while the scheduled PPU HBlank event still owns coarse bus locks.
-	return p.lineState == EnterHBlank && p.lx == 168
+	// AGE's last-pixel OAM read boundary falls a CPU read phase earlier
+	// specifically when the fine-scroll offset is 3 modulo four. Other
+	// SCX phases keep the established coarse HBlank bus-unlock edge.
+	return p.scx&3 == 3 && p.lineState == EnterHBlank && p.lx == 168
 }
