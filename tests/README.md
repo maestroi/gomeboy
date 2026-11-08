@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/88/?scale=100&title=passing%20274,%20failing%2037&width=500)
+![progress](https://progress-bar.xyz/88/?scale=100&title=passing%20275,%20failing%2036&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 274 |
-| XFAIL | 37 |
+| PASS | 275 |
+| XFAIL | 36 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -50,7 +50,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 32% | 18 | 37 | 55 |
+| age | 34% | 19 | 36 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -164,7 +164,7 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | vram-read-cgbBCE@CGBBC | pass | pass | pass |  |
 | vram-read-cgbBCE@CGBDE | pass | pass | pass |  |
-| vram-read-dmgC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| vram-read-dmgC@DMG | pass | pass | pass |  |
 | vram-read-ncmBCE@CGBBC | pass | pass | pass |  |
 | vram-read-ncmBCE@CGBDE | pass | pass | pass |  |
 
