@@ -108,3 +108,70 @@ func TestWindowWYChangedDuringMode3WaitsUntilNextLine(t *testing.T) {
 		})
 	}
 }
+
+
+// CGB hardware clears a previously latched WY match when LCDC.5 falls,
+// even while running a DMG-only cartridge. DMG retains the latch until
+// frame reset. A later WY==LY match is required on CGB to restart it.
+func TestCGBWindowDisableClearsYCondition(t *testing.T) {
+	for _, tc := range []struct {
+		model types.Model
+		cgbCartridge bool
+	}{
+		{types.DMGABC, false},
+		{types.CGBBC, false},
+		{types.CGBDE, false},
+		{types.CGBBC, true},
+		{types.CGBDE, true},
+	} {
+		t.Run(fmt.Sprintf("%s/cgbCartridge=%t", tc.model, tc.cgbCartridge), func(t *testing.T) {
+			s := scheduler.NewScheduler()
+			rom := make([]byte, 0x8000)
+			if tc.cgbCartridge {
+				rom[0x143] = 0x80
+			}
+			b := gbio.NewBus(s, rom)
+			b.Map(tc.model)
+			p := New(b, s)
+			b.Write(types.LCDC, types.Bit7|types.Bit5)
+			if !p.enabled || !p.winEnabled {
+				t.Fatal("LCD and Window must be enabled for the test")
+			}
+			p.ly = 20
+			p.wy = 20
+			p.oamScanIndex = 0
+			p.lineState = StartOAMScan
+			p.handleVisualLine()
+			if !p.winTriggerWy {
+				t.Fatal("initial WY=LY match did not latch")
+			}
+
+			b.Write(types.LCDC, types.Bit7) // LCD stays on; window disabled
+			keepLatch := !tc.model.IsCGB()
+			if p.winTriggerWy != keepLatch {
+				t.Fatalf("window disable changed WY latch incorrectly: got %t want %t",
+					p.winTriggerWy, keepLatch)
+			}
+
+			p.wy = 5
+			b.Write(types.LCDC, types.Bit7|types.Bit5)
+			p.wx = 7
+			p.lx = 8
+			p.checkWindowTriggerWX()
+			if p.winTriggerWx != keepLatch {
+				t.Fatalf("unexpected window restart before a new WY match: got %t want %t",
+					p.winTriggerWx, keepLatch)
+			}
+
+			// At the next line whose LY equals WY, CGB can latch again.
+			p.ly = 21
+			p.wy = 21
+			p.oamScanIndex = 0
+			p.lineState = StartOAMScan
+			p.handleVisualLine()
+			if !p.winTriggerWy {
+				t.Fatal("window did not relatch after a later WY=LY match")
+			}
+		})
+	}
+}
