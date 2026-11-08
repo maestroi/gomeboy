@@ -227,6 +227,13 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.tileSelectGlitch = true
 		}
 		p.winTileMap = v >> 6 & 1
+		// On physical CGB hardware (including DMG-compatible mode),
+		// turning off LCDC.5 clears the window's latched WY match.
+		// DMG keeps the match until the end of the frame.
+		if p.enabled && p.b.Model().IsCGB() &&
+			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 {
+			p.winTriggerWy = false
+		}
 		p.winEnabled = v&types.Bit5 > 0
 		p.addressMode = 1 &^ (v >> 4 & 1)
 		p.bgTileMap = v >> 3 & 1
