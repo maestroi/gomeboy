@@ -1649,28 +1649,28 @@ func (p *PPU) checkWindowTriggerWY() {
 // checkWindowTriggerWX checks to see if the window should be triggered
 // for the current LX position.
 func (p *PPU) checkWindowTriggerWX() {
-	if p.winTriggerWy && !p.winTriggerWx && p.winEnabled {
-		// TODO handle WX=0
-		if p.wx == 0 {
-		} else if p.wx < 166 {
-			if p.wx == p.lx-1 { // TODO figure out why the -1?
-				// activate window
-				p.winTriggerWx = true
-
-				// increase internal window line counter
-				p.wly++
-
-				// reset window tile counter
-				p.winFetcherX = 0
-
-				p.bgFIFO.Reset()
-
-				// next dot is window activating
-				p.fetcherState = WinActivating
-			}
-		}
-
+	if !p.winTriggerWy || p.winTriggerWx || !p.winEnabled {
+		return
 	}
+
+	// WX=0 switches to the window before the initial SCX fine-scroll
+	// discard. Keep scxToDiscard intact: those discarded window pixels
+	// are what shift the visible window left at this special position.
+	// Other WX values use the existing LX-relative trigger phase.
+	if !((p.wx == 0 && p.lx == 0) ||
+		(p.wx > 0 && p.wx < 166 && p.lx > 0 && p.wx == p.lx-1)) {
+		return
+	}
+
+	p.winTriggerWx = true
+
+	// Increase the internal window line counter once at the handover.
+	p.wly++
+
+	// Restart tile fetching from the window map.
+	p.winFetcherX = 0
+	p.bgFIFO.Reset()
+	p.fetcherState = WinActivating
 }
 
 // renderBlank blanks the current screen.
