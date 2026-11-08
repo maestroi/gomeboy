@@ -227,6 +227,13 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.tileSelectGlitch = true
 		}
 		p.winTileMap = v >> 6 & 1
+		// On physical CGB hardware (including DMG-compatible mode),
+		// turning off LCDC.5 clears the window's latched WY match.
+		// DMG keeps the match until the end of the frame.
+		if p.enabled && p.b.Model().IsCGB() &&
+			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 {
+			p.winTriggerWy = false
+		}
 		p.winEnabled = v&types.Bit5 > 0
 		p.addressMode = 1 &^ (v >> 4 & 1)
 		p.bgTileMap = v >> 3 & 1
@@ -868,8 +875,6 @@ func (p *PPU) handleVisualLine() {
 
 		// have we reached the end of the line yet?
 		if p.lx != 168 {
-			p.checkWindowTriggerWY()
-
 			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
 			return // remain in the PixelTransferLX state until we reach LX==168
 		}
@@ -1635,13 +1640,16 @@ func (p *PPU) canPopBG() bool {
 		!((p.objEnabled || p.cgbMode) && len(p.objBuffer) > 0 && p.objBuffer[0].x == p.lx)
 }
 
-// checkWindowTriggerWY checks to see if the window should be triggered
-// for the current LY position. The window is considered to be active for
-// the rest of the frame, if during at some point WIN_EN was true whilst
-// LY == WY. This doesn't mean the window will always be rendered, as the
-// LX == WX condition is checked again during the pixel transfer stage.
+// checkWindowTriggerWY samples the window's Y condition at the start
+// of each scanline, not during pixel output. Once WY equals LY, the latch
+// remains set even if WY later changes, until frame reset or a physical
+// CGB window-disable transition clears it.
+//
+// The Y comparator operates independently of LCDC's window-enable bit:
+// that bit gates the later X/pixel-fetch handover, so enabling the window
+// after the matching scanline can still display it.
 func (p *PPU) checkWindowTriggerWY() {
-	if p.winEnabled && p.wy == p.ly {
+	if p.wy == p.ly {
 		p.winTriggerWy = true
 	}
 }
