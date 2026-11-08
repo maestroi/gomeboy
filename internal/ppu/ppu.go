@@ -1665,8 +1665,14 @@ func (p *PPU) checkWindowTriggerWX() {
 	// discard. Keep scxToDiscard intact: those discarded window pixels
 	// are what shift the visible window left at this special position.
 	// Other WX values use the existing LX-relative trigger phase.
+	// On physical CGB hardware WX=166 still starts a window fetch at the
+	// final on-screen pixel (LX=167). The tile-fetch pause therefore
+	// contributes to Mode 3 even though only one window pixel is shown.
+	// Monochrome hardware has a distinct WX=166 whole-line glitch and
+	// must not be treated as this ordinary CGB handover.
+	windowX := p.wx > 0 && p.lx > 0 && p.wx == p.lx-1
 	if !((p.wx == 0 && p.lx == 0) ||
-		(p.wx > 0 && p.wx < 166 && p.lx > 0 && p.wx == p.lx-1)) {
+		(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB()))) {
 		return
 	}
 
