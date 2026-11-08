@@ -4,6 +4,8 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -124,6 +126,27 @@ func logAGEOAMWriteMatrix(t *testing.T, g *gameboy.GameBoy, rows int, fingerprin
 }
 
 
+type ageOAMWriteSampleBaseline struct {
+	SchemaVersion   int    `json:"schema_version"`
+	SourceRevision string `json:"source_revision"`
+	Cases map[string]struct {
+		SampleCount int `json:"sample_count"`
+		MinimumMatchingSamples int `json:"minimum_matching_samples"`
+	} `json:"cases"`
+}
+
+func readAgeOAMWriteSampleBaseline() (ageOAMWriteSampleBaseline, error) {
+	data, err := os.ReadFile("age-oam-write-sample-baseline.json")
+	if err != nil { return ageOAMWriteSampleBaseline{}, err }
+	var baseline ageOAMWriteSampleBaseline
+	if err := json.Unmarshal(data, &baseline); err != nil { return baseline, err }
+	if baseline.SchemaVersion != 1 ||
+		baseline.SourceRevision != "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e" {
+		return baseline, fmt.Errorf("unsupported pinned AGE OAM write sample baseline")
+	}
+	return baseline, nil
+}
+
 func TestAgeOAMWriteDiagnostics(t *testing.T) {
 	runAgeOAMWriteDiagnostics(t)
 }
@@ -131,6 +154,8 @@ func TestAgeOAMWriteDiagnostics(t *testing.T) {
 func runAgeOAMWriteDiagnostics(t *testing.T) {
 	t.Helper()
 	if _,err:=os.Stat(ageROMPath);err!=nil {t.Skipf("AGE corpus not installed: %v",err)}
+	baseline, err := readAgeOAMWriteSampleBaseline()
+	if err != nil {t.Fatal(err)}
 	for _,tc:=range []struct{rom string;model types.Model;rows int;dmg bool}{
 		{"oam-write-cgbBCE.gb",types.CGBBC,16,false},
 		{"oam-write-cgbBCE.gb",types.CGBDE,16,false},
@@ -143,8 +168,19 @@ func runAgeOAMWriteDiagnostics(t *testing.T) {
 				5,DebugBreakpoint,gameboy.Debug(),gameboy.AsModel(tc.model))
 			if err!=nil {t.Fatal(err)}
 			if !g.CPU.DebugBreakpoint {t.Fatal("AGE OAM write ROM did not finish")}
-			if _,ok:=logAGEOAMWriteMatrix(t,g,tc.rows,ageOAMWriteFirstSCXExpected(tc.dmg));!ok {
-				t.Log("AGE OAM write expected matrix could not be fully verified")
+			samplesMatched, ok:=logAGEOAMWriteMatrix(t,g,tc.rows,ageOAMWriteFirstSCXExpected(tc.dmg))
+			if !ok { t.Fatal("AGE OAM write expected matrix could not be independently verified") }
+			key:=tc.rom+"@"+tc.model.String()
+			floor,exists:=baseline.Cases[key]
+			totalSamples:=480
+			if tc.rows==16 {totalSamples=1152}
+			if !exists || floor.SampleCount!=totalSamples ||
+				floor.MinimumMatchingSamples<0 || floor.MinimumMatchingSamples>totalSamples {
+				t.Fatalf("missing or invalid AGE OAM write sample baseline for %s: %+v",key,floor)
+			}
+			if samplesMatched<floor.MinimumMatchingSamples {
+				t.Errorf("AGE OAM write raw-sample regression for %s: got %d/%d, baseline %d/%d",
+					key,samplesMatched,totalSamples,floor.MinimumMatchingSamples,totalSamples)
 			}
 			matched,total:=0,0
 			for row:=0;row<tc.rows;row++{
