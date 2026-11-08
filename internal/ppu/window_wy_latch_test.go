@@ -22,6 +22,13 @@ func newWindowYLatchTestPPU(model types.Model, doubleSpeed bool) *PPU {
 	return p
 }
 
+// These tests drive individual PPU phases without a scheduler tick. Clear
+// the pending continuation before manually invoking the same event again.
+func runWindowLinePhaseForTest(p *PPU) {
+	p.handleVisualLine()
+	p.s.DescheduleEvent(scheduler.PPUHandleVisualLine)
+}
+
 // The PPU compares WY to LY at the beginning of a scanline independently
 // of whether LCDC currently enables the window. The later WX handover is
 // still gated on the window-enable bit.
@@ -38,7 +45,7 @@ func TestWindowWYScanlineLatchIndependentOfLCDC(t *testing.T) {
 					p.wy = 12
 					p.winEnabled = enabledAtLineStart
 					p.lineState = StartOAMScan
-					p.handleVisualLine()
+					runWindowLinePhaseForTest(p)
 					if !p.winTriggerWy {
 						t.Fatal("WY==LY did not latch at scanline start")
 					}
@@ -75,7 +82,7 @@ func TestWindowWYChangedDuringMode3WaitsUntilNextLine(t *testing.T) {
 			p.ly = 14
 			p.wy = 15
 			p.lineState = StartOAMScan
-			p.handleVisualLine()
+			runWindowLinePhaseForTest(p)
 			if p.winTriggerWy {
 				t.Fatal("mismatching WY latched at line start")
 			}
@@ -85,7 +92,7 @@ func TestWindowWYChangedDuringMode3WaitsUntilNextLine(t *testing.T) {
 			p.lx = 8
 			p.bgFIFO.Size = 1
 			p.fetcherState = BGGetTileNoT1
-			p.handleVisualLine()
+			runWindowLinePhaseForTest(p)
 			if p.winTriggerWy {
 				t.Fatal("Mode-3 pixel output erroneously rechecked WY==LY")
 			}
@@ -101,7 +108,7 @@ func TestWindowWYChangedDuringMode3WaitsUntilNextLine(t *testing.T) {
 			p.wy = 15
 			p.oamScanIndex = 0
 			p.lineState = StartOAMScan
-			p.handleVisualLine()
+			runWindowLinePhaseForTest(p)
 			if !p.winTriggerWy {
 				t.Fatal("WY comparator did not latch on the following scanline")
 			}
@@ -141,7 +148,7 @@ func TestCGBWindowDisableClearsYCondition(t *testing.T) {
 			p.wy = 20
 			p.oamScanIndex = 0
 			p.lineState = StartOAMScan
-			p.handleVisualLine()
+			runWindowLinePhaseForTest(p)
 			if !p.winTriggerWy {
 				t.Fatal("initial WY=LY match did not latch")
 			}
@@ -168,7 +175,7 @@ func TestCGBWindowDisableClearsYCondition(t *testing.T) {
 			p.wy = 21
 			p.oamScanIndex = 0
 			p.lineState = StartOAMScan
-			p.handleVisualLine()
+			runWindowLinePhaseForTest(p)
 			if !p.winTriggerWy {
 				t.Fatal("window did not relatch after a later WY=LY match")
 			}
