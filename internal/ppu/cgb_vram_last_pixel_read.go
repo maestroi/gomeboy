@@ -1,5 +1,7 @@
 package ppu
 
+import "github.com/maestroi/gomeboy/internal/types"
+
 // cpuVRAMReadOpenAtLastPixel refines the CPU read side of CGB VRAM ownership
 // during the very short handover from pixel transfer to HBlank.
 //
@@ -13,8 +15,18 @@ package ppu
 func (p *PPU) cpuVRAMReadOpenAtLastPixel(defaultOpen bool) bool {
 	// The CPU VRAM port belongs to the physical CGB hardware even
 	// when a DMG-only cartridge is running in compatibility mode.
-	// DMG/MGB hardware retains its original HBlank ownership edge.
-	if defaultOpen || !p.enabled || !p.b.Model().IsCGB() {
+	// DMG-C has a distinct CPU read phase at the completed final pixel:
+	// at SCX=3 or 7 reads reopen between the pixel handover and the PPU
+	// HBlank bus unlock. The earlier *buffered* pixel phase does not open
+	// the DMG port (unlike CGB compatibility mode).
+	if defaultOpen || !p.enabled {
+		return defaultOpen
+	}
+	if p.b.Model() == types.DMGABC {
+		return p.scx&3 == 3 && p.lineState == EnterHBlank && p.lx == 168
+	}
+	// Other monochrome models retain the coarse HBlank VRAM lock.
+	if !p.b.Model().IsCGB() {
 		return defaultOpen
 	}
 	if p.lineState == EnterHBlank && p.lx == 168 {
