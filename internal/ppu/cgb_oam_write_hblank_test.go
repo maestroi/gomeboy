@@ -59,9 +59,10 @@ func TestCGBOAMWriteHBlankReleaseDelay(t *testing.T) {
 				}
 
 				b.WLock(gbio.OAM)
+				before := b.Get(0xfe00)
 				b.Write(0xfe00, 0x00)
-				if got := b.Get(0xfe00); got != want && delayExpected == 0 {
-					t.Fatalf("coarse OAM lock was bypassed: %02x", got)
+				if got := b.Get(0xfe00); got != before {
+					t.Fatalf("coarse OAM lock was bypassed: before %02x, after %02x", before, got)
 				}
 			})
 		}
