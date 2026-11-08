@@ -4,5 +4,5 @@
   "rom": "vram-read-dmgC.gb",
   "model": "DMG",
   "sample_count": 480,
-  "minimum_matching_samples": 472
+  "minimum_matching_samples": 480
 }
