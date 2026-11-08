@@ -56,8 +56,9 @@ func TestNCMBufferedLastPixelCPUReadOwnership(t *testing.T) {
 			}
 			p.lx = 167
 			p.cgbMode = model.IsCGB()
-			if got := b.Read(0x8000); got != 0xff {
-				t.Fatalf("CGB colour-mode timing accidentally changed: %#02x", got)
+			want = 0xff
+			if got := b.Read(0x8000); got != want {
+				t.Fatalf("final pixel mode transition: got %#02x, want %#02x", got, want)
 			}
 		})
 	}
