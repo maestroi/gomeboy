@@ -4,11 +4,11 @@
   "cases": {
     "oam-write-cgbBCE.gb@CGBBC": {
       "sample_count": 1152,
-      "minimum_matching_samples": 1064
+      "minimum_matching_samples": 1072
     },
     "oam-write-cgbBCE.gb@CGBDE": {
       "sample_count": 1152,
-      "minimum_matching_samples": 1064
+      "minimum_matching_samples": 1072
     },
     "oam-write-dmgC.gb@DMG": {
       "sample_count": 480,
