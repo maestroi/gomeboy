@@ -21,7 +21,7 @@ func TestCGBClockedOAMWriteNormalSpeedSamplesBeforeFinalTState(t *testing.T) {
 			start:=s.Cycle()
 			b.ClockedWrite(0xfe00,0x5a)
 			want:=byte(0)
-			if model.IsCGB() && !double {want=0x5a}
+			if model.IsCGB() {want=0x5a}
 			if got:=b.Get(0xfe00);got!=want {
 				t.Fatalf("%s double=%t: OAM sample at T4 lock got %02x want %02x",model,double,got,want)
 			}
