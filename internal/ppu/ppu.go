@@ -148,6 +148,12 @@ type PPU struct {
 	lineDot  uint64 // Cycle at which the current line began
 	frameDot uint64 // Cycle at which the current frame began
 
+	// First LCD-on scanline: CGB D/E in DMG compatibility mode releases the
+	// CPU OAM read port two dots after VRAM and OAM writes become accessible.
+	// This is an absolute scheduler cycle, so later SCX writes cannot move
+	// an already established bus handover.
+	startupOAMReadOpenAt uint64
+
 	// CGB-specific features
 	cgbMode       bool  // CGB mode
 	bcpsIndex     uint8 // BG palette index
@@ -206,7 +212,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 	// CPU VRAM reads have a short end-of-transfer access edge distinct
 	// from the PPU bus locks and from CPU VRAM writes/OAM arbitration.
-	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, p.cpuOAMReadAtDMGLastPixel, p.cpuOAMStartupWriteOpen)
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, p.cpuOAMReadOpen, p.cpuOAMStartupWriteOpen)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
@@ -260,6 +266,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.ly, p.mode = 0, 0
 			p.lyForComparison = 0
 			p.wly = 255
+			p.startupOAMReadOpenAt = 0
 
 			// OAM & VRAM bus is released
 			p.b.Unlock(io.OAM | io.VRAM)
@@ -890,6 +897,16 @@ func (p *PPU) handleVisualLine() {
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
+
+		// The shortened first LCD-on scanline on CGB D/E running in
+		// DMG compatibility mode exposes VRAM and OAM writes at HBlank,
+		// but retains the CPU OAM read lock for another two PPU dots.
+		// Ordinary scanlines and CGB B/C have different read handovers.
+		if p.ly == 0 && p.lx == 0 &&
+			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
+			p.b.Model() == types.CGBDE && !p.cgbMode && !p.s.DoubleSpeed() {
+			p.startupOAMReadOpenAt = p.s.Cycle() + 2
+		}
 
 		dotsPassed := p.s.Cycle() - p.lineDot
 
