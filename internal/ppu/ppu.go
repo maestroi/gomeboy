@@ -145,8 +145,9 @@ type PPU struct {
 	oamScanXBus        uint8              // Last X byte observed by the Mode 2 OAM bus
 
 	// Timing counters
-	lineDot  uint64 // Cycle at which the current line began
-	frameDot uint64 // Cycle at which the current frame began
+	lineDot             uint64 // Cycle at which the current line began
+	frameDot            uint64 // Cycle at which the current frame began
+	oamCPUWriteReadyAt  uint64 // CGB double-speed CPU write visibility after HBlank unlock
 
 	// CGB-specific features
 	cgbMode       bool  // CGB mode
@@ -206,7 +207,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	}
 	// CPU VRAM reads have a short end-of-transfer access edge distinct
 	// from the PPU bus locks and from CPU VRAM writes/OAM arbitration.
-	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, p.cpuOAMReadAtDMGLastPixel, nil)
+	b.RegisterPPUAccessHandlers(p.cpuVRAMReadOpenAtLastPixel, p.cpuOAMReadAtDMGLastPixel, p.cpuOAMWriteHBlankOpen)
 
 	for pal := 0; pal < 8; pal++ {
 		for c := 0; c < 4; c++ {
@@ -885,6 +886,7 @@ func (p *PPU) handleVisualLine() {
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
+		p.startOAMWriteHBlankRelease()
 
 		dotsPassed := p.s.Cycle() - p.lineDot
 
