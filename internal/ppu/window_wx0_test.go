@@ -20,7 +20,7 @@ func newWindowWXTriggerTestPPU(model types.Model) *PPU {
 	p.wly = 255
 	p.winFetcherX = 11
 	p.bgFIFO.Size = 8
-	p.fetcherState = BGWinGetTileNoT1
+	p.fetcherState = BGGetTileNoT1
 	return p
 }
 
