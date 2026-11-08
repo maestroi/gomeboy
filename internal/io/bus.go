@@ -719,9 +719,12 @@ func (b *Bus) ClockedWrite(address uint16, value byte) {
 	// before the final T-state of their four-cycle memory access.
 	// Mode-2/Mode-3 ownership can change at the M-cycle endpoint;
 	// preserve the full M-cycle duration after the bus sample.
-	// Double-speed and DMG hardware retain their existing phase.
+	// Test the same CPU write sampling phase at double speed. This
+	// candidate is independent of the already measured normal-speed fix,
+	// and must prove better AGE timing before it can merge.
+	// DMG hardware and DMG-compatible cartridges retain their old phase.
 	if address >= 0xfe00 && address <= 0xfe9f && b.model.IsCGB() &&
-		b.IsGBCCart() && !b.s.DoubleSpeed() {
+		b.IsGBCCart() {
 		b.s.Tick(3)
 		b.Write(address, value)
 		b.s.Tick(1)
