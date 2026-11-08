@@ -1642,7 +1642,8 @@ func (p *PPU) canPopBG() bool {
 
 // checkWindowTriggerWY samples the window's Y condition at the start
 // of each scanline, not during pixel output. Once WY equals LY, the latch
-// remains set for the rest of the frame, even if WY later changes.
+// remains set even if WY later changes, until frame reset or a physical
+// CGB window-disable transition clears it.
 //
 // The Y comparator operates independently of LCDC's window-enable bit:
 // that bit gates the later X/pixel-fetch handover, so enabling the window
