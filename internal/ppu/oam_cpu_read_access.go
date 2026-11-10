@@ -2,30 +2,37 @@ package ppu
 
 import "github.com/maestroi/gomeboy/internal/types"
 
-// cpuOAMReadOpen refines the CPU-facing OAM read port at two distinct
-// hardware handovers. CPU writes, PPU OAM scanning and DMA remain governed
-// by their separate coarse bus locks.
+// cpuOAMReadOpen models CPU OAM read ownership independently of OAM writes,
+// PPU OAM scanning and DMA. Physical CGB revisions differ even in DMG
+// compatibility mode.
 //
-// On CGB D/E in monochrome compatibility mode, the *first* LCD-enabled
-// scanline holds the OAM read port for two PPU dots after the HBlank event
-// releases VRAM and OAM writes. B/C hardware does not share this delay.
-// The release cycle is captured at HBlank, not derived from a later SCX
-// register value (which can be changed independently).
+// On the abbreviated first LCD-enabled scanline, CGB B/C keeps the CPU
+// OAM read port locked one PPU dot past the normal HBlank bus release;
+// CGB D/E keeps it locked for two. The release cycle is captured at the
+// actual HBlank event and is not affected by later SCX writes.
 //
-// DMG-C has a different short Mode-3 -> HBlank read handover: when SCX is
-// congruent to 3 modulo four, CPU OAM reads become accessible after the
-// final pixel is output but before the PPU's scheduled HBlank bus unlock.
+// At the end of an ordinary scanline, the CPU OAM read port on DMG-C and
+// CGB B/C in DMG compatibility mode reopens just after the final visible
+// pixel at SCX residues 3 and 7, before the general OAM write unlock.
+// CGB D/E, CGB colour mode and other monochrome models retain their
+// independent measured access timing.
 func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 	if !p.enabled {
 		return defaultOpen
 	}
 	if defaultOpen {
-		if p.b.Model() == types.CGBDE && !p.cgbMode && !p.s.DoubleSpeed() &&
+		model := p.b.Model()
+		if (model == types.CGBBC || model == types.CGBDE) &&
+			!p.cgbMode && !p.s.DoubleSpeed() &&
 			p.s.Cycle() < p.startupOAMReadOpenAt {
 			return false
 		}
 		return true
 	}
-	return p.b.Model() == types.DMGABC &&
-		p.scx&3 == 3 && p.lineState == EnterHBlank && p.lx == 168
+
+	model := p.b.Model()
+	lastPixelRead := model == types.DMGABC ||
+		model == types.CGBBC && !p.cgbMode && !p.s.DoubleSpeed()
+	return lastPixelRead && p.scx&3 == 3 &&
+		p.lineState == EnterHBlank && p.lx == 168
 }
