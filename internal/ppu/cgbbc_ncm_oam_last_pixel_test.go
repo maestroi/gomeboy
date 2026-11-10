@@ -10,9 +10,9 @@ import (
 )
 
 // This is a real scheduler-driven line rather than a manufactured LX state:
-// only the CGB B/C monochrome-compatible fetcher and DMG-C release CPU OAM
-// reads after the last pixel at fine-scroll phases 3/7. Neither releases
-// CPU OAM writes, and native colour CGB and CGB D/E remain locked.
+// DMG-C and physical CGB B/C in either colour or compatibility mode
+// release CPU OAM reads after the last pixel at fine-scroll phases 3/7.
+// Neither releases CPU OAM writes. CGB D/E remains locked.
 func TestCGBBCNCMOAMReadAtEndOfRealScanline(t *testing.T) {
 	for _, tc := range []struct {
 		model types.Model
@@ -62,7 +62,7 @@ func TestCGBBCNCMOAMReadAtEndOfRealScanline(t *testing.T) {
 
 				want := byte(0xff)
 				if scx&3 == 3 && (tc.model == types.DMGABC ||
-					tc.model == types.CGBBC && !tc.colour) {
+					tc.model == types.CGBBC) {
 					want = 0x5a
 				}
 				if got := b.Read(0xfe00); got != want {
