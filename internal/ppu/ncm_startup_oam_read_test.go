@@ -10,8 +10,9 @@ import (
 )
 
 // NCM uses the DMG pixel fetcher on physical CGB hardware. On the
-// abbreviated LCD-enable line, D/E retains the CPU OAM read port for
-// two dots longer than B/C, without delaying VRAM reads or OAM writes.
+// abbreviated LCD-enable line, B/C retains the CPU OAM read port for
+// one additional dot and D/E for two, without delaying VRAM reads or OAM
+// writes.
 // Exercise the actual scheduled startup transitions (not a forged PPU state).
 func TestCGBRevisionNCMStartupOAMReadRelease(t *testing.T) {
 	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
@@ -46,17 +47,17 @@ func TestCGBRevisionNCMStartupOAMReadRelease(t *testing.T) {
 					t.Fatalf("OAM write stayed blocked at HBlank: %02x", got)
 				}
 
-				want := byte(0x7c)
-				if model == types.CGBDE {
-					want = 0xff
-				}
+				want := byte(0xff)
 				if got := b.Read(0xfe00); got != want {
 					t.Fatalf("OAM read at startup HBlank got %02x want %02x", got, want)
 				}
 
-				// The extra dot is a distinct read-only ownership
-				// interval on D/E; CGB B/C reads are already open.
+				// B/C opens after one further dot; D/E after two.
 				s.Tick(1)
+				want = 0x7c
+				if model == types.CGBDE {
+					want = 0xff
+				}
 				if got := b.Read(0xfe00); got != want {
 					t.Fatalf("OAM read one dot after HBlank got %02x want %02x", got, want)
 				}
