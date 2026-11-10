@@ -45,16 +45,19 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		}
 	}
 
-	if p.scx&3 == 3 && p.lineState == EnterHBlank && p.lx == 168 {
-		// Normal-speed B/C reopens the OAM read bus after its last
-		// pixel, regardless of whether the cartridge is CGB-capable.
-		if model == types.DMGABC || model == types.CGBBC && !p.s.DoubleSpeed() {
+	if p.lineState == EnterHBlank && p.lx == 168 {
+		// At normal speed, B/C reopens the CPU OAM read port once
+		// the last pixel is pushed on SCX=3/7. The same handover is
+		// sampled at even fine-scroll offsets in native double speed.
+		if model == types.DMGABC && p.scx&3 == 3 ||
+			model == types.CGBBC && !p.s.DoubleSpeed() && p.scx&3 == 3 ||
+			model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 {
 			return true
 		}
 	}
 
-	// Double-speed B/C has an earlier pixel-buffer handover than the
-	// completed-pixel phase above; no OAM writes or other models open.
+	// Double-speed B/C also has an earlier pixel-buffer handover;
+	// neither this nor the completed-pixel phase unlocks OAM writes.
 	return model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() &&
 		p.scx&1 == 0 && p.lineState == PixelTransferLX &&
 		p.lx == 167 && p.bgFIFO.Size > 0 && !p.fetcherObj
