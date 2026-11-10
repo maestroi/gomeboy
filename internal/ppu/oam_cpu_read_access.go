@@ -14,14 +14,17 @@ import "github.com/maestroi/gomeboy/internal/types"
 // At the end of an ordinary scanline, the CPU OAM read port on DMG-C and
 // CGB B/C in DMG compatibility mode reopens just after the final visible
 // pixel at SCX residues 3 and 7, before the general OAM write unlock.
-// CGB D/E, CGB colour mode and other monochrome models retain their
-// independent measured access timing.
+// CGB B/C colour mode shares the completed-pixel read-only handover at
+// normal speed. At double speed the CPU also sees the buffered final pixel
+// during an earlier phase and can read the startup Mode-3 edge before the
+// PPU's coarse OAM read lock catches up. CGB D/E and other monochrome
+// models retain their independent measured access timing.
 func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 	if !p.enabled {
 		return defaultOpen
 	}
+	model := p.b.Model()
 	if defaultOpen {
-		model := p.b.Model()
 		if (model == types.CGBBC || model == types.CGBDE) &&
 			!p.cgbMode && !p.s.DoubleSpeed() &&
 			p.s.Cycle() < p.startupOAMReadOpenAt {
@@ -30,9 +33,32 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		return true
 	}
 
-	model := p.b.Model()
-	lastPixelRead := model == types.DMGABC ||
-		model == types.CGBBC && !p.cgbMode && !p.s.DoubleSpeed()
-	return lastPixelRead && p.scx&3 == 3 &&
-		p.lineState == EnterHBlank && p.lx == 168
+	// The colour CGB B/C CPU samples the initial LCD-on Mode-3 read
+	// bus a PPU dot after its coarse read lock activates at dot 78.
+	// Keep the OAM write lock and all later Mode-3 reads untouched.
+	if model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() &&
+		p.glitchedLineState == GlitchedLineVRAMReadLock &&
+		p.s.Cycle() >= p.lineDot {
+		elapsed := p.s.Cycle() - p.lineDot
+		if elapsed >= 156 && elapsed < 158 {
+			return true
+		}
+	}
+
+	if p.lineState == EnterHBlank && p.lx == 168 {
+		// At normal speed, B/C reopens the CPU OAM read port once
+		// the last pixel is pushed on SCX=3/7. The same handover is
+		// sampled at even fine-scroll offsets in native double speed.
+		if model == types.DMGABC && p.scx&3 == 3 ||
+			model == types.CGBBC && !p.s.DoubleSpeed() && p.scx&3 == 3 ||
+			model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 {
+			return true
+		}
+	}
+
+	// Double-speed B/C also has an earlier pixel-buffer handover;
+	// neither this nor the completed-pixel phase unlocks OAM writes.
+	return model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() &&
+		p.scx&1 == 0 && p.lineState == PixelTransferLX &&
+		p.lx == 167 && p.bgFIFO.Size > 0 && !p.fetcherObj
 }
