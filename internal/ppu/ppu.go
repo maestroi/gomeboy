@@ -148,10 +148,10 @@ type PPU struct {
 	lineDot  uint64 // Cycle at which the current line began
 	frameDot uint64 // Cycle at which the current frame began
 
-	// First LCD-on scanline: CGB D/E in DMG compatibility mode releases the
-	// CPU OAM read port two dots after VRAM and OAM writes become accessible.
-	// This is an absolute scheduler cycle, so later SCX writes cannot move
-	// an already established bus handover.
+	// First LCD-on scanline: physical CGB in DMG compatibility mode
+	// releases CPU OAM reads after VRAM and OAM writes (B/C: one dot;
+	// D/E: two dots). An absolute scheduler cycle keeps the bus release
+	// independent of subsequent SCX writes.
 	startupOAMReadOpenAt uint64
 
 	// CGB-specific features
