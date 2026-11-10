@@ -59,9 +59,9 @@ func TestDMGLastPixelVRAMReadOnlyHandover(t *testing.T) {
 					t.Fatalf("VRAM write bypassed lock: %02x", got)
 				}
 
-				if model == types.DMGABC && scx&3 == 3 {
+				if (model == types.DMGABC || model == types.CGBBC && !p.cgbMode) && scx&3 == 3 {
 					if got := b.Read(0xfe00); got != 0x66 {
-						t.Fatalf("existing DMG OAM read phase changed: %02x", got)
+						t.Fatalf("DMG/CGB B/C compatibility OAM read phase changed: %02x", got)
 					}
 				} else if got := b.Read(0xfe00); got != 0xff {
 					t.Fatalf("OAM read unexpectedly opened: %02x", got)
