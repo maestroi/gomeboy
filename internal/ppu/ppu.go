@@ -898,14 +898,19 @@ func (p *PPU) handleVisualLine() {
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
 
-		// The shortened first LCD-on scanline on CGB D/E running in
-		// DMG compatibility mode exposes VRAM and OAM writes at HBlank,
-		// but retains the CPU OAM read lock for another two PPU dots.
-		// Ordinary scanlines and CGB B/C have different read handovers.
+		// During the shortened first LCD-on scanline, physical CGB
+		// in DMG compatibility mode releases OAM CPU reads separately
+		// from VRAM reads and OAM writes. B/C holds the read port for
+		// one more dot, D/E for two. Normal lines use their own edges.
 		if p.ly == 0 && p.lx == 0 &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
-			p.b.Model() == types.CGBDE && !p.cgbMode && !p.s.DoubleSpeed() {
-			p.startupOAMReadOpenAt = p.s.Cycle() + 2
+			!p.cgbMode && !p.s.DoubleSpeed() {
+			switch p.b.Model() {
+			case types.CGBBC:
+				p.startupOAMReadOpenAt = p.s.Cycle() + 1
+			case types.CGBDE:
+				p.startupOAMReadOpenAt = p.s.Cycle() + 2
+			}
 		}
 
 		dotsPassed := p.s.Cycle() - p.lineDot
