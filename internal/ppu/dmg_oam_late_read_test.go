@@ -24,7 +24,7 @@ func TestDMGOAMReadLateHBlankPhaseDoesNotUnlockWrites(t *testing.T) {
 			p.lineState=EnterHBlank
 			p.lx=168
 			want:=byte(0xff)
-			if model==types.DMGABC && scx&3==3 { want=0x5a }
+			if (model==types.DMGABC || model==types.CGBBC && !p.cgbMode) && scx&3==3 { want=0x5a }
 			if got:=b.Read(0xfe00);got!=want {t.Fatalf("%s SCX=%d late OAM read: got %02x want %02x",model,scx,got,want)}
 			b.Write(0xfe00,0xaa)
 			if got:=b.Get(0xfe00);got!=0x5a {t.Fatalf("%s SCX=%d OAM write lock bypassed: %02x",model,scx,got)}
