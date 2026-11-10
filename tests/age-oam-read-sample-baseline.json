@@ -12,7 +12,7 @@
     },
     "oam-read-dmgC-cgbBC.gb@CGBBC": {
       "sample_count": 1152,
-      "minimum_matching_samples": 1120
+      "minimum_matching_samples": 1152
     },
     "oam-read-ncmBC.gb@CGBBC": {
       "sample_count": 480,
