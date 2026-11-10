@@ -122,7 +122,8 @@ func TestCGBColourBufferedFinalPixelOAMReadPhase(t *testing.T) {
 					p.lx = 168
 					p.lineState = EnterHBlank
 					want = 0xff
-					if model == types.CGBBC && !doubleSpeed && scx&3 == 3 {
+					if model == types.CGBBC &&
+						(!doubleSpeed && scx&3 == 3 || doubleSpeed && scx&1 == 0) {
 						want = 0x5a
 					}
 					if got := b.Read(0xfe00); got != want {
