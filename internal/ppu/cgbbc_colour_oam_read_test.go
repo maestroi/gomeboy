@@ -9,9 +9,9 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 )
 
-// At double speed the CGB B/C CPU OAM read port can complete a read
-// during the first LCD-enabled line's dot-78 handover. The earlier
-// OAM write-lock and the PPU OAM scan are not released by this rule.
+// At double speed the native CGB CPU OAM read port can complete a read
+// during the first LCD-enabled line's dot-78 handover on both B/C and
+// D/E. OAM writes and the PPU OAM scan remain locked.
 func TestCGBColourDoubleSpeedStartupOAMReadPhase(t *testing.T) {
 	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
 		for _, doubleSpeed := range []bool{false, true} {
@@ -43,10 +43,7 @@ func TestCGBColourDoubleSpeedStartupOAMReadPhase(t *testing.T) {
 					t.Fatalf("early startup OAM read closed before dot 78: %02x", got)
 				}
 				s.Tick(1) // CPU clock 156: Mode-3 coarse read lock
-				want := byte(0xff)
-				if model == types.CGBBC {
-					want = 0x5a
-				}
+				want := byte(0x5a)
 				if got := b.Read(0xfe00); got != want {
 					t.Fatalf("CPU OAM read at clock 156: got %02x want %02x", got, want)
 				}
@@ -67,10 +64,9 @@ func TestCGBColourDoubleSpeedStartupOAMReadPhase(t *testing.T) {
 	}
 }
 
-// The CGB B/C double-speed pixel buffer gives the CPU an earlier,
-// read-only OAM window than the PPU HBlank/STAT event. Restrict it to
-// a complete BG pixel (and no in-flight OBJ fetch). D/E retains its
-// independent OAM timing; native-colour normal speed is tested above.
+// The CGB double-speed pixel buffer gives the CPU an earlier read-only
+// OAM window than the PPU HBlank/STAT event. Restrict it to a ready BG
+// pixel, no OBJ fetch, and native colour mode on physical CGB.
 func TestCGBColourBufferedFinalPixelOAMReadPhase(t *testing.T) {
 	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
 		for _, doubleSpeed := range []bool{false, true} {
@@ -99,7 +95,7 @@ func TestCGBColourBufferedFinalPixelOAMReadPhase(t *testing.T) {
 					}
 					p.lx = 167
 					want := byte(0xff)
-					if model == types.CGBBC && doubleSpeed && scx&1 == 0 {
+					if model.IsCGB() && doubleSpeed && scx&1 == 0 {
 						want = 0x5a
 					}
 					if got := b.Read(0xfe00); got != want {
@@ -122,8 +118,8 @@ func TestCGBColourBufferedFinalPixelOAMReadPhase(t *testing.T) {
 					p.lx = 168
 					p.lineState = EnterHBlank
 					want = 0xff
-					if model == types.CGBBC &&
-						(!doubleSpeed && scx&3 == 3 || doubleSpeed && scx&1 == 0) {
+					if model == types.CGBBC && !doubleSpeed && scx&3 == 3 ||
+						model.IsCGB() && doubleSpeed && scx&1 == 0 {
 						want = 0x5a
 					}
 					if got := b.Read(0xfe00); got != want {

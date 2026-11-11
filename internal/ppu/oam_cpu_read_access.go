@@ -14,29 +14,42 @@ import "github.com/maestroi/gomeboy/internal/types"
 // At the end of an ordinary scanline, the CPU OAM read port on DMG-C and
 // CGB B/C in DMG compatibility mode reopens just after the final visible
 // pixel at SCX residues 3 and 7, before the general OAM write unlock.
-// CGB B/C colour mode shares the completed-pixel read-only handover at
-// normal speed. At double speed the CPU also sees the buffered final pixel
-// during an earlier phase and can read the startup Mode-3 edge before the
-// PPU's coarse OAM read lock catches up. CGB D/E and other monochrome
-// models retain their independent measured access timing.
+// Native CGB colour mode has a separate double-speed CPU-facing read
+// phase at the first LCD-on Mode-3 edge; B/C and D/E use the same early
+// read phase but D/E keeps the first-line read lock two dots into HBlank.
+// The double-speed CPU can also sample the buffered and completed final
+// pixel before the OAM write lock opens. Other monochrome models retain
+// their independent measured access timing.
 func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 	if !p.enabled {
 		return defaultOpen
 	}
 	model := p.b.Model()
 	if defaultOpen {
-		if (model == types.CGBBC || model == types.CGBDE) &&
-			!p.cgbMode && !p.s.DoubleSpeed() &&
-			p.s.Cycle() < p.startupOAMReadOpenAt {
+		if !p.s.DoubleSpeed() && p.s.Cycle() < p.startupOAMReadOpenAt &&
+			(model == types.CGBDE || model == types.CGBBC && !p.cgbMode) {
+			return false
+		}
+		// D/E double-speed CPU reads are owned by the upcoming
+		// Mode-2 OAM scan from the LY/OAM handover at the end of
+		// HBlank. That handover precedes the scan's coarse bus lock
+		// and is revision-specific; CPU writes and the PPU's per-entry
+		// scan retain their existing timings. The initial shortened
+		// LCD-enabled scanline is deliberately excluded.
+		if model == types.CGBDE && p.cgbMode && p.s.DoubleSpeed() &&
+			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
+			(p.lineState == HBlankEnd ||
+				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
 			return false
 		}
 		return true
 	}
 
-	// The colour CGB B/C CPU samples the initial LCD-on Mode-3 read
-	// bus a PPU dot after its coarse read lock activates at dot 78.
-	// Keep the OAM write lock and all later Mode-3 reads untouched.
-	if model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() &&
+	// Physical CGB colour CPU reads can complete during the first
+	// two double-speed CPU clocks at the dot-78 OAM lock handover.
+	// Keep OAM writes and later Mode-3 reads under their original lock.
+	if (model == types.CGBBC || model == types.CGBDE) &&
+		p.cgbMode && p.s.DoubleSpeed() &&
 		p.glitchedLineState == GlitchedLineVRAMReadLock &&
 		p.s.Cycle() >= p.lineDot {
 		elapsed := p.s.Cycle() - p.lineDot
@@ -51,14 +64,16 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		// sampled at even fine-scroll offsets in native double speed.
 		if model == types.DMGABC && p.scx&3 == 3 ||
 			model == types.CGBBC && !p.s.DoubleSpeed() && p.scx&3 == 3 ||
-			model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 {
+			(model == types.CGBBC || model == types.CGBDE) &&
+				p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 {
 			return true
 		}
 	}
 
-	// Double-speed B/C also has an earlier pixel-buffer handover;
-	// neither this nor the completed-pixel phase unlocks OAM writes.
-	return model == types.CGBBC && p.cgbMode && p.s.DoubleSpeed() &&
-		p.scx&1 == 0 && p.lineState == PixelTransferLX &&
+	// Native CGB at double speed also has a buffered-pixel read
+	// handover; neither it nor the completed-pixel edge unlocks writes.
+	return (model == types.CGBBC || model == types.CGBDE) &&
+		p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 &&
+		p.lineState == PixelTransferLX &&
 		p.lx == 167 && p.bgFIFO.Size > 0 && !p.fetcherObj
 }

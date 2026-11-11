@@ -4,7 +4,7 @@
   "cases": {
     "oam-read-cgbE.gb@CGBDE": {
       "sample_count": 1152,
-      "minimum_matching_samples": 1094
+      "minimum_matching_samples": 1152
     },
     "oam-read-dmgC-cgbBC.gb@DMG": {
       "sample_count": 480,

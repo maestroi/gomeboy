@@ -148,11 +148,12 @@ type PPU struct {
 	lineDot  uint64 // Cycle at which the current line began
 	frameDot uint64 // Cycle at which the current frame began
 
-	// First LCD-on scanline: physical CGB in DMG compatibility mode
-	// releases CPU OAM reads after VRAM and OAM writes (B/C: one dot;
-	// D/E: two dots). An absolute scheduler cycle keeps the bus release
-	// independent of subsequent SCX writes.
+	// First LCD-on scanline: CPU OAM reads become accessible
+	// separately from VRAM reads and OAM writes (B/C NCM: one dot,
+	// D/E: one dot in native colour and two in compatibility mode). The absolute
+	// scheduler cycle is unaffected by subsequent SCX writes.
 	startupOAMReadOpenAt uint64
+
 
 	// CGB-specific features
 	cgbMode       bool  // CGB mode
@@ -898,18 +899,30 @@ func (p *PPU) handleVisualLine() {
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
 
-		// During the shortened first LCD-on scanline, physical CGB
-		// in DMG compatibility mode releases OAM CPU reads separately
-		// from VRAM reads and OAM writes. B/C holds the read port for
-		// one more dot, D/E for two. Normal lines use their own edges.
+		// The shortened first LCD-on scanline releases the coarse
+		// OAM/VRAM locks before the CPU OAM read port on physical CGB.
+		// At normal speed B/C NCM retains that read lock for one
+		// additional dot, while D/E retains it for two dots in both
+		// native colour and DMG-compatibility mode. Neither delay
+		// changes the CPU OAM write or VRAM release phase.
 		if p.ly == 0 && p.lx == 0 &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
-			!p.cgbMode && !p.s.DoubleSpeed() {
+			!p.s.DoubleSpeed() {
 			switch p.b.Model() {
 			case types.CGBBC:
-				p.startupOAMReadOpenAt = p.s.Cycle() + 1
+				if !p.cgbMode {
+					p.startupOAMReadOpenAt = p.s.Cycle() + 1
+				}
 			case types.CGBDE:
-				p.startupOAMReadOpenAt = p.s.Cycle() + 2
+				// Native colour uses a one-dot handover except at
+				// fine-scroll phases 1/5, where the CPU read sample
+				// is aligned one dot earlier. Compatibility mode
+				// retains its independently measured two-dot delay.
+				readDelay := uint64(2)
+				if p.cgbMode && p.scx&3 != 1 {
+					readDelay = 1
+				}
+				p.startupOAMReadOpenAt = p.s.Cycle() + readDelay
 			}
 		}
 
