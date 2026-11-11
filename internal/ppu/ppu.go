@@ -154,10 +154,6 @@ type PPU struct {
 	// scheduler cycle is unaffected by subsequent SCX writes.
 	startupOAMReadOpenAt uint64
 
-	// Native-colour D/E double speed holds CPU OAM reads for one
-	// additional PPU dot at every HBlank bus-unlock event. This does
-	// not delay OAM writes, VRAM, STAT or the next PPU scan.
-	hblankOAMReadOpenAt uint64
 
 	// CGB-specific features
 	cgbMode       bool  // CGB mode
@@ -272,7 +268,6 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.lyForComparison = 0
 			p.wly = 255
 			p.startupOAMReadOpenAt = 0
-			p.hblankOAMReadOpenAt = 0
 
 			// OAM & VRAM bus is released
 			p.b.Unlock(io.OAM | io.VRAM)
@@ -929,14 +924,6 @@ func (p *PPU) handleVisualLine() {
 				}
 				p.startupOAMReadOpenAt = p.s.Cycle() + readDelay
 			}
-		}
-
-		// On physical CGB D/E in native double speed, the CPU OAM
-		// read port is still owned by the PPU for another dot after
-		// Mode 0 releases the coarse bus. OAM CPU writes and VRAM
-		// still become accessible at the original HBlank event.
-		if p.b.Model() == types.CGBDE && p.cgbMode && p.s.DoubleSpeed() {
-			p.hblankOAMReadOpenAt = p.s.Cycle() + 2
 		}
 
 		dotsPassed := p.s.Cycle() - p.lineDot
