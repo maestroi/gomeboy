@@ -30,15 +30,18 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 			(model == types.CGBDE || model == types.CGBBC && !p.cgbMode) {
 			return false
 		}
-		// On native-colour CGB D/E at double speed, the CPU read
-		// port is reserved for Mode 2 a clock before the scheduled
-		// scan acquires the coarse OAM bus. The write port and PPU
-		// scan retain their own existing lock phases. This state
-		// is entered at HBlankEnd on real lines (and frame rollover),
-		// never on the abbreviated LCD-enable line.
+		// D/E double-speed CPU reads are owned by the upcoming
+		// Mode-2 OAM scan from the LY/OAM handover at the end of
+		// HBlank. That handover precedes the scan's coarse bus lock
+		// and is revision-specific; CPU writes and the PPU's per-entry
+		// scan retain their existing timings. The initial shortened
+		// LCD-enabled scanline is deliberately excluded.
 		if model == types.CGBDE && p.cgbMode && p.s.DoubleSpeed() &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
-			p.lineState == StartOAMScan && p.oamScanIndex == 0 {
+			(p.lineState == HBlankUpdateOAM ||
+				p.lineState == HBlankUpdateVisibleLY ||
+				p.lineState == HBlankEnd ||
+				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
 			return false
 		}
 		return true
