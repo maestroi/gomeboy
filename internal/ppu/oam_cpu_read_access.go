@@ -30,13 +30,21 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 			(model == types.CGBDE || model == types.CGBBC && !p.cgbMode) {
 			return false
 		}
+		// D/E double-speed HBlank releases CPU OAM reads one PPU
+		// dot after the coarse read/write bus unlock. All other
+		// models and the CPU write port use their existing edges.
+		if model == types.CGBDE && p.cgbMode && p.s.DoubleSpeed() &&
+			p.s.Cycle() < p.hblankOAMReadOpenAt {
+			return false
+		}
 		return true
 	}
 
 	// Physical CGB colour CPU reads can complete during the first
 	// two double-speed CPU clocks at the dot-78 OAM lock handover.
 	// Keep OAM writes and later Mode-3 reads under their original lock.
-	if model.IsCGB() && p.cgbMode && p.s.DoubleSpeed() &&
+	if (model == types.CGBBC || model == types.CGBDE) &&
+		p.cgbMode && p.s.DoubleSpeed() &&
 		p.glitchedLineState == GlitchedLineVRAMReadLock &&
 		p.s.Cycle() >= p.lineDot {
 		elapsed := p.s.Cycle() - p.lineDot
@@ -51,14 +59,16 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		// sampled at even fine-scroll offsets in native double speed.
 		if model == types.DMGABC && p.scx&3 == 3 ||
 			model == types.CGBBC && !p.s.DoubleSpeed() && p.scx&3 == 3 ||
-			model.IsCGB() && p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 {
+			(model == types.CGBBC || model == types.CGBDE) &&
+				p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 {
 			return true
 		}
 	}
 
 	// Native CGB at double speed also has a buffered-pixel read
 	// handover; neither it nor the completed-pixel edge unlocks writes.
-	return model.IsCGB() && p.cgbMode && p.s.DoubleSpeed() &&
-		p.scx&1 == 0 && p.lineState == PixelTransferLX &&
+	return (model == types.CGBBC || model == types.CGBDE) &&
+		p.cgbMode && p.s.DoubleSpeed() && p.scx&1 == 0 &&
+		p.lineState == PixelTransferLX &&
 		p.lx == 167 && p.bgFIFO.Size > 0 && !p.fetcherObj
 }
