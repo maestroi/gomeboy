@@ -170,8 +170,7 @@
       "collection": "oam",
       "name": "oam-read-cgbE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/oam/oam-read-dmgC-cgbBC@CGBBC",
