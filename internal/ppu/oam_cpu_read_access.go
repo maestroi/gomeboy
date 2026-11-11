@@ -38,8 +38,7 @@ func (p *PPU) cpuOAMReadOpen(defaultOpen bool) bool {
 		// LCD-enabled scanline is deliberately excluded.
 		if model == types.CGBDE && p.cgbMode && p.s.DoubleSpeed() &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
-			(p.lineState == HBlankUpdateVisibleLY ||
-				p.lineState == HBlankEnd ||
+			(p.lineState == HBlankEnd ||
 				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
 			return false
 		}
