@@ -67,7 +67,7 @@ func TestCGBDENativeDoubleSpeedOAMReadBeforeMode2(t *testing.T) {
 					found = false
 					for ticks := 0; ticks < 2000; ticks++ {
 						s.Tick(1)
-						if p.lineState == HBlankUpdateOAM && p.ly == line+1 {
+						if p.lineState == HBlankUpdateVisibleLY && p.ly == line+1 {
 							found = true
 							break
 						}
