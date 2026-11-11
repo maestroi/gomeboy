@@ -75,18 +75,38 @@ func TestCGBDENativeDoubleSpeedOAMReadBeforeMode2(t *testing.T) {
 					if !found {
 						t.Fatalf("line %d never reached LY/OAM handover", line)
 					}
-					handoverWant := byte(0x7c)
-					if model == types.CGBDE {
-						handoverWant = 0xff
-					}
-					if got := b.Read(0xfe00); got != handoverWant {
-						t.Fatalf("line %d LY/OAM handover read got %02x want %02x",
-							line, got, handoverWant)
+					// CPU reads remain accessible while the visible
+					// LY-update event is pending (late HBlank).
+					if got := b.Read(0xfe00); got != 0x7c {
+						t.Fatalf("line %d LY-update read closed too early: %02x", line, got)
 					}
 					b.Write(0xfe00, 0x7c)
 					if got := b.Get(0xfe00); got != 0x7c {
 						t.Fatalf("line %d LY/OAM handover incorrectly blocked writes: %02x",
 							line, got)
+					}
+					found = false
+					for ticks := 0; ticks < 100; ticks++ {
+						s.Tick(1)
+						if p.lineState == HBlankEnd && p.ly == line+1 {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Fatalf("line %d did not reach HBlankEnd phase", line)
+					}
+					handoverWant := byte(0x7c)
+					if model == types.CGBDE {
+						handoverWant = 0xff
+					}
+					if got := b.Read(0xfe00); got != handoverWant {
+						t.Fatalf("line %d HBlankEnd OAM read got %02x want %02x",
+							line, got, handoverWant)
+					}
+					b.Write(0xfe00, 0x7c)
+					if got := b.Get(0xfe00); got != 0x7c {
+						t.Fatalf("line %d HBlankEnd blocked CPU OAM write: %02x", line, got)
 					}
 
 					// The final HBlank dot advertises the next Mode 2
