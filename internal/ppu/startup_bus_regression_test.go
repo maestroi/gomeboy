@@ -105,14 +105,11 @@ func TestCGBCartridgeDoubleSpeedStartupVRAMReadEdge(t *testing.T) {
 			// writes lock at dot 78. VRAM reads remain available until
 			// the separate double-speed CPU read edge at dot 80.
 			s.Tick(156) // 78 PPU dots at double speed
-			// The B/C CPU read port still samples the first dot of
-			// the handover, while D/E closes at the coarse lock.
-			oamWant := byte(0xff)
-			if model == types.CGBBC {
-				oamWant = 0x66
-			}
-			if got := b.Read(0xfe00); got != oamWant {
-				t.Fatalf("OAM read at early startup edge: got %02x, want %02x", got, oamWant)
+			// Both physical CGB revision families sample CPU OAM reads
+			// during the first dot-78 handover; OAM writes and VRAM
+			// writes are still locked by their independent bus phases.
+			if got := b.Read(0xfe00); got != 0x66 {
+				t.Fatalf("OAM read at early startup edge: got %02x, want 66", got)
 			}
 			if got := b.Read(0x8000); got != 0x5a {
 				t.Fatalf("VRAM should remain readable at early CGB Mode-3 edge, got %02x", got)
@@ -121,7 +118,7 @@ func TestCGBCartridgeDoubleSpeedStartupVRAMReadEdge(t *testing.T) {
 			if got := b.Read(0x8000); got != 0x5a {
 				t.Fatalf("VRAM write should already be blocked at dot 78, got %02x", got)
 			}
-			s.Tick(2) // dot 79: B/C OAM CPU read grace has expired
+			s.Tick(2) // dot 79: native CGB OAM CPU read grace has expired
 			if got := b.Read(0xfe00); got != 0xff {
 				t.Fatalf("OAM read stayed open into pixel transfer: %02x", got)
 			}
