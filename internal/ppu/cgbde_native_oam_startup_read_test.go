@@ -10,7 +10,7 @@ import (
 )
 
 // The shortened first native-colour scanline has a physical revision
-// difference: CGB D/E keeps CPU OAM reads blocked for two dots after the
+// difference: CGB D/E keeps CPU OAM reads blocked for one dot after the
 // ordinary HBlank bus unlock, whereas CGB B/C does not. Check the real
 // scheduled event for all SCX phases without changing OAM writes or VRAM.
 func TestCGBDENativeColourFirstHBlankOAMReadRelease(t *testing.T) {
@@ -61,12 +61,12 @@ func TestCGBDENativeColourFirstHBlankOAMReadRelease(t *testing.T) {
 					t.Fatalf("CPU OAM read on HBlank edge: got %02x want %02x", got, want)
 				}
 				s.Tick(1)
-				if got := b.Read(0xfe00); got != want {
-					t.Fatalf("CPU OAM read one clock into HBlank: got %02x want %02x", got, want)
+				if got := b.Read(0xfe00); got != 0x7c {
+					t.Fatalf("CPU OAM read did not reopen one dot into HBlank: %02x", got)
 				}
 				s.Tick(1)
 				if got := b.Read(0xfe00); got != 0x7c {
-					t.Fatalf("CPU OAM read did not reopen after 2 dots: %02x", got)
+					t.Fatalf("CPU OAM read closed again after HBlank: %02x", got)
 				}
 				// The absolute read-release clock cannot be moved by
 				// a later fine-scroll write, or survive LCD disable.
