@@ -61,6 +61,34 @@ func TestCGBDENativeDoubleSpeedOAMReadBeforeMode2(t *testing.T) {
 						s.Tick(1)
 					}
 
+					// CGB D/E reserves the CPU OAM read bus at the
+					// LY/OAM handover, before HBlank's last visible
+					// LY update and before the coarse Mode-2 scan lock.
+					found = false
+					for ticks := 0; ticks < 2000; ticks++ {
+						s.Tick(1)
+						if p.lineState == HBlankUpdateOAM && p.ly == line+1 {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Fatalf("line %d never reached LY/OAM handover", line)
+					}
+					handoverWant := byte(0x7c)
+					if model == types.CGBDE {
+						handoverWant = 0xff
+					}
+					if got := b.Read(0xfe00); got != handoverWant {
+						t.Fatalf("line %d LY/OAM handover read got %02x want %02x",
+							line, got, handoverWant)
+					}
+					b.Write(0xfe00, 0x7c)
+					if got := b.Get(0xfe00); got != 0x7c {
+						t.Fatalf("line %d LY/OAM handover incorrectly blocked writes: %02x",
+							line, got)
+					}
+
 					// The final HBlank dot advertises the next Mode 2
 					// before the next scheduled per-entry OAM scan.
 					found = false
