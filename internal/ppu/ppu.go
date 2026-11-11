@@ -150,7 +150,7 @@ type PPU struct {
 
 	// First LCD-on scanline: CPU OAM reads become accessible
 	// separately from VRAM reads and OAM writes (B/C NCM: one dot,
-	// D/E: two dots regardless of colour mode). The absolute
+	// D/E: one dot in native colour and two in compatibility mode). The absolute
 	// scheduler cycle is unaffected by subsequent SCX writes.
 	startupOAMReadOpenAt uint64
 
@@ -913,7 +913,14 @@ func (p *PPU) handleVisualLine() {
 					p.startupOAMReadOpenAt = p.s.Cycle() + 1
 				}
 			case types.CGBDE:
-				p.startupOAMReadOpenAt = p.s.Cycle() + 2
+				// Native colour samples the HBlank read port one dot
+				// later than the coarse unlock. Compatibility mode
+				// retains the separately measured two-dot delay.
+				readDelay := uint64(2)
+				if p.cgbMode {
+					readDelay = 1
+				}
+				p.startupOAMReadOpenAt = p.s.Cycle() + readDelay
 			}
 		}
 
