@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/89/?scale=100&title=passing%20278,%20failing%2033&width=500)
+![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20279,%20failing%2032&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 278 |
-| XFAIL | 33 |
+| PASS | 279 |
+| XFAIL | 32 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -50,7 +50,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 40% | 22 | 33 | 55 |
+| age | 42% | 23 | 32 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -108,7 +108,7 @@ is compared against a reference image from a known good emulator.
 #### oam
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| oam-read-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| oam-read-cgbE@CGBDE | pass | pass | pass |  |
 | oam-read-dmgC-cgbBC@CGBBC | pass | pass | pass |  |
 | oam-read-dmgC-cgbBC@DMG | pass | pass | pass |  |
 | oam-read-ncmBC@CGBBC | pass | pass | pass |  |
