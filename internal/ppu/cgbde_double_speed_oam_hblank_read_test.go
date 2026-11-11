@@ -87,7 +87,7 @@ func TestCGBDENativeDoubleSpeedOAMReadBeforeMode2(t *testing.T) {
 					if got := b.Get(0xfe00); got != 0x3d {
 						t.Fatalf("line %d CPU OAM write locked before scan: %02x", line, got)
 					}
-					s.Tick(1) // real OAM scan acquires the coarse bus
+					s.Tick(2) // one PPU dot (two double-speed CPU clocks) until scan
 					if got := b.Read(0xfe00); got != 0xff {
 						t.Fatalf("line %d CPU OAM read not locked by scan: %02x", line, got)
 					}
