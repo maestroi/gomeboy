@@ -67,8 +67,12 @@ func TestDMGLastPixelVRAMReadOnlyHandover(t *testing.T) {
 					t.Fatalf("OAM read unexpectedly opened: %02x", got)
 				}
 				b.Write(0xfe00, 0xaa)
-				if got := b.Get(0xfe00); got != 0x66 {
-					t.Fatalf("OAM write bypassed lock: %02x", got)
+				wantOAMWrite := byte(0x66)
+				if model.IsCGB() && scx&3 == 3 {
+					wantOAMWrite = 0xaa // independent CGB NCM CPU write-port edge
+				}
+				if got := b.Get(0xfe00); got != wantOAMWrite {
+					t.Fatalf("OAM write at last-pixel handover got %02x want %02x", got, wantOAMWrite)
 				}
 
 				p.lx = 0 // first LCD-on line is a dummy transfer

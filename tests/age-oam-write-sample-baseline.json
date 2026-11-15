@@ -16,11 +16,11 @@
     },
     "oam-write-ncmBCE.gb@CGBBC": {
       "sample_count": 480,
-      "minimum_matching_samples": 428
+      "minimum_matching_samples": 480
     },
     "oam-write-ncmBCE.gb@CGBDE": {
       "sample_count": 480,
-      "minimum_matching_samples": 428
+      "minimum_matching_samples": 480
     }
   }
 }

@@ -27,7 +27,11 @@ func TestDMGOAMReadLateHBlankPhaseDoesNotUnlockWrites(t *testing.T) {
 			if (model==types.DMGABC || model==types.CGBBC && !p.cgbMode) && scx&3==3 { want=0x5a }
 			if got:=b.Read(0xfe00);got!=want {t.Fatalf("%s SCX=%d late OAM read: got %02x want %02x",model,scx,got,want)}
 			b.Write(0xfe00,0xaa)
-			if got:=b.Get(0xfe00);got!=0x5a {t.Fatalf("%s SCX=%d OAM write lock bypassed: %02x",model,scx,got)}
+			wantWrite:=byte(0x5a)
+			if model.IsCGB() && scx&3==3 {
+				wantWrite=0xaa // physical CGB NCM write-port phase
+			}
+			if got:=b.Get(0xfe00);got!=wantWrite {t.Fatalf("%s SCX=%d OAM write got %02x want %02x",model,scx,got,wantWrite)}
 			p.lineState=StartOAMScan
 			if got:=b.Read(0xfe00);got!=0xff {t.Fatalf("%s OAM read unlocked during scan: %02x",model,got)}
 		}

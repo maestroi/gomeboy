@@ -154,6 +154,10 @@ type PPU struct {
 	// scheduler cycle is unaffected by subsequent SCX writes.
 	startupOAMReadOpenAt uint64
 
+	// CGB DMG-compatibility mode has a separate CPU OAM write handover
+	// on the abbreviated first LCD-on line. SCX phases 2/6 leave the
+	// write port PPU-owned one dot beyond the coarse HBlank unlock.
+	startupOAMWriteOpenAt uint64
 
 	// CGB-specific features
 	cgbMode       bool  // CGB mode
@@ -268,6 +272,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.lyForComparison = 0
 			p.wly = 255
 			p.startupOAMReadOpenAt = 0
+			p.startupOAMWriteOpenAt = 0
 
 			// OAM & VRAM bus is released
 			p.b.Unlock(io.OAM | io.VRAM)
@@ -898,6 +903,17 @@ func (p *PPU) handleVisualLine() {
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
+
+		// The physical CGB's DMG-compatible startup write port has
+		// its own first-HBlank handover at fine SCX phases 2/6.
+		// The CPU can read VRAM and the PPU can unlock its coarse OAM
+		// bus while CPU OAM writes remain blocked for one more dot.
+		if p.ly == 0 && p.lx == 0 &&
+			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
+			p.b.Model().IsCGB() && !p.cgbMode && !p.s.DoubleSpeed() &&
+			p.scx&3 == 2 {
+			p.startupOAMWriteOpenAt = p.s.Cycle() + 1
+		}
 
 		// The shortened first LCD-on scanline releases the coarse
 		// OAM/VRAM locks before the CPU OAM read port on physical CGB.
