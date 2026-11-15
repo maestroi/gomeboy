@@ -235,8 +235,7 @@
       "collection": "oam",
       "name": "oam-write-ncmBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/oam/oam-write-ncmBCE@CGBDE",
@@ -244,8 +243,7 @@
       "collection": "oam",
       "name": "oam-write-ncmBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-interrupt/stat-int-dmgC-cgbBCE@CGBBC",
