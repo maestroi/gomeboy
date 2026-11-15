@@ -15,6 +15,14 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		return defaultOpen
 	}
 	if defaultOpen {
+		// On the abbreviated first LCD-on line, the physical CGB
+		// compatibility-mode CPU OAM write port may remain locked
+		// after the coarse HBlank bus releases OAM and VRAM. The
+		// absolute release clock is captured from the real event.
+		if !p.cgbMode && p.b.Model().IsCGB() && !p.s.DoubleSpeed() &&
+			p.s.Cycle() < p.startupOAMWriteOpenAt {
+			return false
+		}
 		// The physical CGB write port is reserved for the upcoming
 		// Mode-2 OAM scan before the PPU takes its coarse bus lock.
 		// Native CGB colour does this in double speed; a DMG-only
