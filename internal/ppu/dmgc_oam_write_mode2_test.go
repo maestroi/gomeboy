@@ -24,6 +24,7 @@ func TestDMGCOAMWriteBeforeMode2(t *testing.T) {
 				p.cgbMode = false
 				p.glitchedLineState = GlitchedLineStartPixelTransfer
 				p.lineState = state
+				p.lx = 168 // completed ordinary visible scanline
 				p.oamScanIndex = 0
 				b.Set(0xfe00, 0x5a)
 				b.Write(0xfe00, 0x7b)
