@@ -33,7 +33,7 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		if (p.b.Model().IsCGB() &&
 			(p.cgbMode && p.s.DoubleSpeed() ||
 				!p.cgbMode && !p.s.DoubleSpeed()) ||
-			p.b.Model() == types.DMGABC && !p.s.DoubleSpeed()) &&
+			p.b.Model() == types.DMGABC && !p.s.DoubleSpeed() && p.lx == 168) &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
 			(p.lineState == HBlankEnd ||
 				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
