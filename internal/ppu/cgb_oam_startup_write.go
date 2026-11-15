@@ -31,16 +31,16 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		return true
 	}
 
-	// On physical CGB in native-colour mode, the completed final
-	// visible pixel can release CPU OAM writes before the scheduled
-	// HBlank event unlocks the shared PPU OAM bus. At normal speed
-	// this is observable at SCX residues 2,3,6,7; the double-speed
-	// CPU samples even fine-scroll phases. CPU OAM reads, DMA and
-	// compatibility-mode fetchers follow their own established phases.
-	if p.cgbMode && p.b.Model().IsCGB() &&
-		p.lineState == EnterHBlank && p.lx == 168 &&
-		(!p.s.DoubleSpeed() && p.scx&2 != 0 ||
-			p.s.DoubleSpeed() && p.scx&1 == 0) {
+	// A completed final visible pixel can release CPU OAM writes
+	// before the scheduled HBlank event unlocks the coarse OAM bus.
+	// Native CGB colour normal speed uses SCX 2/3/6/7; double speed
+	// uses even SCX phases. A DMG-compatible cartridge on physical
+	// CGB instead uses its own SCX 3/7 write-only handover phase.
+	// CPU OAM reads, DMA and the PPU pixel schedule remain separate.
+	if p.b.Model().IsCGB() && p.lineState == EnterHBlank && p.lx == 168 &&
+		(p.cgbMode && (!p.s.DoubleSpeed() && p.scx&2 != 0 ||
+			p.s.DoubleSpeed() && p.scx&1 == 0) ||
+			!p.cgbMode && !p.s.DoubleSpeed() && p.scx&3 == 3) {
 		return true
 	}
 
