@@ -116,3 +116,37 @@ func TestCGBDENCMStartupOAMReadHoldDoesNotOverrideLCDDisable(t *testing.T) {
 		t.Fatalf("OAM stayed blocked after disabling LCD: %02x", got)
 	}
 }
+
+
+// The first-HBlank write-only hold must be discarded when LCDC.7 is
+// cleared, not linger through an LCD restart at the same SCX phase.
+func TestCGBNCMStartupOAMWriteHoldResetOnLCDDisable(t *testing.T) {
+	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
+		t.Run(model.String(), func(t *testing.T) {
+			s := scheduler.NewScheduler()
+			b := gbio.NewBus(s, make([]byte, 0x8000))
+			b.Map(model)
+			p := New(b, s)
+			b.Set(0xfe00, 0x5a)
+			b.Write(types.SCX, 2)
+			b.Write(types.LCDC, types.Bit7)
+			s.Tick(252) // shortened startup HBlank at 250+SCX
+			if p.startupOAMWriteOpenAt != s.Cycle()+1 {
+				t.Fatalf("first-HBlank OAM write hold not scheduled at SCX 2: now=%d release=%d",
+					s.Cycle(), p.startupOAMWriteOpenAt)
+			}
+			b.Write(0xfe00, 0x77)
+			if got := b.Get(0xfe00); got != 0x5a {
+				t.Fatalf("startup OAM write hold did not block write: %02x", got)
+			}
+			b.Write(types.LCDC, 0)
+			if p.enabled || p.startupOAMWriteOpenAt != 0 {
+				t.Fatal("LCD disable retained startup OAM write hold")
+			}
+			b.Write(0xfe00, 0x77)
+			if got := b.Get(0xfe00); got != 0x77 {
+				t.Fatalf("LCD-off OAM write still blocked: %02x", got)
+			}
+		})
+	}
+}
