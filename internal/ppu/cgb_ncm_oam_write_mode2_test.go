@@ -32,8 +32,9 @@ func TestCGBNCMOAMWriteBeforeMode2(t *testing.T) {
 						b.Set(0xfe00, 0x5a)
 						b.Write(0xfe00, 0x7b)
 						want := byte(0x7b)
-						if model.IsCGB() &&
-							(colour && doubleSpeed || !colour && !doubleSpeed) &&
+						if (model.IsCGB() &&
+							(colour && doubleSpeed || !colour && !doubleSpeed) ||
+							model == types.DMGABC && !doubleSpeed) &&
 							(state == HBlankEnd || state == StartOAMScan) {
 							want = 0x5a
 						}
