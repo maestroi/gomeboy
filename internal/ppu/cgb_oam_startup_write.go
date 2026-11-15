@@ -1,5 +1,7 @@
 package ppu
 
+import "github.com/maestroi/gomeboy/internal/types"
+
 // cpuOAMWriteOpen models the CPU-facing OAM write port at the physical
 // CGB's hardware handovers, independent of CPU reads and PPU scanning.
 //
@@ -28,9 +30,10 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		// Native CGB colour does this in double speed; a DMG-only
 		// cartridge uses the CGB CPU's write timing at normal speed.
 		// CPU OAM reads, VRAM, DMA, and PPU scan timing are unchanged.
-		if p.b.Model().IsCGB() &&
+		if (p.b.Model().IsCGB() &&
 			(p.cgbMode && p.s.DoubleSpeed() ||
-				!p.cgbMode && !p.s.DoubleSpeed()) &&
+				!p.cgbMode && !p.s.DoubleSpeed()) ||
+			p.b.Model() == types.DMGABC && !p.s.DoubleSpeed()) &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
 			(p.lineState == HBlankEnd ||
 				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
