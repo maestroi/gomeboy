@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/91/?scale=100&title=passing%20283,%20failing%2028&width=500)
+![progress](https://progress-bar.xyz/91/?scale=100&title=passing%20284,%20failing%2027&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 283 |
-| XFAIL | 28 |
+| PASS | 284 |
+| XFAIL | 27 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -50,7 +50,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 49% | 27 | 28 | 55 |
+| age | 51% | 28 | 27 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -99,7 +99,7 @@ is compared against a reference image from a known good emulator.
 #### ly
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| ly-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| ly-cgbE@CGBDE | pass | pass | pass |  |
 | ly-dmgC-cgbBC@CGBBC | pass | pass | pass |  |
 | ly-dmgC-cgbBC@DMG | pass | pass | pass |  |
 | ly-ncmBC@CGBBC | pass | pass | pass |  |
