@@ -715,14 +715,13 @@ func (b *Bus) ClockedRead(addr uint16) byte {
 // ClockedWrite clocks the Game Boy and writes a byte to the
 // bus.
 func (b *Bus) ClockedWrite(address uint16, value byte) {
-	// Physical CGB hardware samples CPU OAM writes on the penultimate
-	// T-state of the four-cycle memory access, even with a DMG-only
-	// cartridge in compatibility mode. The cartridge's header does not
-	// change the CPU bus phase. Advance the final T-state afterward so
-	// PPU/DMA events retain their original scheduling.
-	// Double-speed and DMG hardware keep their independent sample phase.
+	// CPU OAM writes on physical CGB at normal speed drive the bus
+	// before the final T-state of their four-cycle memory access.
+	// Mode-2/Mode-3 ownership can change at the M-cycle endpoint;
+	// preserve the full M-cycle duration after the bus sample.
+	// Double-speed and DMG hardware retain their existing phase.
 	if address >= 0xfe00 && address <= 0xfe9f && b.model.IsCGB() &&
-		!b.s.DoubleSpeed() {
+		b.IsGBCCart() && !b.s.DoubleSpeed() {
 		b.s.Tick(3)
 		b.Write(address, value)
 		b.s.Tick(1)
