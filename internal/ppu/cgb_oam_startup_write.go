@@ -15,12 +15,14 @@ func (p *PPU) cpuOAMWriteOpen(defaultOpen bool) bool {
 		return defaultOpen
 	}
 	if defaultOpen {
-		// Physical CGB at double speed reserves the CPU OAM write
-		// port at the end-of-HBlank / next-Mode-2 handover, before
-		// the PPU's next scheduled OAM scan acquires its coarse lock.
-		// This is a CPU write-port phase: CPU reads, VRAM, DMA and the
-		// PPU's scanning schedule remain independent.
-		if p.cgbMode && p.b.Model().IsCGB() && p.s.DoubleSpeed() &&
+		// The physical CGB write port is reserved for the upcoming
+		// Mode-2 OAM scan before the PPU takes its coarse bus lock.
+		// Native CGB colour does this in double speed; a DMG-only
+		// cartridge uses the CGB CPU's write timing at normal speed.
+		// CPU OAM reads, VRAM, DMA, and PPU scan timing are unchanged.
+		if p.b.Model().IsCGB() &&
+			(p.cgbMode && p.s.DoubleSpeed() ||
+				!p.cgbMode && !p.s.DoubleSpeed()) &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
 			(p.lineState == HBlankEnd ||
 				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
