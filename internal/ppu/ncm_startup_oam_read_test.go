@@ -11,8 +11,8 @@ import (
 
 // NCM uses the DMG pixel fetcher on physical CGB hardware. On the
 // abbreviated LCD-enable line, B/C retains the CPU OAM read port for
-// one additional dot and D/E for two, without delaying VRAM reads or OAM
-// writes.
+// one additional dot and D/E for two, without delaying VRAM reads.
+// CGB compatibility-mode OAM writes have their own one-dot hold at SCX 2/6.
 // Exercise the actual scheduled startup transitions (not a forged PPU state).
 func TestCGBRevisionNCMStartupOAMReadRelease(t *testing.T) {
 	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
@@ -43,8 +43,12 @@ func TestCGBRevisionNCMStartupOAMReadRelease(t *testing.T) {
 					t.Fatalf("VRAM release moved with OAM read: %02x", got)
 				}
 				b.Write(0xfe00, 0x7c)
-				if got := b.Get(0xfe00); got != 0x7c {
-					t.Fatalf("OAM write stayed blocked at HBlank: %02x", got)
+				firstWrite := byte(0x7c)
+				if scx&3 == 2 {
+					firstWrite = 0x5a
+				}
+				if got := b.Get(0xfe00); got != firstWrite {
+					t.Fatalf("startup HBlank OAM write got %02x want %02x", got, firstWrite)
 				}
 
 				want := byte(0xff)
@@ -52,8 +56,14 @@ func TestCGBRevisionNCMStartupOAMReadRelease(t *testing.T) {
 					t.Fatalf("OAM read at startup HBlank got %02x want %02x", got, want)
 				}
 
-				// B/C opens after one further dot; D/E after two.
+				// B/C OAM reads open after one dot; D/E after two.
+				// The separate write port at SCX 2/6 also opens after
+				// one dot, without postponing VRAM or OAM CPU reads.
 				s.Tick(1)
+				b.Write(0xfe00, 0x7c)
+				if got := b.Get(0xfe00); got != 0x7c {
+					t.Fatalf("OAM write port did not reopen after one dot: %02x", got)
+				}
 				want = 0x7c
 				if model == types.CGBDE {
 					want = 0xff
