@@ -49,16 +49,28 @@ func TestDMGCOAMWriteMode2RealScanline(t *testing.T) {
 	b.Set(0xfe00, 0x5a)
 	b.Write(types.LCDC, types.Bit7)
 
+	// The shortened LCD-enable line must preserve its own write
+	// handover: this rule applies only after a complete visible line.
+	for clock := 0; clock < 600; clock++ {
+		if p.ly == 1 && p.lineState == HBlankEnd {
+			b.Write(0xfe00, 0x66)
+			if got := b.Get(0xfe00); got != 0x66 {
+				t.Fatalf("DMG startup HBlank write closed prematurely: %02x", got)
+			}
+			break
+		}
+		s.Tick(1)
+	}
 	advance := func(state LineState) {
 		t.Helper()
 		for clocks := 0; clocks < 1600; clocks++ {
-			if p.ly == 1 && p.lineState == state &&
+			if p.ly == 2 && p.lineState == state &&
 				p.glitchedLineState == GlitchedLineStartPixelTransfer {
 				return
 			}
 			s.Tick(1)
 		}
-		t.Fatalf("line 1 did not reach PPU state %d", state)
+		t.Fatalf("line 2 did not reach PPU state %d", state)
 	}
 	advance(HBlankUpdateVisibleLY)
 	b.Write(0xfe00, 0x7b)
