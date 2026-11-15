@@ -104,9 +104,12 @@ func TestCGBDENativeDoubleSpeedOAMReadBeforeMode2(t *testing.T) {
 						t.Fatalf("line %d HBlankEnd OAM read got %02x want %02x",
 							line, got, handoverWant)
 					}
-					b.Write(0xfe00, 0x7c)
+					// The CPU OAM write port closes at HBlankEnd on
+					// both physical CGB revision families. The read
+					// port remains revision-specific (B/C vs D/E).
+					b.Write(0xfe00, 0x3d)
 					if got := b.Get(0xfe00); got != 0x7c {
-						t.Fatalf("line %d HBlankEnd blocked CPU OAM write: %02x", line, got)
+						t.Fatalf("line %d HBlankEnd CPU OAM write escaped lock: %02x", line, got)
 					}
 
 					// The final HBlank dot advertises the next Mode 2
@@ -132,8 +135,8 @@ func TestCGBDENativeDoubleSpeedOAMReadBeforeMode2(t *testing.T) {
 							line, got, want)
 					}
 					b.Write(0xfe00, 0x3d)
-					if got := b.Get(0xfe00); got != 0x3d {
-						t.Fatalf("line %d CPU OAM write locked before scan: %02x", line, got)
+					if got := b.Get(0xfe00); got != 0x7c {
+						t.Fatalf("line %d pre-scan CPU OAM write escaped lock: %02x", line, got)
 					}
 					s.Tick(2) // one PPU dot (two double-speed CPU clocks) until scan
 					if got := b.Read(0xfe00); got != 0xff {
