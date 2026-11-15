@@ -1055,6 +1055,12 @@ const (
 	// EndFrame completes frame processing and resets PPU state for
 	// new frame.
 	EndFrame
+
+	// Line153CGBDENormalLYRelease is a CPU-visible LY register update
+	// at dot 9 on CGB D/E normal speed, one dot after the internal
+	// line-153 LYC comparison update. Keep the new state at the end
+	// so existing snapshot state IDs remain unchanged.
+	Line153CGBDENormalLYRelease
 )
 
 // offscreenLineCycles defines timing for VBlank period states.
@@ -1082,11 +1088,10 @@ var offscreenLineCycles = []uint64{
 	Line153LYC0:         444,
 }
 
-// lateLine153LYZero reports whether the visible LY register remains 153 until
-// dot 8 of line 153. Hardware measurements used by AGE and SameBoy show two
-// production CGB paths:
-//   - CGB B/C, normal speed: LY becomes 0 at dot 6.
-//   - CGB D/E, and CGB double speed: LY remains 153 until dot 8.
+// lateLine153LYZero selects the later line-153 LY/LYC phase on CGB.
+// The externally visible register changes at dot 6 on B/C normal-speed,
+// dot 8 on double-speed CGB, and dot 9 on D/E normal-speed. In the last
+// case LYC comparison still updates at dot 8.
 //
 // The generic CGB profile follows the established production behavior and
 // therefore takes the late path only in double speed.
@@ -1174,14 +1179,28 @@ func (p *PPU) handleOffscreenLine() {
 		p.statUpdate()
 	case Line153LYC:
 		if p.lateLine153LYZero() {
-			p.b.Set(types.LY, 0)
-			// D/E (and double-speed CGB) keeps LY=153 as the comparison
-			// value until dot 12 even though the visible register is now 0.
+			// The D/E normal-speed CPU observes LY=153 on the dot-8
+			// handover. Update its visible register one dot later,
+			// while maintaining the established dot-8 LY compare
+			// and dot-12 comparison reset schedule.
+			if p.b.Model() != types.CGBDE || p.s.DoubleSpeed() {
+				p.b.Set(types.LY, 0)
+			}
 			p.lyForComparison = 153
 		} else {
 			p.lyForComparison = 0xffff
 		}
 		p.statUpdate()
+		if p.b.Model() == types.CGBDE && !p.s.DoubleSpeed() {
+			p.offscreenLineState = Line153CGBDENormalLYRelease
+			p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, 1)
+			return
+		}
+	case Line153CGBDENormalLYRelease: // dot 9, normal-speed D/E only
+		p.b.Set(types.LY, 0)
+		p.offscreenLineState = Line153LYC0
+		p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, 3)
+		return
 	case Line153LYC0:
 		p.lyForComparison = 0
 		p.statUpdate()

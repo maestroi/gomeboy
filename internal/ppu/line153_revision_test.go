@@ -75,15 +75,23 @@ func TestLine153LYTimingCGBDENormalSpeed(t *testing.T) {
 		t.Fatalf("CGB D/E LY at dot 7 = %d, want 153", got)
 	}
 
-	s.Tick(1) // dot 8: visible LY becomes zero, comparison still sees 153
-	if got := b.Get(types.LY); got != 0 {
-		t.Fatalf("CGB D/E LY at dot 8 = %d, want 0", got)
+	s.Tick(1) // dot 8: LYC compares 153; CPU LY still reads 153
+	if got := b.Get(types.LY); got != 153 {
+		t.Fatalf("CGB D/E visible LY at dot 8 = %d, want 153", got)
 	}
 	if p.lyForComparison != 153 {
 		t.Fatalf("CGB D/E comparison at dot 8 = %d, want 153", p.lyForComparison)
 	}
 
-	s.Tick(4) // dot 12
+	s.Tick(1) // dot 9: visible LY becomes 0, comparison still sees 153
+	if got := b.Get(types.LY); got != 0 {
+		t.Fatalf("CGB D/E visible LY at dot 9 = %d, want 0", got)
+	}
+	if p.lyForComparison != 153 {
+		t.Fatalf("CGB D/E comparison at dot 9 = %d, want 153", p.lyForComparison)
+	}
+
+	s.Tick(3) // dot 12: LYC comparison resets to zero at same phase
 	if p.lyForComparison != 0 {
 		t.Fatalf("CGB D/E comparison at dot 12 = %d, want 0", p.lyForComparison)
 	}
@@ -114,5 +122,23 @@ func TestLine153LYTimingCGBBCDoubleSpeedUsesLatePath(t *testing.T) {
 	}
 	if p.lyForComparison != 153 {
 		t.Fatalf("double-speed CGB B/C comparison at dot 8 = %d, want 153", p.lyForComparison)
+	}
+}
+
+
+// Double speed retains its measured dot-8 LY release; the special dot-9
+// visible register phase is exclusive to CGB D/E at normal speed.
+func TestLine153LYTimingCGBDEDoubleSpeedKeepsDot8(t *testing.T) {
+	p, b, s := newLine153RevisionTest(t, types.CGBDE, true)
+	s.Tick(14) // 7 PPU dots at double speed
+	if got := b.Get(types.LY); got != 153 {
+		t.Fatalf("double-speed CGB D/E LY at dot 7 = %d, want 153", got)
+	}
+	s.Tick(2) // dot 8
+	if got := b.Get(types.LY); got != 0 {
+		t.Fatalf("double-speed CGB D/E LY at dot 8 = %d, want 0", got)
+	}
+	if p.lyForComparison != 153 {
+		t.Fatalf("double-speed CGB D/E LYC at dot 8 = %d, want 153", p.lyForComparison)
 	}
 }
