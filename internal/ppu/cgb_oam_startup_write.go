@@ -10,8 +10,22 @@ package ppu
 // relax DMA restrictions. It applies only to colour CGB double speed
 // during the transition from the startup OAM write lock to Mode 3.
 func (p *PPU) cpuOAMStartupWriteOpen(defaultOpen bool) bool {
-	if defaultOpen || !p.enabled {
+	if !p.enabled {
 		return defaultOpen
+	}
+	if defaultOpen {
+		// Physical CGB at double speed reserves the CPU OAM write
+		// port at the end-of-HBlank / next-Mode-2 handover, before
+		// the PPU's next scheduled OAM scan acquires its coarse lock.
+		// This is a CPU write-port phase: CPU reads, VRAM, DMA and the
+		// PPU's scanning schedule remain independent.
+		if p.cgbMode && p.b.Model().IsCGB() && p.s.DoubleSpeed() &&
+			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
+			(p.lineState == HBlankEnd ||
+				p.lineState == StartOAMScan && p.oamScanIndex == 0) {
+			return false
+		}
+		return true
 	}
 
 	// On physical CGB in native-colour mode, the completed final
