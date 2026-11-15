@@ -69,12 +69,16 @@ func TestCGBBCNCMOAMReadAtEndOfRealScanline(t *testing.T) {
 					t.Fatalf("final-pixel CPU OAM read: got %02x want %02x", got, want)
 				}
 				b.Write(0xfe00, 0x99)
-				if got := b.Get(0xfe00); got != 0x5a {
-					t.Fatalf("OAM write escaped PPU lock: got %02x", got)
+				wantOAM := byte(0x5a)
+				if tc.model.IsCGB() && tc.colour && scx&2 != 0 {
+					wantOAM = 0x99
+				}
+				if got := b.Get(0xfe00); got != wantOAM {
+					t.Fatalf("completed-pixel OAM write: got %02x want %02x", got, wantOAM)
 				}
 				s.Tick(p.enterHBlankDelay())
-				if got := b.Read(0xfe00); got != 0x5a {
-					t.Fatalf("ordinary HBlank still blocks CPU OAM reads: %02x", got)
+				if got := b.Read(0xfe00); got != wantOAM {
+					t.Fatalf("ordinary HBlank CPU OAM read got %02x want %02x", got, wantOAM)
 				}
 			})
 		}

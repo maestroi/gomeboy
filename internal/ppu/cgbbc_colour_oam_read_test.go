@@ -125,6 +125,18 @@ func TestCGBColourBufferedFinalPixelOAMReadPhase(t *testing.T) {
 					if got := b.Read(0xfe00); got != want {
 						t.Fatalf("completed final-pixel read: got %02x want %02x", got, want)
 					}
+					// The CPU write port samples the completed pixel
+					// independently from the CPU read port: normal
+					// speed opens at SCX 2/3/6/7, double at even SCX.
+					b.Write(0xfe00, 0x77)
+					wantStored := byte(0x5a)
+					if !doubleSpeed && scx&2 != 0 ||
+						doubleSpeed && scx&1 == 0 {
+						wantStored = 0x77
+					}
+					if got := b.Get(0xfe00); got != wantStored {
+						t.Fatalf("completed final-pixel write: got %02x want %02x", got, wantStored)
+					}
 				})
 			}
 		}
