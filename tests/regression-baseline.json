@@ -129,8 +129,7 @@
       "collection": "ly",
       "name": "ly-cgbE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/ly/ly-dmgC-cgbBC@CGBBC",
