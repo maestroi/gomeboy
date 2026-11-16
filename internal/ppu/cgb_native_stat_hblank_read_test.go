@@ -42,14 +42,20 @@ func TestNativeCGBFinalPixelSTATModeReadPort(t *testing.T) {
 			}
 			edge := p.enterHBlankDelay()
 			s.ScheduleEvent(scheduler.PPUHandleVisualLine, edge)
+			// The scheduler expresses PPU dots as two CPU clocks at
+			// CGB double speed.
+			clockEdge := edge
+			if tc.doubleSpeed {
+				clockEdge *= 2
+			}
 			if got := b.Read(types.STAT) & 3; (got == ModeVRAM) != tc.retainMode3 {
 				t.Fatalf("CPU STAT before HBlank entry = %d, retain Mode 3=%t", got, tc.retainMode3)
 			}
 			if p.mode != ModeHBlank {
 				t.Fatalf("internal PPU mode shifted: got %d", p.mode)
 			}
-			if edge > 1 {
-				s.Tick(edge - 1)
+			if clockEdge > 1 {
+				s.Tick(clockEdge - 1)
 				if got := b.Read(types.STAT) & 3; (got == ModeVRAM) != tc.retainMode3 {
 					t.Fatalf("CPU STAT immediately before HBlank entry = %d, retain Mode 3=%t", got, tc.retainMode3)
 				}
