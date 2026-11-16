@@ -14,6 +14,7 @@ type State struct {
 
 	// Rendering state
 	Mode, ModeToInt, LY, LX, Status uint8
+	StartupSTATMode3Until, FrameSTATMode1Until uint64
 
 	// Window rendering state
 	WinFetcherX, WLY           uint8
@@ -102,6 +103,8 @@ func (p *PPU) Snapshot() State {
 		AddressMode:              p.addressMode,
 		Mode:                     p.mode,
 		ModeToInt:                p.modeToInt,
+		StartupSTATMode3Until:    p.startupSTATMode3Until,
+		FrameSTATMode1Until:      p.frameSTATMode1Until,
 		LY:                       p.ly,
 		LX:                       p.lx,
 		Status:                   p.status,
@@ -173,6 +176,8 @@ func (p *PPU) Restore(s State) {
 	p.addressMode = s.AddressMode
 	p.mode = s.Mode
 	p.modeToInt = s.ModeToInt
+	p.startupSTATMode3Until = s.StartupSTATMode3Until
+	p.frameSTATMode1Until = s.FrameSTATMode1Until
 	p.ly = s.LY
 	p.lx = s.LX
 	p.status = s.Status
