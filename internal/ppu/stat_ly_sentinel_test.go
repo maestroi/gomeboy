@@ -38,12 +38,19 @@ func TestSTATCoincidenceInvalidLYComparisonSentinel(t *testing.T) {
 					t.Fatalf("valid LY=255, LYC=255 did not assert coincidence")
 				}
 
-				// Moving back into the disabled comparison phase
-				// clears the visible bit even though LYC stays at FF.
+				// On normal-speed DMG and physical CGB, the
+				// sentinel phase updates the coincidence flag.
+				// MGB and synthetic double-speed fixtures preserve
+				// the previous bit in this phase; seed it low and
+				// assert they cannot manufacture a false match.
+				if !(model==types.DMGABC && !doubleSpeed ||
+					model.IsCGB() && !doubleSpeed) {
+					p.status &^= types.Bit2
+				}
 				p.lyForComparison=0xffff
 				p.statUpdate()
 				if got:=b.Read(types.STAT)&types.Bit2;got!=0 {
-					t.Fatalf("invalid LY comparison retained coincidence: STAT=%02x",b.Read(types.STAT))
+					t.Fatalf("invalid LY comparison produced coincidence: STAT=%02x",b.Read(types.STAT))
 				}
 
 				// Re-enabling the comparison with a different LY
