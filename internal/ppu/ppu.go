@@ -154,6 +154,11 @@ type PPU struct {
 	// scheduler cycle is unaffected by subsequent SCX writes.
 	startupOAMReadOpenAt uint64
 
+	// The CGB B/C CPU-visible STAT mode-3 bit remains asserted for one
+	// clock at the SCX 2/6 first-LCD-on HBlank handover, independently
+	// of the already-unlocked PPU VRAM/OAM buses and Mode-0 IRQ edge.
+	startupSTATMode3Until uint64
+
 	// CGB DMG-compatibility mode has a separate CPU OAM write handover
 	// on the abbreviated first LCD-on line. SCX phases 2/6 leave the
 	// write port PPU-owned one dot beyond the coarse HBlank unlock.
@@ -273,6 +278,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.wly = 255
 			p.startupOAMReadOpenAt = 0
 			p.startupOAMWriteOpenAt = 0
+			p.startupSTATMode3Until = 0
 
 			// OAM & VRAM bus is released
 			p.b.Unlock(io.OAM | io.VRAM)
@@ -320,11 +326,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		p.status = p.status&0b1000_0111 | v&0b0111_1000
 		p.statUpdate()
 
-		return types.Bit7 | p.status | p.mode
+		return p.cpuVisibleSTAT()
 	})
-	b.ReserveLazyReader(types.STAT, func() byte {
-		return types.Bit7 | p.status | p.mode
-	})
+	b.ReserveLazyReader(types.STAT, p.cpuVisibleSTAT)
 	b.ReserveAddress(types.SCY, func(v byte) byte {
 		p.scy = v
 		return v
@@ -723,6 +727,20 @@ var stateCycles = []uint64{
 	HBlankEnd:             0,
 }
 
+// cpuVisibleSTAT samples the CPU-facing STAT mode bits. The physical CGB
+// B/C has a one-clock mode-3-to-0 read handover at the first LCD-enabled
+// HBlank edge for fine-scroll residues 2 and 6, distinct from its VRAM/OAM
+// unlock and the STAT interrupt source transition.
+func (p *PPU) cpuVisibleSTAT() byte {
+	mode := p.mode
+	if p.enabled && p.b.Model() == types.CGBBC && !p.cgbMode &&
+		!p.s.DoubleSpeed() && p.startupSTATMode3Until != 0 &&
+		p.s.Cycle() < p.startupSTATMode3Until {
+		mode = ModeVRAM
+	}
+	return types.Bit7 | p.status | mode
+}
+
 // handleVisualLine manages the complete lifecycle of the visible lines (LY = 0-143)
 // progressing through ModeOAM, ModeVRAM and ModeHBlank phases with the best effort attempt
 // at hardware accurate timings.
@@ -903,6 +921,17 @@ func (p *PPU) handleVisualLine() {
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
+
+		// Physical CGB B/C in DMG compatibility mode exposes one
+		// additional CPU STAT mode-3 clock at fine SCX residues 2/6
+		// on the abbreviated LCD-on line. Its coarse bus and STAT
+		// interrupt boundaries keep their independent timings.
+		if p.b.Model() == types.CGBBC && !p.cgbMode && !p.s.DoubleSpeed() &&
+			p.ly == 0 && p.lx == 0 &&
+			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
+			p.scx&3 == 2 {
+			p.startupSTATMode3Until = p.s.Cycle() + 1
+		}
 
 		// The physical CGB's DMG-compatible startup write port has
 		// its own first-HBlank handover at fine SCX phases 2/6.
