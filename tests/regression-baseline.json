@@ -421,8 +421,7 @@
       "collection": "stat-mode",
       "name": "stat-mode-dmgC-cgbBC@DMG",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode/stat-mode-ds-cgbBCE@CGBBC",

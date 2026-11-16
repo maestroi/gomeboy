@@ -161,6 +161,8 @@ jobs:
         run: go test -tags test -v ./tests -run '^TestAgeVRAMReadDiagnostics$'
       - name: diagnose AGE LY and STAT-mode first divergences
         run: go test -tags test -v ./tests -run '^TestAgePPUTimingDiagnostics$'
+      - name: diagnose AGE raw CPU STAT-mode reads
+        run: go test -tags test -v ./tests -run '^TestAgeSTATModeRawDiagnostics$'
       - name: benchmark GB/GBC whole-frame performance
         run: |
           set -o pipefail
