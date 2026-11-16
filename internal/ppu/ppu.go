@@ -1664,7 +1664,11 @@ func (p *PPU) statUpdate() {
 
 	// update LYC_EQ_LY flag
 	if p.lyForComparison != 0xffff || (p.b.Model() <= types.DMGABC || p.b.Model().IsCGB()) && !p.s.DoubleSpeed() {
-		if uint8(p.lyForComparison) == p.lyCompare {
+		// 0xffff marks a temporarily disabled LY comparison during
+		// scanline / VBlank handovers. Never truncate that sentinel
+		// to 0xff: if LYC is also 0xff, it would falsely assert STAT's
+		// visible coincidence bit even though no LY match occurred.
+		if p.lyForComparison != 0xffff && uint8(p.lyForComparison) == p.lyCompare {
 			p.lycInt = true
 			p.status |= types.Bit2
 		} else {
