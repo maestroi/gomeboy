@@ -1029,7 +1029,8 @@ func (p *PPU) handleVisualLine() {
 		if p.ly != 0 {
 			p.modeToInt = ModeOAM
 			p.mode = ModeHBlank
-		} else if !p.cgbMode && p.b.Model() != types.CGBDE {
+		} else if !p.cgbMode &&
+			(p.b.Model() != types.CGBDE || p.s.DoubleSpeed()) {
 			p.mode = ModeHBlank
 		}
 		p.statUpdate()
