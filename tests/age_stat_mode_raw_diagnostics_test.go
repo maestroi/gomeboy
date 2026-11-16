@@ -77,6 +77,31 @@ func TestAgeSTATModeRawDiagnostics(t *testing.T) {
 				at++
 			}
 			if bestROM<0 || bestAgreement!=40 {
+				// A highest-scoring ROM/WRAM pairing is not necessarily
+				// the embedded AGE expectation table. Emit only tentative
+				// per-group evidence when its first-difference indices
+				// disagree with the independently rendered compact verdict.
+				// This helps disambiguate native-colour and double-speed
+				// layouts without ever claiming an unverified raw score.
+				if bestROM>=0 {
+					t.Logf("AGE tentative STAT matrix location: model=%s rom=%s rom_offset=%#x wram=%#x compact_agreement=%d/40 (unverified)",
+						tc.model,tc.rom,bestROM,bestRAM,bestAgreement)
+					for group:=0;group<40;group++ {
+						first:=byte(0xff)
+						var expected,observed [12]byte
+						for j:=0;j<12;j++ {
+							off:=group*12+j
+							expected[j]=g.ROM[bestROM+off]
+							observed[j]=g.Bus.Get(bestRAM+uint16(off))
+							if first==0xff && expected[j]!=observed[j] {first=byte(j)}
+						}
+						if first==verdict[group] {continue}
+						row,probe:=group/3,group%3
+						if group>=38 {row,probe=13,group-38}
+						t.Logf("AGE tentative STAT candidate mismatch: model=%s rom=%s row=%d probe=%d compact_first_bad=%d candidate_first_bad=%d expected=% x observed=% x",
+							tc.model,tc.rom,row,probe,verdict[group],first,expected,observed)
+					}
+				}
 				// Some native CGB colour ROMs have additional
 				// independent mode-0/3 differences. Until their
 				// expected/observed buffers can be disambiguated
