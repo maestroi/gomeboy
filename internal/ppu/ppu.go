@@ -154,9 +154,9 @@ type PPU struct {
 	// scheduler cycle is unaffected by subsequent SCX writes.
 	startupOAMReadOpenAt uint64
 
-	// The CGB B/C CPU-visible STAT mode-3 bit remains asserted for one
-	// clock at the SCX 2/6 first-LCD-on HBlank handover, independently
-	// of the already-unlocked PPU VRAM/OAM buses and Mode-0 IRQ edge.
+	// Physical CGB B/C and D/E in DMG compatibility mode keep the CPU
+	// STAT mode-3 bits for one clock at the SCX 2/6 initial HBlank
+	// handover, independent of coarse VRAM/OAM and Mode-0 IRQ phases.
 	startupSTATMode3Until uint64
 
 	// CGB DMG-compatibility mode has a separate CPU OAM write handover
@@ -727,13 +727,13 @@ var stateCycles = []uint64{
 	HBlankEnd:             0,
 }
 
-// cpuVisibleSTAT samples the CPU-facing STAT mode bits. The physical CGB
-// B/C has a one-clock mode-3-to-0 read handover at the first LCD-enabled
-// HBlank edge for fine-scroll residues 2 and 6, distinct from its VRAM/OAM
-// unlock and the STAT interrupt source transition.
+// cpuVisibleSTAT samples the CPU-facing STAT mode bits. Physical CGB
+// B/C and D/E have a one-clock mode-3-to-0 read handover at the first
+// LCD-enabled HBlank edge for fine-scroll residues 2/6, distinct from
+// the VRAM/OAM bus unlock and the STAT interrupt source transition.
 func (p *PPU) cpuVisibleSTAT() byte {
 	mode := p.mode
-	if p.enabled && p.b.Model() == types.CGBBC && !p.cgbMode &&
+	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
 		!p.s.DoubleSpeed() && p.startupSTATMode3Until != 0 &&
 		p.s.Cycle() < p.startupSTATMode3Until {
 		mode = ModeVRAM
@@ -926,7 +926,7 @@ func (p *PPU) handleVisualLine() {
 		// additional CPU STAT mode-3 clock at fine SCX residues 2/6
 		// on the abbreviated LCD-on line. Its coarse bus and STAT
 		// interrupt boundaries keep their independent timings.
-		if p.b.Model() == types.CGBBC && !p.cgbMode && !p.s.DoubleSpeed() &&
+		if p.b.Model().IsCGB() && !p.cgbMode && !p.s.DoubleSpeed() &&
 			p.ly == 0 && p.lx == 0 &&
 			p.glitchedLineState == GlitchedLineStartPixelTransfer &&
 			p.scx&3 == 2 {
@@ -1021,11 +1021,16 @@ func (p *PPU) handleVisualLine() {
 			p.lyForComparison = 0
 		}
 
-		// OAM stat int fires 1 dot before STAT changes, except on line 0
+		// The Mode-2 STAT interrupt source rises before its visible
+		// mode bits on ordinary scanlines. At frame rollover (LY=0),
+		// physical CGB D/E retains visible Mode 1 through the final
+		// HBlank-end handover even with a DMG-only cartridge; there
+		// is no extra Mode-0 CPU read cycle before the Mode-2 scan.
 		if p.ly != 0 {
 			p.modeToInt = ModeOAM
 			p.mode = ModeHBlank
-		} else if !p.cgbMode {
+		} else if !p.cgbMode &&
+			(p.b.Model() != types.CGBDE || p.s.DoubleSpeed()) {
 			p.mode = ModeHBlank
 		}
 		p.statUpdate()
