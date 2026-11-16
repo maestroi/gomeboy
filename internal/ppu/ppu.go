@@ -733,6 +733,16 @@ var stateCycles = []uint64{
 // the VRAM/OAM bus unlock and the STAT interrupt source transition.
 func (p *PPU) cpuVisibleSTAT() byte {
 	mode := p.mode
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		!p.s.DoubleSpeed() && mode == ModeHBlank &&
+		p.lineState == EnterHBlank {
+		// On normal-speed physical CGB colour hardware, the final
+		// buffered pixel ends the rendering pipeline before the CPU
+		// read port observes the Mode-3-to-0 transition. Keep STAT
+		// in Mode 3 until the scheduled HBlank entry, independently
+		// of the internal PPU mode, bus release and STAT IRQ phase.
+		mode = ModeVRAM
+	}
 	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
 		!p.s.DoubleSpeed() && p.startupSTATMode3Until != 0 &&
 		p.s.Cycle() < p.startupSTATMode3Until {
