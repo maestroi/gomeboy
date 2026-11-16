@@ -447,8 +447,7 @@
       "collection": "stat-mode",
       "name": "stat-mode-ncmBC@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode/stat-mode-ncmE@CGBDE",
