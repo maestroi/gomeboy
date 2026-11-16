@@ -22,13 +22,7 @@ func TestCGBDECompatibilityFrameStartSTATModeHandover(t *testing.T) {
 		{types.DMGABC, false, ModeHBlank},
 		{types.CGBBC, false, ModeHBlank},
 		{types.CGBDE, false, ModeVBlank},
-		{types.CGBDE, true, ModeVBlank},
 	} {
-		// The native CGB case does not use the compatibility-mode
-		// HBlank transition: it remains in VBlank until Mode 2.
-		if tc.cgbMode {
-			continue
-		}
 		t.Run(fmt.Sprintf("%s/cgb=%t", tc.model, tc.cgbMode), func(t *testing.T) {
 			s := scheduler.NewScheduler()
 			b := gbio.NewBus(s, make([]byte, 0x8000))
