@@ -403,8 +403,7 @@
       "collection": "stat-mode",
       "name": "stat-mode-cgbE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode/stat-mode-dmgC-cgbBC@CGBBC",
