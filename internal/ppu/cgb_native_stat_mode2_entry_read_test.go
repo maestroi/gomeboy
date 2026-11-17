@@ -53,8 +53,13 @@ func TestNativeCGBStartOAMSTATReadPort(t *testing.T) {
 				if p.oamScanIndex != 1 {
 					t.Fatalf("scan did not read OAM entry 0, index = %d", p.oamScanIndex)
 				}
-				if got := b.Read(types.STAT) & 3; got != tc.want {
-					t.Fatalf("CPU STAT at dot 0 = %d, want %d", got, tc.want)
+				wantFirst := tc.want
+				if tc.model == types.CGBDE && tc.colourMode && !tc.doubleSpeed && ly == 0 {
+					// D/E has no Mode-0 CPU clock at the end of VBlank.
+					wantFirst = ModeVBlank
+				}
+				if got := b.Read(types.STAT) & 3; got != wantFirst {
+					t.Fatalf("CPU STAT at dot 0 = %d, want %d", got, wantFirst)
 				}
 				if got := b.Read(0xfe00); got != 0xff {
 					t.Fatalf("OAM bus unlocked during Mode 2: %02x", got)
