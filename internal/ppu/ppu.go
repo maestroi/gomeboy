@@ -734,6 +734,16 @@ var stateCycles = []uint64{
 func (p *PPU) cpuVisibleSTAT() byte {
 	mode := p.mode
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		!p.s.DoubleSpeed() && mode == ModeVRAM &&
+		p.lineState == PixelTransferDummy &&
+		p.s.Cycle()-p.lineDot == 80 {
+		// The native-colour CGB CPU samples the last Mode-2 read
+		// on the clock that begins the PPU's dot-80 pixel transfer.
+		// This is an independent read-port phase: the PPU's Mode-3
+		// state, VRAM/OAM locks and interrupt source already changed.
+		mode = ModeOAM
+	}
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		!p.s.DoubleSpeed() && mode == ModeHBlank &&
 		p.lineState == EnterHBlank {
 		// On normal-speed physical CGB colour hardware, the final
