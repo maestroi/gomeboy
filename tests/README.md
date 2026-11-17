@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/92/?scale=100&title=passing%20287,%20failing%2024&width=500)
+![progress](https://progress-bar.xyz/92/?scale=100&title=passing%20289,%20failing%2022&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 287 |
-| XFAIL | 24 |
+| PASS | 289 |
+| XFAIL | 22 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -151,8 +151,8 @@ is compared against a reference image from a known good emulator.
 #### stat-mode
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| stat-mode-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-mode-dmgC-cgbBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-cgbE@CGBDE | pass | pass | pass |  |
+| stat-mode-dmgC-cgbBC@CGBBC | pass | pass | pass |  |
 | stat-mode-dmgC-cgbBC@DMG | pass | pass | pass |  |
 | stat-mode-ds-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
 | stat-mode-ds-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |

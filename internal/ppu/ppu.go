@@ -734,6 +734,21 @@ var stateCycles = []uint64{
 func (p *PPU) cpuVisibleSTAT() byte {
 	mode := p.mode
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		!p.s.DoubleSpeed() && mode == ModeOAM &&
+		p.lineState == StartOAMScan && p.oamScanIndex == 1 &&
+		p.s.Cycle() == p.lineDot {
+		// Native normal-speed CGB begins its Mode-2 OAM scan before
+		// the CPU-facing STAT port changes. Most lines retain the
+		// final Mode-0 clock, but D/E hardware entering LY=0 keeps
+		// VBlank's Mode 1 instead: CGB E has no intervening Mode-0
+		// machine cycle at the end of Mode 1. OAM bus ownership and
+		// the STAT IRQ source have already handed over unchanged.
+		mode = ModeHBlank
+		if p.b.Model() == types.CGBDE && p.ly == 0 {
+			mode = ModeVBlank
+		}
+	}
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		!p.s.DoubleSpeed() && mode == ModeVRAM &&
 		p.lineState == PixelTransferDummy &&
 		p.s.Cycle()-p.lineDot == 80 {

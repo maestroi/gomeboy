@@ -60,11 +60,27 @@ func TestCGBDENCMSTATModeAtVBlankToMode2(t *testing.T) {
 					p.lineState,p.oamScanIndex)
 			}
 			s.Tick(ticks) // real Mode 2 OAM scan event
-			if got := b.Read(types.STAT)&3; got != ModeOAM {
-				t.Fatalf("STAT did not enter Mode 2 after next dot: %d",got)
+			if p.oamScanIndex != 1 || p.mode != ModeOAM {
+				t.Fatalf("Mode-2 PPU OAM scan did not begin: index=%d mode=%d",p.oamScanIndex,p.mode)
 			}
-			if p.oamScanIndex != 1 {
-				t.Fatalf("Mode-2 PPU OAM scan did not begin: index %d",p.oamScanIndex)
+			// AGE stat-mode's normal-speed native CGB read trace shows
+			// the first CPU-facing STAT clock still in Mode 0 even
+			// though the PPU is now scanning OAM in internal Mode 2.
+			wantFirst := byte(ModeOAM)
+			if tc.colour && !tc.double {
+				wantFirst = ModeHBlank
+				if tc.model == types.CGBDE {
+					wantFirst = ModeVBlank // D/E has no last Mode-0 M-cycle
+				}
+			}
+			if got := b.Read(types.STAT)&3; got != wantFirst {
+				t.Fatalf("STAT on first OAM scan clock=%d, want %d",got,wantFirst)
+			}
+			if tc.colour && !tc.double {
+				s.Tick(1)
+				if got := b.Read(types.STAT)&3; got != ModeOAM {
+					t.Fatalf("STAT failed to expose Mode 2 on following clock: %d",got)
+				}
 			}
 		})
 	}
