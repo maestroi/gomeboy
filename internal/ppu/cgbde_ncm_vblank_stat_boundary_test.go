@@ -69,6 +69,9 @@ func TestCGBDENCMSTATModeAtVBlankToMode2(t *testing.T) {
 			wantFirst := byte(ModeOAM)
 			if tc.colour && !tc.double {
 				wantFirst = ModeHBlank
+				if tc.model == types.CGBDE {
+					wantFirst = ModeVBlank // D/E has no last Mode-0 M-cycle
+				}
 			}
 			if got := b.Read(types.STAT)&3; got != wantFirst {
 				t.Fatalf("STAT on first OAM scan clock=%d, want %d",got,wantFirst)
