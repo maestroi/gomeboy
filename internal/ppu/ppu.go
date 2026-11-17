@@ -734,6 +734,16 @@ var stateCycles = []uint64{
 func (p *PPU) cpuVisibleSTAT() byte {
 	mode := p.mode
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		!p.s.DoubleSpeed() && mode == ModeOAM &&
+		p.lineState == StartOAMScan && p.oamScanIndex == 1 &&
+		p.s.Cycle() == p.lineDot {
+		// Normal-speed native CGB begins the PPU's Mode-2 OAM scan
+		// before the CPU-facing STAT read port has finished its final
+		// Mode-0 clock. OAM bus ownership and the STAT interrupt source
+		// have already handed over; do not delay either subsystem.
+		mode = ModeHBlank
+	}
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		!p.s.DoubleSpeed() && mode == ModeVRAM &&
 		p.lineState == PixelTransferDummy &&
 		p.s.Cycle()-p.lineDot == 80 {
