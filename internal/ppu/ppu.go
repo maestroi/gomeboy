@@ -745,12 +745,12 @@ func (p *PPU) cpuVisibleSTAT() byte {
 	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		!p.s.DoubleSpeed() && mode == ModeHBlank &&
-		p.lineState == EnterHBlank {
-		// On normal-speed physical CGB colour hardware, the final
-		// buffered pixel ends the rendering pipeline before the CPU
-		// read port observes the Mode-3-to-0 transition. Keep STAT
-		// in Mode 3 until the scheduled HBlank entry, independently
-		// of the internal PPU mode, bus release and STAT IRQ phase.
+		p.lineState == EnterHBlank && p.scx&3 != 3 {
+		// Normal-speed physical CGB colour hardware usually retains
+		// the CPU-visible Mode 3 after the last buffered pixel until
+		// the scheduled HBlank entry. At fine-scroll phases 3 and 7
+		// that CPU observation handover occurs at the earlier final-
+		// pixel edge instead. The PPU's bus and IRQ timing is shared.
 		mode = ModeVRAM
 	}
 	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
