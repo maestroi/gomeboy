@@ -1055,6 +1055,11 @@ func (p *PPU) handleVisualLine() {
 	case HBlankUpdateLY: // dot 452
 		if p.ly != 143 {
 			p.modeToInt = ModeOAM
+			// Probe whether the rising Mode-2 STAT IRQ source must
+			// reach IF as soon as the line handover starts, before
+			// LY and the CPU-visible mode change at dots 454-456.
+			// This does not move the PPU mode or bus ownership.
+			p.statUpdate()
 		}
 		p.ly++
 
