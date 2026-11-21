@@ -30,6 +30,8 @@ func TestDoubleSpeedCGBVBlankEntrySTATReadPort(t *testing.T) {
 			s:=scheduler.NewScheduler()
 			b:=gbio.NewBus(s,make([]byte,0x8000))
 			b.Map(tc.model)
+			// The VBlank event raises an interrupt even in a headless PPU test.
+			b.InterruptCallback = func(uint8) {}
 			p:=New(b,s)
 			p.enabled=true
 			p.cgbMode=tc.colour
