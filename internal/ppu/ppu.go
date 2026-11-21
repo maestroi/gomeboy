@@ -768,6 +768,17 @@ func (p *PPU) cpuVisibleSTAT() byte {
 		// pixel edge instead. The PPU's bus and IRQ timing is shared.
 		mode = ModeVRAM
 	}
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		p.s.DoubleSpeed() && mode == ModeVRAM &&
+		p.lineState == EnterHBlank && p.lx == 168 && p.scx&1 == 0 {
+		// For regular lines, even SCX phases expose Mode 0 as
+		// soon as the final pixel is buffered. The shortened first
+		// LCD-on line also uses EnterHBlank during its *entire* startup
+		// transfer, with lx=0; it must keep returning Mode 3 until
+		// HBlank actually begins. Internal mode, bus ownership and
+		// STAT IRQ continue to hand over at the scheduled PPU event.
+		mode = ModeHBlank
+	}
 	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
 		!p.s.DoubleSpeed() && p.startupSTATMode3Until != 0 &&
 		p.s.Cycle() < p.startupSTATMode3Until {
