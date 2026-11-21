@@ -427,8 +427,7 @@
       "collection": "stat-mode",
       "name": "stat-mode-ds-cgbBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode/stat-mode-ds-cgbBCE@CGBDE",
@@ -436,8 +435,7 @@
       "collection": "stat-mode",
       "name": "stat-mode-ds-cgbBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode/stat-mode-ncmBC@CGBBC",
