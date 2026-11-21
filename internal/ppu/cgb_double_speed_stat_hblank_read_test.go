@@ -10,8 +10,8 @@ import (
 )
 
 // At CGB double speed the CPU-visible Mode-3-to-0 edge depends on the
-// fine-scroll parity. Even SCX transitions on the buffered final pixel,
-// while odd SCX waits for the scheduled HBlank entry one dot later.
+// fine-scroll parity. Even SCX transitions on the final CPU clock before
+// HBlank, while odd SCX waits for the scheduled HBlank entry.
 // This is a STAT read-port phase, not an early PPU/bus/IRQ transition.
 func TestDoubleSpeedCGBHBlankSTATReadFineScrollParity(t *testing.T) {
 	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
@@ -34,11 +34,11 @@ func TestDoubleSpeedCGBHBlankSTATReadFineScrollParity(t *testing.T) {
 				b.Lock(gbio.OAM | gbio.VRAM)
 				s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 
-				want := byte(ModeVRAM)
-				if scx&1 == 0 {
-					want = ModeHBlank
-				}
 				for clock := 0; clock < 2; clock++ {
+					want := byte(ModeVRAM)
+					if scx&1 == 0 && clock == 1 {
+						want = ModeHBlank
+					}
 					if got := b.Read(types.STAT) & 3; got != want {
 						t.Fatalf("CPU clock %d STAT mode=%d, want %d", clock, got, want)
 					}
