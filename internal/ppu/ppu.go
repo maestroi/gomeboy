@@ -779,6 +779,16 @@ func (p *PPU) cpuVisibleSTAT() byte {
 		// STAT IRQ continue to hand over at the scheduled PPU event.
 		mode = ModeHBlank
 	}
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		p.s.DoubleSpeed() && mode == ModeHBlank && p.ly == 144 &&
+		p.offscreenLineState == VBlankHandleInt &&
+		p.s.Cycle()-p.lineDot >= 8 {
+		// On double-speed CGB, the CPU STAT read port exposes the
+		// start of VBlank at dot 4, one dot before the PPU updates its
+		// internal Mode 1 / VBlank IRQ state. Keep the interrupt and
+		// internal transition at their independently scheduled edges.
+		mode = ModeVBlank
+	}
 	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
 		!p.s.DoubleSpeed() && p.startupSTATMode3Until != 0 &&
 		p.s.Cycle() < p.startupSTATMode3Until {
