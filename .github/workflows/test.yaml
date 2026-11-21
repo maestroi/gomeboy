@@ -163,6 +163,8 @@ jobs:
         run: go test -tags test -v ./tests -run '^TestAgePPUTimingDiagnostics$'
       - name: diagnose AGE raw CPU STAT-mode reads
         run: go test -tags test -v ./tests -run '^TestAgeSTATModeRawDiagnostics$'
+      - name: diagnose AGE raw STAT interrupt edges
+        run: go test -tags test -v ./tests -run '^TestAgeSTATInterruptRawDiagnostics$'
       - name: benchmark GB/GBC whole-frame performance
         run: |
           set -o pipefail
