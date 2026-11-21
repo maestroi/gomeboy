@@ -164,7 +164,11 @@ handleInterrupt:
 		c.b.ClockedWrite(c.SP, uint8(c.PC&0xFF))
 
 		c.PC = c.b.IRQVector(irq) // get irq vector
-		c.s.Tick(4)
+		// The next step's prefetch already clocks the interrupt
+		// vector opcode. Do not add a second synthetic fetch here:
+		// doing so delays the first ISR instruction by one M-cycle
+		// and shifts every STAT-interrupt return sample past the
+		// final Mode-0 CPU read boundary.
 
 		c.b.DisableInterrupts()
 
