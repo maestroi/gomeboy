@@ -150,23 +150,7 @@ step:
 handleInterrupt:
 	// check to see if hasInt was triggered by an interrupt
 	if c.b.CanInterrupt() {
-		c.b.Debugf(" %04x Servicing Interrupt %08b\n", c.PC, c.b.Get(types.IE))
-		c.s.Tick(4)
-		c.s.Tick(4)
-
-		// save PC to stack
-		c.SP--
-		c.b.ClockedWrite(c.SP, uint8(c.PC>>8))
-
-		irq := c.b.Get(types.IE) // IRQ check saved for later
-
-		c.SP--
-		c.b.ClockedWrite(c.SP, uint8(c.PC&0xFF))
-
-		c.PC = c.b.IRQVector(irq) // get irq vector
-		c.s.Tick(4)
-
-		c.b.DisableInterrupts()
+		c.serviceInterrupt()
 
 		// if no other conditions prevent us from stepping, then go back to stepping
 		if !(c.hasFrame || (c.Debug && c.DebugBreakpoint)) {
@@ -179,6 +163,45 @@ handleInterrupt:
 	// then we have either rendered a frame, or hit a debug breakpoint
 	c.hasFrame = false
 	c.hasInt = c.Debug && c.DebugBreakpoint
+}
+
+// serviceInterrupt executes the five M-cycles of SM83 interrupt entry.
+// Each phase advances the scheduler independently, so PPU, timer, DMA and
+// interrupt changes can happen during the entry sequence. Keep the CPU's
+// prefetch/IRQ sampling phase in Frame separate from these five M-cycles:
+// the previous instruction may have already started the next prefetch.
+//
+//   M1: acknowledge (idle)
+//   M2: acknowledge (idle)
+//   M3: push PC high byte (stack write at the M-cycle endpoint)
+//   M4: push PC low byte; choose the IRQ priority from IE after M3
+//   M5: dispatch the selected vector and finish interrupt entry
+//
+// Do not collapse these into one Tick(20), since events between M-cycles
+// can change which interrupt is serviced and which stack values are read.
+func (c *CPU) serviceInterrupt() {
+	c.b.Debugf(" %04x Servicing Interrupt %08b\n", c.PC, c.b.Get(types.IE))
+
+	// M1 and M2: the two idle acknowledge cycles.
+	c.s.Tick(4)
+	c.s.Tick(4)
+
+	// M3: the high return-address byte is driven to the stack.
+	c.SP--
+	c.b.ClockedWrite(c.SP, uint8(c.PC>>8))
+
+	// IE is sampled after the high-byte push. Preserve the existing
+	// dispatch-race behaviour when IE changes during the stack write.
+	irq := c.b.Get(types.IE)
+
+	// M4: the low return-address byte is driven to the stack.
+	c.SP--
+	c.b.ClockedWrite(c.SP, uint8(c.PC&0xff))
+
+	// M5: resolve the still-pending IF bit, then clock vector dispatch.
+	c.PC = c.b.IRQVector(irq)
+	c.s.Tick(4)
+	c.b.DisableInterrupts()
 }
 
 // skipHALT invokes the scheduler to "skip" until the next
