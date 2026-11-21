@@ -770,12 +770,13 @@ func (p *PPU) cpuVisibleSTAT() byte {
 	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		p.s.DoubleSpeed() && mode == ModeVRAM &&
-		p.lineState == EnterHBlank && p.scx&1 == 0 &&
-		p.s.Until(scheduler.PPUHandleVisualLine) == 1 {
-		// At double speed, even SCX phases expose Mode 0 on the
-		// *last* CPU clock before scheduled HBlank entry. The earlier
-		// clock must still read Mode 3. Internal mode, bus ownership
-		// and STAT IRQ hand over at the unchanged PPU event.
+		p.lineState == EnterHBlank && p.lx == 168 && p.scx&1 == 0 {
+		// For regular lines, even SCX phases expose Mode 0 as
+		// soon as the final pixel is buffered. The shortened first
+		// LCD-on line also uses EnterHBlank during its *entire* startup
+		// transfer, with lx=0; it must keep returning Mode 3 until
+		// HBlank actually begins. Internal mode, bus ownership and
+		// STAT IRQ continue to hand over at the scheduled PPU event.
 		mode = ModeHBlank
 	}
 	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
