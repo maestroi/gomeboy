@@ -695,21 +695,33 @@ func (b *Bus) Read(addr uint16) byte {
 	return b.data[addr]
 }
 
-// ClockedRead clocks the Game Boy and reads a byte from the
-// bus.
-func (b *Bus) ClockedRead(addr uint16) byte {
-	// CGB normal-speed CPU reads sample VRAM during the final T-state,
-	// before PPU ownership transitions scheduled at the M-cycle endpoint.
-	// Double-speed CPU/PPU arbitration uses a different phase and retains
-	// the established end-of-cycle sample until separately measured.
+// cpuReadSampleTStates is the CPU-facing data-bus sampling phase within
+// a four-T-state SM83 memory-read M-cycle. Keep this separate from the
+// PPU's internal mode/IRQ state: a scheduled PPU event may run between
+// the bus sample and the end of the CPU M-cycle.
+//
+// STAT and all other I/O registers currently sample at T4. The native
+// CGB normal-speed VRAM read port has a measured T3 phase, independent
+// of its write port and the PPU's internal Mode-3 start. Explicitly
+// centralising the read phase allows subsequent edge measurements to
+// refine register-specific phases without changing interrupt entry.
+func (b *Bus) cpuReadSampleTStates(addr uint16) uint64 {
 	if addr >= 0x8000 && addr <= 0x9fff && b.model.IsCGB() && !b.s.DoubleSpeed() {
-		b.s.Tick(3)
-		value := b.Read(addr)
-		b.s.Tick(1)
-		return value
+		return 3
 	}
-	b.s.Tick(4)
-	return b.Read(addr)
+	return 4
+}
+
+// ClockedRead clocks one complete four-T-state CPU bus-read M-cycle,
+// sampling the requested address at its hardware-specific read phase.
+func (b *Bus) ClockedRead(addr uint16) byte {
+	phase := b.cpuReadSampleTStates(addr)
+	b.s.Tick(phase)
+	value := b.Read(addr)
+	if phase < 4 {
+		b.s.Tick(4 - phase)
+	}
+	return value
 }
 
 // ClockedWrite clocks the Game Boy and writes a byte to the
