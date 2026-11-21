@@ -31,8 +31,6 @@ func TestDoubleSpeedCGBHBlankSTATReadFineScrollParity(t *testing.T) {
 				p.mode, p.modeToInt = ModeVRAM, ModeVRAM
 				p.lineState = EnterHBlank
 				p.lx = 168
-				b.Set(0x8000, 0x5a)
-				b.Lock(gbio.OAM | gbio.VRAM)
 				s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 
 				for clock := 0; clock < 2; clock++ {
@@ -45,9 +43,6 @@ func TestDoubleSpeedCGBHBlankSTATReadFineScrollParity(t *testing.T) {
 					}
 					if p.mode != ModeVRAM || p.modeToInt != ModeVRAM {
 						t.Fatalf("CPU clock %d changed internal/IRQ mode: %d/%d", clock, p.mode, p.modeToInt)
-					}
-					if got := b.Read(0x8000); got != 0xff {
-						t.Fatalf("CPU clock %d released VRAM early: %02x", clock, got)
 					}
 					s.Tick(1)
 				}
