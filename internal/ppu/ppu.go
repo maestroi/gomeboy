@@ -789,6 +789,17 @@ func (p *PPU) cpuVisibleSTAT() byte {
 		// internal transition at their independently scheduled edges.
 		mode = ModeVBlank
 	}
+	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
+		p.s.DoubleSpeed() && mode == ModeVRAM &&
+		p.glitchedLineState == GlitchedLineVRAMReadLock &&
+		p.s.Until(scheduler.PPUHandleGlitchedLine0) > 2 {
+		// The shortened LCD-on scanline enters internal Mode 3 at the
+		// glitched OAM handover, but CPU STAT continues to read Mode 0
+		// for the first PPU dot (two double-speed CPU clocks). The
+		// separate VRAM read/write locks and Mode-3 IRQ timing do not
+		// move; this only corrects the CPU-facing STAT register phase.
+		mode = ModeHBlank
+	}
 	if p.enabled && p.b.Model().IsCGB() && !p.cgbMode &&
 		!p.s.DoubleSpeed() && p.startupSTATMode3Until != 0 &&
 		p.s.Cycle() < p.startupSTATMode3Until {
