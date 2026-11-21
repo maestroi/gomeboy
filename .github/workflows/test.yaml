@@ -155,6 +155,8 @@ jobs:
         run: bash tests/gb/compatibility/build-fixtures.sh
       - name: run GB/GBC compatibility smoke
         run: go run ./cmd/gb-compat -manifest tests/gb/compatibility/smoke.json -output gb-gbc-compatibility.json -markdown gb-gbc-compatibility.md -commit "$GITHUB_SHA"
+      - name: diagnose AGE raw STAT interrupt edges
+        run: go test -tags test -v ./tests -run '^TestAgeSTATInterruptRawDiagnostics$'
       - name: run GB/GBC conformance regression gate
         run: go test -tags test -v ./tests -run Test_Regressions
       - name: diagnose AGE VRAM timing mismatches
@@ -163,8 +165,6 @@ jobs:
         run: go test -tags test -v ./tests -run '^TestAgePPUTimingDiagnostics$'
       - name: diagnose AGE raw CPU STAT-mode reads
         run: go test -tags test -v ./tests -run '^TestAgeSTATModeRawDiagnostics$'
-      - name: diagnose AGE raw STAT interrupt edges
-        run: go test -tags test -v ./tests -run '^TestAgeSTATInterruptRawDiagnostics$'
       - name: diagnose AGE window Mode-3 timing by WX
         run: go test -tags test -v ./tests -run '^TestAgeWindowSTATRawDiagnostics$'
       - name: diagnose AGE sprite Mode-3 timing by X position
