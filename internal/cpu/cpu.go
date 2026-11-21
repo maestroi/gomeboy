@@ -180,7 +180,7 @@ handleInterrupt:
 // Do not collapse these into one Tick(20), since events between M-cycles
 // can change which interrupt is serviced and which stack values are read.
 func (c *CPU) serviceInterrupt() {
-	c.b.Debugf(" %04x Servicing Interrupt %08b\\n", c.PC, c.b.Get(types.IE))
+	c.b.Debugf(" %04x Servicing Interrupt %08b\n", c.PC, c.b.Get(types.IE))
 
 	// M1 and M2: the two idle acknowledge cycles.
 	c.s.Tick(4)
