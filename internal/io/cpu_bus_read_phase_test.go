@@ -69,9 +69,9 @@ func TestClockedReadKeepsIndependentCGBVRAMPhase(t *testing.T) {
 			if tc.double {
 				s.ChangeSpeed(true)
 			}
-			b.VRAM[0][0] = 0x11
+			b.Set(0x8000, 0x11)
 			s.RegisterEvent(scheduler.TimerTIMAReload, func() {
-				b.VRAM[0][0] = 0x22
+				b.Set(0x8000, 0x22)
 			})
 			s.ScheduleEvent(scheduler.TimerTIMAReload, 4)
 
