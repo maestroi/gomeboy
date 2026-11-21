@@ -167,6 +167,8 @@ jobs:
         run: go test -tags test -v ./tests -run '^TestAgeSTATInterruptRawDiagnostics$'
       - name: diagnose AGE window Mode-3 timing by WX
         run: go test -tags test -v ./tests -run '^TestAgeWindowSTATRawDiagnostics$'
+      - name: diagnose AGE sprite Mode-3 timing by X position
+        run: go test -tags test -v ./tests -run '^TestAgeSpriteSTATRawDiagnostics$'
       - name: benchmark GB/GBC whole-frame performance
         run: |
           set -o pipefail
