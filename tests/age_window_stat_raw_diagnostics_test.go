@@ -113,6 +113,16 @@ func TestAgeWindowSTATRawDiagnostics(t *testing.T) {
 						groupBad++
 						badSamples+=bad
 						firstGroups=append(firstGroups,fmtWindowFirstBad(col,firstBad,bad))
+						if row==0 || row==15 {
+							var expected,observed [groupSize]byte
+							for i:=0;i<groupSize;i++ {
+								offset:=(row*cols+col)*groupSize+i
+								expected[i]=g.ROM[bestAt+offset]
+								observed[i]=g.Bus.Get(uint16(0xc000+offset))
+							}
+							t.Logf("AGE window STAT edge bytes: model=%s rom=%s WX-row=%d nop=%d expected=% x observed=% x",
+								tc.model,tc.rom,row,col,expected,observed)
+						}
 					}
 				}
 				if groupBad>0 {
