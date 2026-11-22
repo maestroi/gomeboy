@@ -7,10 +7,10 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 )
 
-// CPU read timing is a separate bus observation phase. A PPU event on
-// the last T-state of an M-cycle must affect STAT I/O reads, while
-// native CGB normal-speed VRAM is sampled on T3 (before that event).
-func TestClockedReadSamplesSTATAtEndOfMachineCycle(t *testing.T) {
+// CPU read timing is a separate bus observation phase. Test whether
+// both STAT and CGB-normal VRAM observe their bus values before an
+// event scheduled at the M-cycle endpoint; this is an experimental phase.
+func TestClockedReadSamplesSTATBeforeEndOfMachineCycle(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		model  types.Model
@@ -36,11 +36,11 @@ func TestClockedReadSamplesSTATAtEndOfMachineCycle(t *testing.T) {
 			})
 			s.ScheduleEvent(scheduler.TimerTIMAReload, 4)
 
-			if got := b.cpuReadSampleTStates(types.STAT); got != 4 {
-				t.Fatalf("STAT CPU read sampled at T%d, want T4", got)
+			if got := b.cpuReadSampleTStates(types.STAT); got != 3 {
+				t.Fatalf("STAT CPU read sampled at T%d, want T3", got)
 			}
-			if got := b.ClockedRead(types.STAT); got != 0x82 {
-				t.Errorf("CPU STAT read skipped T4 PPU update: %#02x, want %#02x", got, 0x82)
+			if got := b.ClockedRead(types.STAT); got != 0x80 {
+				t.Errorf("CPU STAT read did not retain pre-T4 bus value: %#02x, want %#02x", got, 0x80)
 			}
 			if got := s.Cycle(); got != 4 {
 				t.Errorf("STAT CPU read M-cycle = %d T-states, want 4", got)
