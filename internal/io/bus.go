@@ -706,6 +706,12 @@ func (b *Bus) Read(addr uint16) byte {
 // centralising the read phase allows subsequent edge measurements to
 // refine register-specific phases without changing interrupt entry.
 func (b *Bus) cpuReadSampleTStates(addr uint16) uint64 {
+	// Experiment: STAT observes the CPU data bus one T-state before the
+	// M-cycle endpoint, while internal PPU mode and STAT IRQ remain timed
+	// independently. Validate against AGE and all Mooneye/Blargg suites.
+	if addr == types.STAT {
+		return 3
+	}
 	if addr >= 0x8000 && addr <= 0x9fff && b.model.IsCGB() && !b.s.DoubleSpeed() {
 		return 3
 	}
