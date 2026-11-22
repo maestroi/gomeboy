@@ -129,40 +129,61 @@ func (c *CPU) Frame() {
 	// 3. hasFrame = true
 step:
 	for !c.hasInt {
-		// interrupt check happens during the second T-Cycle of the
-		// prefetch during the last instruction (except during halt)
-		// this is a cheeky hack as we don't emulate the prefetch
-		c.s.Tick(2)
-		if c.b.CanInterrupt() {
-			c.s.Tick(2)
-			goto handleInterrupt
+		op, accepted := c.prefetchOpcode()
+		if accepted {
+			// Interrupt entry was accepted at prefetch T2. The
+			// request can disappear before T4: in that case we must
+			// still dispatch (the vector resolver can return $0000).
+			goto acceptedInterrupt
 		}
-		c.s.Tick(2)
-		if c.haltBug {
-			c.PC--
-			c.haltBug = false
-		}
-		op := c.b.Read(c.PC)
-		c.PC++
 		InstructionSet[op].fn(c)
 	}
 
-handleInterrupt:
-	// check to see if hasInt was triggered by an interrupt
-	if c.b.CanInterrupt() {
-		c.serviceInterrupt()
+	// When a device callback stops the instruction loop after a
+	// completed instruction, only accept the interrupt if it is
+	// still pending. This is separate from the T2-latched path.
+	if !c.b.CanInterrupt() {
+		goto frameDone
+	}
+acceptedInterrupt:
+	c.serviceInterrupt()
 
-		// if no other conditions prevent us from stepping, then go back to stepping
-		if !(c.hasFrame || (c.Debug && c.DebugBreakpoint)) {
-			c.hasInt = false
-			goto step
-		}
+	// If no frame or debug breakpoint stopped the machine, resume
+	// opcode prefetch at the interrupt vector.
+	if !(c.hasFrame || (c.Debug && c.DebugBreakpoint)) {
+		c.hasInt = false
+		goto step
 	}
 
-	// if we have handled the interrupt and hasInt is still true
-	// then we have either rendered a frame, or hit a debug breakpoint
+frameDone:
 	c.hasFrame = false
 	c.hasInt = c.Debug && c.DebugBreakpoint
+}
+
+// prefetchOpcode advances the instruction-fetch M-cycle in two phases.
+// The CPU samples IME & IE & IF at T2, before the opcode bus sample at
+// T4. An interrupt accepted here cancels that opcode fetch, even if
+// another device clears IF or IE on T3/T4. The five dispatch M-cycles
+// are timed separately by serviceInterrupt.
+//
+// A newly raised IRQ after the T2 sample cannot cancel the already
+// underway fetch; the current instruction still executes. The existing
+// callback/frame path checks the pending request at the next boundary.
+func (c *CPU) prefetchOpcode() (op byte, accepted bool) {
+	c.s.Tick(2)
+	if c.b.CanInterrupt() {
+		c.s.Tick(2)
+		return 0, true
+	}
+
+	c.s.Tick(2)
+	if c.haltBug {
+		c.PC--
+		c.haltBug = false
+	}
+	op = c.b.Read(c.PC)
+	c.PC++
+	return op, false
 }
 
 // serviceInterrupt executes the five M-cycles of SM83 interrupt entry.
