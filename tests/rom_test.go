@@ -43,7 +43,9 @@ GomeBoy is automatically tested against the following test suites:
   <sup>by [Matt Currie](https://github.com/mattcurrie) </sup>
 * **[(parts of) little-things-gb](https://github.com/pinobatch/little-things-gb)**  
   <sup>by [Damian Yerrick](https://github.com/pinobatch) </sup>
-* **[Mealybug Tearoom Tests](https://github.com/mattcurrie/mealybug-tearoom-tests)**  \n  <sup>by Matt Currie; pinned screenshot-at-LD-B-B PPU timing subset for DMG, CGB B/C and CGB D/E.</sup>\n* **[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite)**  
+* **[Mealybug Tearoom Tests](https://github.com/mattcurrie/mealybug-tearoom-tests)**  
+  <sup>by Matt Currie; pinned screenshot-at-LD-B-B PPU timing subset for DMG, CGB B/C and CGB D/E.</sup>
+* **[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite)**  
   <sup>by [Joonas Javanainen](https://github.com/Gekkio) </sup>
 * **[SameSuite](https://github.com/LIJI32/SameSuite)**  
   <sup>by [Lior Halphon](https://github.com/LIJI32) </sup>
