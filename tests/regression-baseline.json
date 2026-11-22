@@ -847,6 +847,167 @@
       "expected": "pass"
     },
     {
+      "id": "mealybug/ppu/m2_win_en_toggle@CGBBC",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m2_win_en_toggle@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m2_win_en_toggle@CGBDE",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m2_win_en_toggle@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m2_win_en_toggle@DMG",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m2_win_en_toggle@DMG",
+      "model": "DMG",
+      "expected": "pass"
+    },
+    {
+      "id": "mealybug/ppu/m3_bgp_change@CGBBC",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_bgp_change@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 3888 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_bgp_change@CGBDE",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_bgp_change@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 4752 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_bgp_change@DMG",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_bgp_change@DMG",
+      "model": "DMG",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 4384 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_lcdc_win_en_change_multiple@CGBBC",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_lcdc_win_en_change_multiple@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_lcdc_win_en_change_multiple@CGBDE",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_lcdc_win_en_change_multiple@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_lcdc_win_en_change_multiple@DMG",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_lcdc_win_en_change_multiple@DMG",
+      "model": "DMG",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 288 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_scx_low_3_bits@CGBBC",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_scx_low_3_bits@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_scx_low_3_bits@CGBDE",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_scx_low_3_bits@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_scx_low_3_bits@DMG",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_scx_low_3_bits@DMG",
+      "model": "DMG",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_window_timing@CGBBC",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_window_timing@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 1089 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_window_timing@CGBDE",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_window_timing@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_window_timing@DMG",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_window_timing@DMG",
+      "model": "DMG",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_wx_6_change@CGBBC",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_wx_6_change@CGBBC",
+      "model": "CGBBC",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_wx_6_change@CGBDE",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_wx_6_change@CGBDE",
+      "model": "CGBDE",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
+      "id": "mealybug/ppu/m3_wx_6_change@DMG",
+      "suite": "mealybug",
+      "collection": "ppu",
+      "name": "m3_wx_6_change@DMG",
+      "model": "DMG",
+      "expected": "fail",
+      "reason": "Measured Mealybug PPU screenshot mismatch: 13799 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+    },
+    {
       "id": "mooneye/acceptance/add_sp_e_timing",
       "suite": "mooneye",
       "collection": "acceptance",

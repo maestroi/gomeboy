@@ -151,6 +151,10 @@ jobs:
         run: go test ./internal/apu ./internal/cpu ./internal/io ./internal/ppu ./internal/gameboy ./internal/gb/... ./cmd/gb-compat
       - name: fetch pinned AGE conformance corpus
         run: bash tests/fetch-age.sh
+      - name: test Mealybug screenshot comparison contract
+        run: go test ./tests -run '^TestMealybugPixelDifferences$'
+      - name: fetch pinned Mealybug Tearoom screenshots and ROMs
+        run: bash tests/fetch-mealybug.sh
       - name: build pinned GB/GBC compatibility fixtures
         run: bash tests/gb/compatibility/build-fixtures.sh
       - name: run GB/GBC compatibility smoke
@@ -183,6 +187,7 @@ jobs:
             tests/README.md
             tests/external-corpus.json
             tests/results/*.png
+            tests/results/mealybug/*.png
             gb-gbc-compatibility.json
             gb-gbc-compatibility.md
             gb-gbc-performance.txt

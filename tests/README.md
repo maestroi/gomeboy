@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/93/?scale=100&title=passing%20291,%20failing%2020&width=500)
+![progress](https://progress-bar.xyz/88/?scale=100&title=passing%20292,%20failing%2037&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 291 |
-| XFAIL | 20 |
+| PASS | 292 |
+| XFAIL | 37 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -31,6 +31,8 @@ GomeBoy is automatically tested against the following test suites:
   <sup>by [Matt Currie](https://github.com/mattcurrie) </sup>
 * **[(parts of) little-things-gb](https://github.com/pinobatch/little-things-gb)**  
   <sup>by [Damian Yerrick](https://github.com/pinobatch) </sup>
+* **[Mealybug Tearoom Tests](https://github.com/mattcurrie/mealybug-tearoom-tests)**  
+  <sup>by Matt Currie; pinned screenshot-at-LD-B-B PPU timing subset for DMG, CGB B/C and CGB D/E.</sup>
 * **[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite)**  
   <sup>by [Joonas Javanainen](https://github.com/Gekkio) </sup>
 * **[SameSuite](https://github.com/LIJI32/SameSuite)**  
@@ -54,6 +56,7 @@ is compared against a reference image from a known good emulator.
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
+| mealybug | 5% | 1 | 17 | 18 |
 | mooneye | 100% | 114 | 0 | 114 |
 | samesuite | 100% | 82 | 0 | 82 |
 | scribbltests | 100% | 5 | 0 | 5 |
@@ -262,6 +265,30 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | tellinglys (CGB) | pass | pass | pass |  |
 | tellinglys (DMG) | pass | pass | pass |  |
+
+### mealybug
+
+#### ppu
+| Test | Expected | Actual | Status | Context |
+| --- | --- | --- | --- | --- |
+| m2_win_en_toggle@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m2_win_en_toggle@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m2_win_en_toggle@DMG | pass | pass | pass |  |
+| m3_bgp_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 3888 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m3_bgp_change@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 4752 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_bgp_change@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 4384 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_lcdc_win_en_change_multiple@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m3_lcdc_win_en_change_multiple@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_lcdc_win_en_change_multiple@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 288 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_scx_low_3_bits@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m3_scx_low_3_bits@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_scx_low_3_bits@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_window_timing@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 1089 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m3_window_timing@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_window_timing@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_wx_6_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m3_wx_6_change@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_wx_6_change@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 13799 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
 
 ### mooneye
 
