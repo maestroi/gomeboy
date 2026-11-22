@@ -22,8 +22,9 @@
       "name": "Mealybug Tearoom Tests",
       "source": "mattcurrie/mealybug-tearoom-tests",
       "revision": "70e88fb90b59d19dfbb9c3ac36c64105202bb1f4",
-      "status": "not-run",
-      "note": "Pinned by the same aggregate release; no GomeBoy result adapter is integrated yet."
+      "status": "automated-partial",
+      "note": "Pinned MIT-licensed ROM archive and exact CPU CGB C/D/DMG screenshots, captured at LD B,B. Reproducible via tests/fetch-mealybug.sh; remaining upstream cases are not included in pass percentages.",
+      "coverage": "6 PPU ROMs × 3 hardware profiles (DMG, CGB B/C, CGB D/E) = 18 tests; remaining upstream ROMs not run"
     },
     {
       "name": "Wilbert Pol test suite",
