@@ -758,6 +758,15 @@ func (p *PPU) cpuVisibleSTAT() byte {
 		// state, VRAM/OAM locks and interrupt source already changed.
 		mode = ModeOAM
 	}
+	if p.enabled && !p.cgbMode && mode == ModeHBlank &&
+		p.lineState == EnterHBlank && p.lx == 168 {
+		// Probe a separate CPU-visible mode-3 handover while the
+		// pixel pipeline has completed but before HBlank releases
+		// the PPU buses and asserts the Mode-0 STAT interrupt.
+		// Only applies after a regular full 160-pixel transfer;
+		// the abbreviated LCD-on line has lx=0 and is independent.
+		mode = ModeVRAM
+	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		!p.s.DoubleSpeed() && mode == ModeHBlank &&
 		p.lineState == EnterHBlank && p.scx&3 != 3 {
