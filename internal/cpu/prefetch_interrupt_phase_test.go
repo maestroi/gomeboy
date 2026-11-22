@@ -48,6 +48,7 @@ func TestPrefetchInterruptAcceptancePhase(t *testing.T) {
 				c.PC, c.SP = 0xff80, 0xc100
 				b.Set(0xff80, 0x00) // NOP in HRAM (uncontended bus)
 				b.Set(types.IE, gbio.LCDINT)
+				b.Set(types.IF, 0) // clear boot/initial IF state before scheduling the edge
 				if tc.ime {
 					b.EnableInterrupts()
 				}
@@ -108,17 +109,23 @@ func TestPrefetchLatchedInterruptSurvivesIFWithdrawalBeforeT4(t *testing.T) {
 			c.PC, c.SP = 0xff80, 0xc100
 			b.Set(0xff80, 0x00) // would have been a NOP
 			b.Set(types.IE, gbio.LCDINT)
-			b.Set(types.IF, gbio.LCDINT)
+			b.Set(types.IF, 0)
 			b.EnableInterrupts()
 
 			// End Frame after the accepted interrupt, so the unit
 			// test does not advance into the $0000 vector ROM.
 			c.Debug = true
 			c.DebugBreakpoint = true
+			// T1: request STAT after the opcode prefetch begins.
+			// T3: withdraw it after the CPU's T2 acceptance sample.
 			s.RegisterEvent(scheduler.TimerTIMAReload, func() {
+				b.RaiseInterrupt(gbio.LCDINT)
+			})
+			s.ScheduleEvent(scheduler.TimerTIMAReload, 1)
+			s.RegisterEvent(scheduler.TimerTIMAIncrement, func() {
 				b.Set(types.IF, 0)
 			})
-			s.ScheduleEvent(scheduler.TimerTIMAReload, 3)
+			s.ScheduleEvent(scheduler.TimerTIMAIncrement, 3)
 
 			c.Frame()
 
