@@ -43,7 +43,7 @@ GomeBoy is automatically tested against the following test suites:
   <sup>by [Matt Currie](https://github.com/mattcurrie) </sup>
 * **[(parts of) little-things-gb](https://github.com/pinobatch/little-things-gb)**  
   <sup>by [Damian Yerrick](https://github.com/pinobatch) </sup>
-* **[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite)**  
+* **[Mealybug Tearoom Tests](https://github.com/mattcurrie/mealybug-tearoom-tests)**  \n  <sup>by Matt Currie; pinned screenshot-at-LD-B-B PPU timing subset for DMG, CGB B/C and CGB D/E.</sup>\n* **[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite)**  
   <sup>by [Joonas Javanainen](https://github.com/Gekkio) </sup>
 * **[SameSuite](https://github.com/LIJI32/SameSuite)**  
   <sup>by [Lior Halphon](https://github.com/LIJI32) </sup>
@@ -72,7 +72,7 @@ var (
 // tests/README.md and the main README.md, so they are excluded from the
 // default `go test ./...` context.
 
-var testers = []func(*TestTable){testAcid2, testAge, testBully, testBlarrg, testLittleThings, testMooneye, testSamesuite, testScribbl, testStrikethrough}
+var testers = []func(*TestTable){testAcid2, testAge, testBully, testBlarrg, testLittleThings, testMealybug, testMooneye, testSamesuite, testScribbl, testStrikethrough}
 
 func testAllTable() *TestTable {
 	testTable := &TestTable{
