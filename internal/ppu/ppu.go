@@ -1973,8 +1973,8 @@ func (p *PPU) checkWindowTriggerWX() {
 	//   - LY0 WX=0: LY0's stall is already 7; drop one more to 6.
 	//   - WX=7 (LX==8): opens on the stall boundary. Window fetch (~6)
 	//     runs inside the stall, so keep BGP stall + fetch = 17.
-	//   - WX>7: stall has finished; one extra BGP settle dot covers the
-	//     BG pixel drawn between stall end and the WX handover.
+	//   - Exact WX>7 boundary (LX==WX+1): one extra BGP settle dot.
+	//     Mid-scanline WIN_EN re-opens (LX already past WX) skip this.
 	switch {
 	case p.lx < 8:
 		if p.wx == 0 && p.ly == 0 {
@@ -1984,7 +1984,7 @@ func (p *PPU) checkWindowTriggerWX() {
 		}
 	case p.lx == 8:
 		p.postOffscreenStall = 17 // 11 BGP stall + 6 window fetch
-	default:
+	case p.lx == p.wx+1:
 		p.bgpSettleExtra = 1
 	}
 }
