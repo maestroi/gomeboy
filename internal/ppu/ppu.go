@@ -120,6 +120,7 @@ type PPU struct {
 	bgpPending      uint8
 	bgpPendingFirst uint8
 	bgpPendingArmed bool
+	bgpSettleExtra  uint8 // extra Mode-3 dots before BGP OR/settle
 
 	// External components
 	b *io.Bus
@@ -435,6 +436,11 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	})
 	b.ReserveAddress(types.WX, func(v byte) byte {
 		p.wx = v
+		// Mid-Mode-3 WX writes can arrive after the exact trigger LX; re-check
+		// so a late write still opens the window for the remainder of the line.
+		if p.mode == ModeVRAM {
+			p.checkWindowTriggerWX()
+		}
 		return v
 	})
 
@@ -1383,6 +1389,10 @@ func (p *PPU) commitBGPAfterDot() {
 	if !p.bgpPendingArmed {
 		return
 	}
+	if p.bgpSettleExtra > 0 {
+		p.bgpSettleExtra--
+		return
+	}
 	p.applyBGP(p.bgpPendingFirst)
 	if p.bgpPendingFirst != p.bgpPending {
 		p.bgpPendingFirst = p.bgpPending
@@ -1921,16 +1931,27 @@ func (p *PPU) checkWindowTriggerWX() {
 	// WX=0 switches to the window before the initial SCX fine-scroll
 	// discard. Keep scxToDiscard intact: those discarded window pixels
 	// are what shift the visible window left at this special position.
-	// Other WX values use the existing LX-relative trigger phase.
+	// If WX is programmed after LX has left 0 but still before the first
+	// visible column (Mealybug Mode-2 IRQ → mid-Mode-3 WX write), start
+	// the window for the remainder of the offscreen/visible phase.
+	//
+	// Ordinary WX values compare against LX each dot. Using >= rather
+	// than == lets a late mid-Mode-3 WX write still open the window once
+	// the scan position has reached WX (same Mealybug path).
 	// On physical CGB hardware WX=166 still starts a window fetch at the
 	// final on-screen pixel (LX=167). The tile-fetch pause therefore
 	// contributes to Mode 3 even though only one window pixel is shown.
 	// Monochrome hardware has a distinct WX=166 whole-line glitch and
 	// must not be treated as this ordinary CGB handover.
-	windowX := p.wx > 0 && p.lx > 0 && p.wx == p.lx-1
-	if !((p.wx == 0 && p.lx == 0) ||
-		(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB()))) {
-		return
+	if p.wx == 0 {
+		if p.lx >= 8 {
+			return // too late for WX=0 to own this scanline
+		}
+	} else {
+		windowX := p.lx > 0 && p.lx >= p.wx+1
+		if !(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB())) {
+			return
+		}
 	}
 
 	p.winTriggerWx = true
@@ -1942,6 +1963,30 @@ func (p *PPU) checkWindowTriggerWX() {
 	p.winFetcherX = 0
 	p.bgFIFO.Reset()
 	p.fetcherState = WinActivating
+
+	// Window tile-fetch already pauses Mode 3. Retune the BGP
+	// post-offscreen stall so the first visible window pixel lines up
+	// with mid-Mode-3 BGP writes (Mealybug m3_window_timing):
+	//
+	//   - Early window (LX<8): trim the 11-dot BGP stall by one so the
+	//     window-fetch pause is not stacked on a full BGP stall.
+	//   - LY0 WX=0: LY0's stall is already 7; drop one more to 6.
+	//   - WX=7 (LX==8): opens on the stall boundary. Window fetch (~6)
+	//     runs inside the stall, so keep BGP stall + fetch = 17.
+	//   - WX>7: stall has finished; one extra BGP settle dot covers the
+	//     BG pixel drawn between stall end and the WX handover.
+	switch {
+	case p.lx < 8:
+		if p.wx == 0 && p.ly == 0 {
+			p.postOffscreenStall = 6
+		} else if p.postOffscreenStall > 10 {
+			p.postOffscreenStall = 10
+		}
+	case p.lx == 8:
+		p.postOffscreenStall = 17 // 11 BGP stall + 6 window fetch
+	default:
+		p.bgpSettleExtra = 1
+	}
 }
 
 // renderBlank blanks the current screen.
@@ -1966,4 +2011,5 @@ func (p *PPU) resetFetcher() {
 	p.tileSelectGlitch = false
 	p.lx = 0
 	p.postOffscreenStall = 0
+	p.bgpSettleExtra = 0
 }

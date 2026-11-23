@@ -60,15 +60,17 @@ func TestWindowWXZeroStartsBeforeFineScroll(t *testing.T) {
 
 func TestWindowWXTriggerGuardsAndOrdinaryPhase(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		wx, lx uint8
+		name                      string
+		wx, lx                    uint8
 		yTriggered, enabled, want bool
 	}{
 		{"WX0 before initial dot, Y false", 0, 0, false, true, false},
 		{"WX0 disabled", 0, 0, true, false, false},
-		{"WX0 late", 0, 1, true, true, false},
+		{"WX0 late offscreen", 0, 1, true, true, true},
+		{"WX0 late visible", 0, 8, true, true, false},
 		{"WX1 before", 1, 1, true, true, false},
 		{"WX1 boundary", 1, 2, true, true, true},
+		{"WX1 after boundary", 1, 7, true, true, true},
 		{"WX7 before", 7, 7, true, true, false},
 		{"WX7 boundary", 7, 8, true, true, true},
 		{"WX165 boundary", 165, 166, true, true, true},
