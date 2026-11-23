@@ -932,8 +932,7 @@
       "collection": "ppu",
       "name": "m3_scx_low_3_bits@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m3_scx_low_3_bits@CGBDE",
@@ -941,8 +940,7 @@
       "collection": "ppu",
       "name": "m3_scx_low_3_bits@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m3_scx_low_3_bits@DMG",
@@ -950,8 +948,7 @@
       "collection": "ppu",
       "name": "m3_scx_low_3_bits@DMG",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 324 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m3_window_timing@CGBBC",

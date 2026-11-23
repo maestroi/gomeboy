@@ -85,12 +85,20 @@ func (m *mealybugTest) Run(t *testing.T) {
 	m.passed = false
 	t.Run(m.name, func(t *testing.T) {
 		t.Parallel()
-		g, err := runGameboy(m.romPath, 5, DebugBreakpoint,
+		// Step instruction-by-instruction to the LD B,B boundary.
+		// Frame()-chunked execution diverges across VBlank stop/resume
+		// once fine SCX discard lengthens Mode 3 (m3_scx_low_3_bits),
+		// and can redraw scanlines after the ROM stops mid-Mode-3 writes.
+		g := gameboy.NewGameBoy(
 			gameboy.Debug(), gameboy.AsModel(m.model),
 			gameboy.WithoutSaves(), gameboy.WithHeadlessAudio())
-		if err != nil {
+		if err := g.LoadROM(m.romPath); err != nil {
 			t.Errorf("Mealybug ROM failed to load/execute: %v", err)
 			return
+		}
+		const maxSteps = 20 * 70240 * 60
+		for steps := 0; steps < maxSteps && !g.CPU.DebugBreakpoint; steps++ {
+			g.StepInstruction()
 		}
 		if !g.CPU.DebugBreakpoint {
 			t.Errorf("Mealybug ROM never reached LD B,B within bounded execution: %s", m.romPath)
