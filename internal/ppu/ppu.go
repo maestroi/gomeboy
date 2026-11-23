@@ -335,6 +335,15 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	})
 	b.ReserveAddress(types.SCX, func(v byte) byte {
 		p.scx = v
+		// Fine SCX stays mutable through the Mode-3 junk/offscreen
+		// phase (lx < 8). Mealybug m3_scx_low_3_bits clears SCX in
+		// Mode 2 then writes SCX=2 around line-dot 91 (early rows,
+		// still in lx < 8) or 95 (late rows, after visible output
+		// began). Updating the discard target only while lx < 8
+		// accepts the early write and freezes the late one.
+		if p.mode == ModeVRAM && p.lx < 8 {
+			p.scxToDiscard = v & 7
+		}
 		return v
 	})
 	b.ReserveAddress(types.LY, func(v byte) byte {
