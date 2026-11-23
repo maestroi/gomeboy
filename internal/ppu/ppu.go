@@ -87,7 +87,11 @@ type PPU struct {
 
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
-	scxToDiscard uint8 // Target number of pixels to discard based on SCX % 8
+	// After LX reaches 8 (first visible column), stall this many dots
+	// before shifting visible pixels. Bridges Mealybug SCX (needs
+	// Dummy@85) with BGP mid-Mode-3 write alignment (~+11 dots).
+	postOffscreenStall uint8
+	scxToDiscard       uint8 // Target number of pixels to discard based on SCX % 8
 
 	// Scroll registers
 	scy, scx uint8 // Background viewport position
@@ -109,6 +113,14 @@ type PPU struct {
 	OBJ0ColourisationPalette Palette       // OBJ0 Palette used for DMG->CGB colourisation
 	OBJ1ColourisationPalette Palette       // OBJ1 Palette used for DMG->CGB colourisation
 
+	// DMG BGP mid-Mode-3 write pipeline. The write-dot pixel keeps the old
+	// palette; the next Mode-3 dot commits (new|old), then settles to the
+	// clean new value. See Mealybug m3_bgp_change / SameBoy CONFLICT_READ_OR.
+	bgp             uint8
+	bgpPending      uint8
+	bgpPendingFirst uint8
+	bgpPendingArmed bool
+
 	// External components
 	b *io.Bus
 	s *scheduler.Scheduler
@@ -125,7 +137,7 @@ type PPU struct {
 	fetcherTileAttr      uint8                  // Current attributes
 	fetcherData          [2]uint8               // Tile pattern data (low + high bytes)
 	fetcherTileNoAddress uint16                 // VRAM address of current tile map entry
-	tileSelectGlitch bool // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
+	tileSelectGlitch     bool                   // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -385,7 +397,20 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		if p.b.IsGBCCart() && p.b.IsGBC() {
 			return v
 		}
-		p.ColourPalette[0] = p.BGColourisationPalette.remap(v)
+		old := p.bgp
+		p.bgp = v
+		// Outside Mode 3 the palette is combinational: apply immediately.
+		if p.mode != ModeVRAM {
+			p.applyBGP(v)
+			p.bgpPendingArmed = false
+			return v
+		}
+		// Mid-Mode-3 DMG BGP conflict (SameBoy GB_CONFLICT_READ_OR): the
+		// write-dot keeps the old render palette; the next Mode-3 dot
+		// commits (new|old), then the following dot settles to new.
+		p.bgpPending = v
+		p.bgpPendingFirst = v | old
+		p.bgpPendingArmed = true
 		return v
 	})
 	b.ReserveAddress(types.OBP0, func(v byte) byte {
@@ -825,6 +850,7 @@ func (p *PPU) cpuVisibleSTAT() byte {
 //   - [mooneye/acceptance/ppu/intr_2_mode_0_timing]
 //   - [mooneye/acceptance/ppu/intr_2_mode3_timing]
 //   - [mooneye/acceptance/ppu/intr_2_oam_ok_timing]
+//
 // scanOAMEntry performs one of the 40 Mode 2 object checks. Hardware
 // advances to a new four-byte OAM entry every two dots; keeping that cadence
 // visible to the scheduler is required for OAM DMA overlap tests such as
@@ -940,7 +966,10 @@ func (p *PPU) handleVisualLine() {
 		// will just be discarded, so we "fill" the BG FIFO with junk data
 		p.scxToDiscard = p.scx & 7
 		p.scxDiscarded = 0
-
+		p.postOffscreenStall = 11
+		if p.ly == 0 {
+			p.postOffscreenStall = 7 // Mealybug LY0 handler is 4 cycles shorter
+		}
 		p.lineState = PixelTransferLX
 		fallthrough
 	case PixelTransferLX:
@@ -977,7 +1006,19 @@ func (p *PPU) handleVisualLine() {
 			return // object fetching immediately halts pushing pixels to the lcd
 		}
 
+		// After the offscreen (LX 0–7) phase, wait before the first
+		// visible shift so mid-Mode-3 BGP writes align with hardware
+		// without moving Dummy/SCX sampling away from dot 85.
+		if p.lx >= 8 && p.postOffscreenStall > 0 {
+			p.postOffscreenStall--
+			p.commitBGPAfterDot()
+			p.stepPixelFetcher()
+			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
+			return
+		}
+
 		p.pushPixel()
+		p.commitBGPAfterDot()
 		p.stepPixelFetcher()
 
 		// have we reached the end of the line yet?
@@ -994,6 +1035,8 @@ func (p *PPU) handleVisualLine() {
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 		return
 	case EnterHBlank: // variable
+		// Flush any deferred mid-Mode-3 BGP commit before leaving Mode 3.
+		p.flushBGP()
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
@@ -1326,6 +1369,36 @@ func (p *PPU) handleOffscreenLine() {
 
 	p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, p.offscreenStateCycles(p.offscreenLineState))
 	p.offscreenLineState++
+}
+
+// applyBGP remaps the DMG background palette into ColourPalette[0].
+func (p *PPU) applyBGP(v uint8) {
+	p.ColourPalette[0] = p.BGColourisationPalette.remap(v)
+}
+
+// commitBGPAfterDot applies a deferred mid-Mode-3 BGP write after the
+// write-dot's pixel clock. The first commit uses (new|old); the next
+// settles to the clean new value (SameBoy GB_CONFLICT_READ_OR).
+func (p *PPU) commitBGPAfterDot() {
+	if !p.bgpPendingArmed {
+		return
+	}
+	p.applyBGP(p.bgpPendingFirst)
+	if p.bgpPendingFirst != p.bgpPending {
+		p.bgpPendingFirst = p.bgpPending
+		return
+	}
+	p.bgpPendingArmed = false
+}
+
+// flushBGP forces any deferred BGP value into the render palette, used
+// when Mode 3 ends so HBlank/VBlank observers see the committed register.
+func (p *PPU) flushBGP() {
+	if !p.bgpPendingArmed {
+		return
+	}
+	p.applyBGP(p.bgpPending)
+	p.bgpPendingArmed = false
 }
 
 // pushPixel attempts to push a pixel out from one of the two FIFOs and into
@@ -1892,4 +1965,5 @@ func (p *PPU) resetFetcher() {
 	p.fetcherState = BGWinActivating
 	p.tileSelectGlitch = false
 	p.lx = 0
+	p.postOffscreenStall = 0
 }
