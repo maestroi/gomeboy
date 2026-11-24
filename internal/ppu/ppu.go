@@ -1898,8 +1898,17 @@ func (p *PPU) checkWindowTriggerWX() {
 		if p.lx != 0 {
 			return
 		}
+	} else if !p.b.Model().IsCGB() && p.wx == 6 {
+		// DMG WX=6 uses SameBoy's position+6 path, which a mid-Mode-3 WX
+		// write suppresses via wx_just_changed (GB_CONFLICT_WX_DMG).
+		// The ordinary +7 compare would open one column early offscreen.
+		// Keep the window closed while WX remains 6 (Mealybug m3_wx_6).
+		return
 	} else {
-		windowX := p.lx > 0 && p.lx >= p.wx+1
+		// Exact boundary, or a short late catch-up for mid-Mode-3 WX
+		// writes. Far-late writes must not open the window
+		// (m3_wx_6_change pokes WX=0x50 near LX=94 after leaving WX=6).
+		windowX := p.lx > 0 && p.lx >= p.wx+1 && p.lx <= p.wx+1+12
 		if !(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB())) {
 			return
 		}
