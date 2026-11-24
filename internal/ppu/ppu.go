@@ -257,10 +257,12 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		p.winTileMap = v >> 6 & 1
 		// On physical CGB hardware (including DMG-compatible mode),
-		// turning off LCDC.5 clears the window's latched WY match.
-		// DMG keeps the match until the end of the frame.
+		// turning off LCDC.5 clears the window's latched WY match —
+		// but not mid-Mode-3, where the current window tile must
+		// finish first (Mealybug WIN_EN docs / m3_lcdc_win_en).
 		if p.enabled && p.b.Model().IsCGB() &&
-			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 {
+			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 &&
+			p.mode != ModeVRAM {
 			p.winTriggerWy = false
 		}
 		p.winEnabled = v&types.Bit5 > 0
