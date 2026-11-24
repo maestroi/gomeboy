@@ -1537,14 +1537,9 @@ const (
 // stepPixelFetcher advances the pixel slice fetcher forward by 1 step depending
 // on the state it's currently in.
 func (p *PPU) stepPixelFetcher() {
-	// if the pixel slice fetcher is currently fetching a window, it could be aborted
-	// due to WIN_EN being reset in LCDC. When this happens the fetcher simply switches
-	// to BG fetching rather than restarting the process
-	if p.fetcherState >= WinGetTileNoT1 && p.fetcherState <= WinGetTileDataHighT1 {
-		if !p.winEnabled {
-			p.fetcherState -= 8 // roll back to background fetching and continue on
-		}
-	}
+	// WIN_EN clear mid-Mode-3 takes effect only after the current window
+	// tile finishes (Mealybug PPU docs). Do not abort an in-flight window
+	// fetch — BGWinActivating observes !winEnabled at the tile boundary.
 
 	switch p.fetcherState {
 	case BGWinActivating:
@@ -1558,8 +1553,11 @@ func (p *PPU) stepPixelFetcher() {
 				return
 			}
 
-			// window fetch was aborted, proceed with bg fetch
+			// Window tile finished and WIN_EN is clear: resume BG on a
+			// tile boundary — SCX fine scroll no longer applies this line.
 			p.winTriggerWx = false
+			p.scxToDiscard = 0
+			p.scxDiscarded = 0
 		}
 
 		// we're fetching background
