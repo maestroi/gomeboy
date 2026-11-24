@@ -72,6 +72,7 @@ func TestWindowWXTriggerGuardsAndOrdinaryPhase(t *testing.T) {
 		{"WX7 before", 7, 7, true, true, false},
 		{"WX7 boundary", 7, 8, true, true, true},
 		{"WX165 boundary", 165, 166, true, true, true},
+		{"WX7 late catch-up", 7, 12, true, true, true},
 		{"WX166 unchanged", 166, 167, true, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,5 +88,25 @@ func TestWindowWXTriggerGuardsAndOrdinaryPhase(t *testing.T) {
 				t.Fatalf("rejected window trigger mutated state: WLY=%d FIFO=%d", p.wly, p.bgFIFO.Size)
 			}
 		})
+	}
+}
+
+// Mid-Mode-3 WX writes that arrive after the exact trigger LX must still
+// open the window for the remainder of the scanline.
+func TestLateWXWriteCatchesUpDuringMode3(t *testing.T) {
+	p := newWindowWXTriggerTestPPU(types.DMGABC)
+	p.mode = ModeVRAM
+	p.lx = 20
+	p.wx = 167 // offscreen: no trigger yet
+	p.checkWindowTriggerWX()
+	if p.winTriggerWx {
+		t.Fatal("WX=167 should not trigger")
+	}
+	p.b.Write(types.WX, 10)
+	if !p.winTriggerWx {
+		t.Fatal("late WX=10 write during Mode 3 did not open the window")
+	}
+	if p.fetcherState != WinActivating {
+		t.Fatalf("window fetch not restarted after late WX write: state=%v", p.fetcherState)
 	}
 }
