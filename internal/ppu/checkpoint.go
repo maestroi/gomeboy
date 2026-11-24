@@ -24,6 +24,7 @@ func (p *PPU) SnapshotInto(dst *State) {
 		WinTriggerWX:             p.winTriggerWx,
 		SCXDiscarded:             p.scxDiscarded,
 		SCXToDiscard:             p.scxToDiscard,
+		WindowMode3Stall:         p.windowMode3Stall,
 		SCY:                      p.scy,
 		SCX:                      p.scx,
 		WY:                       p.wy,

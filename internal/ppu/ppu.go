@@ -88,6 +88,10 @@ type PPU struct {
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
 	scxToDiscard uint8 // Target number of pixels to discard based on SCX % 8
+	// Extra Mode-3 dots while WY is latched and WIN_EN is set. AGE
+	// window STAT shows this configuration lengthens Mode 3 even
+	// before WX opens the window (SameBoy also refuses to batch).
+	windowMode3Stall uint8
 
 	// Scroll registers
 	scy, scx uint8 // Background viewport position
@@ -951,6 +955,18 @@ func (p *PPU) handleVisualLine() {
 		// will just be discarded, so we "fill" the BG FIFO with junk data
 		p.scxToDiscard = p.scx & 7
 		p.scxDiscarded = 0
+		p.windowMode3Stall = 0
+		if p.winTriggerWy && p.winEnabled {
+			// WY-latched + WIN_EN lengthens Mode 3 even before WX opens
+			// (AGE window STAT / SameBoy mode3 batching). Native CGB
+			// colour already retains Mode 3 through enterHBlankDelay,
+			// so it needs a smaller stall than DMG/NCM.
+			if p.cgbMode {
+				p.windowMode3Stall = 2
+			} else {
+				p.windowMode3Stall = 4
+			}
+		}
 
 		p.lineState = PixelTransferLX
 		fallthrough
@@ -986,6 +1002,13 @@ func (p *PPU) handleVisualLine() {
 			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
 
 			return // object fetching immediately halts pushing pixels to the lcd
+		}
+
+		if p.windowMode3Stall > 0 && p.lx >= 8 {
+			p.windowMode3Stall--
+			p.stepPixelFetcher()
+			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
+			return
 		}
 
 		p.pushPixel()
@@ -1906,6 +1929,7 @@ func (p *PPU) resetFetcher() {
 
 	p.winFetcherX = 0
 	p.winTriggerWx = false
+	p.windowMode3Stall = 0
 
 	p.fetcherState = BGWinActivating
 	p.tileSelectGlitch = false
