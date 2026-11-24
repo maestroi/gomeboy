@@ -2,7 +2,7 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20295,%20failing%2034&width=500)
+![progress](https://progress-bar.xyz/89/?scale=100&title=passing%20295,%20failing%2034&width=500)
 
 | Status | Count |
 | --- | ---: |
@@ -52,7 +52,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 64% | 35 | 20 | 55 |
+| age | 63% | 35 | 20 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -277,12 +277,12 @@ is compared against a reference image from a known good emulator.
 | m3_bgp_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 3888 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
 | m3_bgp_change@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 4752 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
 | m3_bgp_change@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 4384 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
-| m3_lcdc_win_en_change_multiple@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
-| m3_lcdc_win_en_change_multiple@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
-| m3_lcdc_win_en_change_multiple@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 288 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
-| m3_scx_low_3_bits@CGBBC | pass | pass | pass | |
-| m3_scx_low_3_bits@CGBDE | pass | pass | pass | |
-| m3_scx_low_3_bits@DMG | pass | pass | pass | |
+| m3_lcdc_win_en_change_multiple@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 486 RGB pixels against pinned CGBBC reference at LD B,B (WY latch mid-Mode-3 keep) |
+| m3_lcdc_win_en_change_multiple@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 486 RGB pixels against pinned CGBDE reference at LD B,B (WY latch mid-Mode-3 keep) |
+| m3_lcdc_win_en_change_multiple@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 486 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_scx_low_3_bits@CGBBC | pass | pass | pass |  |
+| m3_scx_low_3_bits@CGBDE | pass | pass | pass |  |
+| m3_scx_low_3_bits@DMG | pass | pass | pass |  |
 | m3_window_timing@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 1089 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
 | m3_window_timing@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
 | m3_window_timing@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
@@ -296,13 +296,13 @@ is compared against a reference image from a known good emulator.
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
 | add_sp_e_timing | pass | pass | pass |  |
+| boot_div-S | pass | pass | pass |  |
 | boot_div-dmg0 | pass | pass | pass |  |
 | boot_div-dmgABCmgb | pass | pass | pass |  |
-| boot_div-S | pass | pass | pass |  |
 | boot_div2-S | pass | pass | pass |  |
+| boot_hwio-S | pass | pass | pass |  |
 | boot_hwio-dmg0 | pass | pass | pass |  |
 | boot_hwio-dmgABCmgb | pass | pass | pass |  |
-| boot_hwio-S | pass | pass | pass |  |
 | boot_regs-dmg0 | pass | pass | pass |  |
 | boot_regs-dmgABC | pass | pass | pass |  |
 | boot_regs-mgb | pass | pass | pass |  |
@@ -542,11 +542,11 @@ is compared against a reference image from a known good emulator.
 | channel_4_freq_change | pass | pass | pass |  |
 | channel_4_frequency_alignment | pass | pass | pass |  |
 | channel_4_lfsr | pass | pass | pass |  |
+| channel_4_lfsr15 | pass | pass | pass |  |
 | channel_4_lfsr_15_7 | pass | pass | pass |  |
 | channel_4_lfsr_7_15 | pass | pass | pass |  |
 | channel_4_lfsr_restart | pass | pass | pass |  |
 | channel_4_lfsr_restart_fast | pass | pass | pass |  |
-| channel_4_lfsr15 | pass | pass | pass |  |
 | channel_4_volume_div | pass | pass | pass |  |
 
 #### apu
@@ -600,4 +600,3 @@ is compared against a reference image from a known good emulator.
 | --- | --- | --- | --- | --- |
 | strikethrough (CGB) | pass | pass | pass |  |
 | strikethrough (DMG) | pass | pass | pass |  |
-
