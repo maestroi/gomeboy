@@ -973,8 +973,16 @@ func (p *PPU) handleVisualLine() {
 		p.scxToDiscard = p.scx & 7
 		p.scxDiscarded = 0
 		p.postOffscreenStall = 11
+		// CPU CGB C samples mid-Mode-3 writes one dot earlier than DE/DMG
+		// relative to our Dummy@85 + stall bridge (Mealybug m3_window_timing).
+		if p.b.Model() == types.CGBBC {
+			p.postOffscreenStall = 10
+		}
 		if p.ly == 0 {
 			p.postOffscreenStall = 7 // Mealybug LY0 handler is 4 cycles shorter
+			if p.b.Model() == types.CGBBC {
+				p.postOffscreenStall = 6
+			}
 		}
 		p.lineState = PixelTransferLX
 		fallthrough
@@ -1977,11 +1985,23 @@ func (p *PPU) checkWindowTriggerWX() {
 	case p.lx < 8:
 		if p.wx == 0 && p.ly == 0 {
 			p.postOffscreenStall = 6
-		} else if p.postOffscreenStall > 10 {
-			p.postOffscreenStall = 10
+			if p.b.Model() == types.CGBBC {
+				p.postOffscreenStall = 5
+			}
+		} else {
+			trim := uint8(10)
+			if p.b.Model() == types.CGBBC {
+				trim = 9
+			}
+			if p.postOffscreenStall > trim {
+				p.postOffscreenStall = trim
+			}
 		}
 	case p.lx == 8:
 		p.postOffscreenStall = 17 // 11 BGP stall + 6 window fetch
+		if p.b.Model() == types.CGBBC {
+			p.postOffscreenStall = 16
+		}
 	case p.lx == p.wx+1:
 		p.bgpSettleExtra = 1
 	}
