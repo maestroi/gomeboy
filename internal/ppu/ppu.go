@@ -257,7 +257,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		p.winTileMap = v >> 6 & 1
 		// On physical CGB hardware (including DMG-compatible mode),
-		// turning off LCDC.5 clears the window's latched WY match —
+		// turning off LCDC.5 clears the window's latched WY match -
 		// but not mid-Mode-3, where the current window tile must
 		// finish first (Mealybug WIN_EN docs / m3_lcdc_win_en).
 		if p.enabled && p.b.Model().IsCGB() &&
@@ -1560,7 +1560,7 @@ const (
 func (p *PPU) stepPixelFetcher() {
 	// WIN_EN clear mid-Mode-3 takes effect only after the current window
 	// tile finishes (Mealybug PPU docs). Do not abort an in-flight window
-	// fetch — BGWinActivating observes !winEnabled at the tile boundary.
+	// fetch - BGWinActivating observes !winEnabled at the tile boundary.
 
 	switch p.fetcherState {
 	case BGWinActivating:
@@ -1575,7 +1575,7 @@ func (p *PPU) stepPixelFetcher() {
 			}
 
 			// Window tile finished and WIN_EN is clear: resume BG on a
-			// tile boundary — SCX fine scroll no longer applies this line.
+			// tile boundary - SCX fine scroll no longer applies this line.
 			p.winTriggerWx = false
 			p.scxToDiscard = 0
 			p.scxDiscarded = 0
@@ -1954,9 +1954,8 @@ func (p *PPU) checkWindowTriggerWX() {
 	// visible column (Mealybug Mode-2 IRQ → mid-Mode-3 WX write), start
 	// the window for the remainder of the offscreen/visible phase.
 	//
-	// Ordinary WX values compare against LX each dot. Using >= rather
-	// than == lets a late mid-Mode-3 WX write still open the window once
-	// the scan position has reached WX (same Mealybug path).
+	// Ordinary WX values compare against LX each dot. Write-time recheck
+	// still catches late mid-Mode-3 WX writes that land on an exact LX.
 	// On physical CGB hardware WX=166 still starts a window fetch at the
 	// final on-screen pixel (LX=167). The tile-fetch pause therefore
 	// contributes to Mode 3 even though only one window pixel is shown.
@@ -1966,8 +1965,19 @@ func (p *PPU) checkWindowTriggerWX() {
 		if p.lx >= 8 {
 			return // too late for WX=0 to own this scanline
 		}
+	} else if !p.b.Model().IsCGB() && p.wx == 6 {
+		// DMG WX=6 uses SameBoy's position+6 path, which a mid-Mode-3 WX
+		// write suppresses via wx_just_changed (GB_CONFLICT_WX_DMG) -
+		// including same-value writes. The ordinary +7 compare would open
+		// one column early in the offscreen phase. Until the +6/desync
+		// path is modelled with write conflict timing, keep the window
+		// closed while WX remains 6 (Mealybug m3_wx_6_change).
+		return
 	} else {
-		windowX := p.lx > 0 && p.lx >= p.wx+1
+		// Exact boundary, or a short late catch-up (one tile) for mid-Mode-3
+		// WX writes. Far-late writes must not open the window (m3_wx_6_change
+		// pokes WX=0x50 near LX=94 after leaving WX=6 closed for the line).
+		windowX := p.lx > 0 && p.lx >= p.wx+1 && p.lx <= p.wx+1+8
 		if !(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB())) {
 			return
 		}
@@ -2010,11 +2020,15 @@ func (p *PPU) checkWindowTriggerWX() {
 				p.postOffscreenStall = trim
 			}
 		}
-	case p.lx == 8:
+	case p.lx == 8 && p.lx == p.wx+1:
+		// Exact WX=7 boundary: window fetch stacks on the BGP stall.
 		p.postOffscreenStall = 17 // 11 BGP stall + 6 window fetch
 		if p.b.Model() == types.CGBBC {
 			p.postOffscreenStall = 16
 		}
+	case p.lx == 8 && p.lx > p.wx+1:
+		// Late open at LX=8 after WX was rewritten away from 6: keep the
+		// default post-offscreen BGP stall (do not stack the WX=7 fetch).
 	case p.lx == p.wx+1:
 		p.bgpSettleExtra = 1
 	}

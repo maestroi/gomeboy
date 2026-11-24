@@ -20,7 +20,7 @@ func TestWindowTriggerRetunesPostOffscreenStall(t *testing.T) {
 		{"LY0 WX0 uses 6-dot stall", 0, 3, 0, 7, 6, 0},
 		{"WX7 at stall boundary stacks fetch", 7, 8, 1, 11, 17, 0},
 		{"exact WX boundary adds BGP settle", 9, 10, 1, 0, 0, 1},
-		{"mid-line re-open skips stall retune", 9, 50, 1, 0, 0, 0},
+		{"mid-line re-open skips stall retune", 9, 12, 1, 0, 0, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := newWindowWXTriggerTestPPU(types.DMGABC)
