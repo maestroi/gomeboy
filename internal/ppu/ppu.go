@@ -243,14 +243,20 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.tileSelectGlitch = true
 		}
 		p.winTileMap = v >> 6 & 1
-		// On physical CGB hardware (including DMG-compatible mode),
-		// turning off LCDC.5 clears the window's latched WY match.
-		// DMG keeps the match until the end of the frame.
+		// CGB (including DMG-compat) clears the WY latch when WIN_EN
+		// falls, except mid-Mode-3 where the in-flight window tile must
+		// finish first (Mealybug). DMG keeps the latch until frame end.
 		if p.enabled && p.b.Model().IsCGB() &&
-			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 {
+			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 &&
+			p.mode != ModeVRAM {
 			p.winTriggerWy = false
 		}
 		p.winEnabled = v&types.Bit5 > 0
+		// Re-sample WY when the window is turned back on (CGB may have
+		// cleared the latch on the previous disable).
+		if p.winEnabled {
+			p.checkWindowTriggerWY()
+		}
 		p.addressMode = 1 &^ (v >> 4 & 1)
 		p.bgTileMap = v >> 3 & 1
 		p.objSize = 8 + (v & types.Bit2 << 1)
