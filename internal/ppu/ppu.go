@@ -266,6 +266,11 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.winTriggerWy = false
 		}
 		p.winEnabled = v&types.Bit5 > 0
+		// Re-sample WY when the window is turned back on (CGB may have
+		// cleared the latch on the previous disable).
+		if p.winEnabled {
+			p.checkWindowTriggerWY()
+		}
 		p.addressMode = 1 &^ (v >> 4 & 1)
 		p.bgTileMap = v >> 3 & 1
 		p.objSize = 8 + (v & types.Bit2 << 1)
