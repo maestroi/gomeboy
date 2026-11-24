@@ -248,11 +248,13 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		p.winTileMap = v >> 6 & 1
 		// CGB (including DMG-compat) clears the WY latch when WIN_EN
-		// falls, except mid-Mode-3 where the in-flight window tile must
-		// finish first (Mealybug). DMG keeps the latch until frame end.
+		// falls during HBlank/VBlank. Mode 2 and Mode 3 keep the latch
+		// so mid-frame toggles (Mealybug m2_win_en_toggle / mid-Mode-3
+		// re-enable) can resume the window. DMG keeps the latch until
+		// frame end regardless of mode.
 		if p.enabled && p.b.Model().IsCGB() &&
 			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 &&
-			p.mode != ModeVRAM {
+			(p.mode == ModeHBlank || p.mode == ModeVBlank) {
 			p.winTriggerWy = false
 		}
 		p.winEnabled = v&types.Bit5 > 0
