@@ -409,8 +409,14 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		// Mid-Mode-3 DMG BGP conflict (SameBoy GB_CONFLICT_READ_OR): the
 		// write-dot keeps the old render palette; the next Mode-3 dot
 		// commits (new|old), then the following dot settles to new.
+		// CGB revisions applying DMG-cart colourisation skip the OR
+		// overlap (Mealybug m3_bgp_change CGB references).
 		p.bgpPending = v
-		p.bgpPendingFirst = v | old
+		if p.b.Model().IsCGB() {
+			p.bgpPendingFirst = v
+		} else {
+			p.bgpPendingFirst = v | old
+		}
 		p.bgpPendingArmed = true
 		return v
 	})
