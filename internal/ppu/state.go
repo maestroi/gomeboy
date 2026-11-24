@@ -22,6 +22,9 @@ type State struct {
 	// Scroll discard state
 	SCXDiscarded, SCXToDiscard uint8
 
+	// WY-latched + WIN_EN Mode-3 extension remaining this line
+	WindowMode3Stall uint8
+
 	// Scroll registers
 	SCY, SCX, WY, WX uint8
 
@@ -111,6 +114,7 @@ func (p *PPU) Snapshot() State {
 		WinTriggerWX:             p.winTriggerWx,
 		SCXDiscarded:             p.scxDiscarded,
 		SCXToDiscard:             p.scxToDiscard,
+		WindowMode3Stall:         p.windowMode3Stall,
 		SCY:                      p.scy,
 		SCX:                      p.scx,
 		WY:                       p.wy,
@@ -182,6 +186,7 @@ func (p *PPU) Restore(s State) {
 	p.winTriggerWx = s.WinTriggerWX
 	p.scxDiscarded = s.SCXDiscarded
 	p.scxToDiscard = s.SCXToDiscard
+	p.windowMode3Stall = s.WindowMode3Stall
 	p.scy = s.SCY
 	p.scx = s.SCX
 	p.wy = s.WY

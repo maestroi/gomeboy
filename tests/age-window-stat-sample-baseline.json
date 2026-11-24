@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "source_revision": "cd3f654d13bf7137fa4f7fb7e5dd041d10f7098e",
+  "cases": {
+    "stat-mode-window-cgbBCE.gb@CGBBC": {
+      "sample_count": 512,
+      "minimum_matching_samples": 477
+    },
+    "stat-mode-window-cgbBCE.gb@CGBDE": {
+      "sample_count": 512,
+      "minimum_matching_samples": 477
+    },
+    "stat-mode-window-dmgC.gb@DMG": {
+      "sample_count": 512,
+      "minimum_matching_samples": 482
+    },
+    "stat-mode-window-ds-cgbBCE.gb@CGBBC": {
+      "sample_count": 768,
+      "minimum_matching_samples": 754
+    },
+    "stat-mode-window-ds-cgbBCE.gb@CGBDE": {
+      "sample_count": 768,
+      "minimum_matching_samples": 754
+    },
+    "stat-mode-window-ncmBCE.gb@CGBBC": {
+      "sample_count": 512,
+      "minimum_matching_samples": 480
+    },
+    "stat-mode-window-ncmBCE.gb@CGBDE": {
+      "sample_count": 512,
+      "minimum_matching_samples": 480
+    }
+  }
+}
