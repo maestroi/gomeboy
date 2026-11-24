@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20298,%20failing%2031&width=500)
+![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20304,%20failing%2025&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 298 |
-| XFAIL | 31 |
+| PASS | 304 |
+| XFAIL | 25 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -274,16 +274,16 @@ is compared against a reference image from a known good emulator.
 | m2_win_en_toggle@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
 | m2_win_en_toggle@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
 | m2_win_en_toggle@DMG | pass | pass | pass |  |
-| m3_bgp_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 496 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
-| m3_bgp_change@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 496 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_bgp_change@CGBBC | pass | pass | pass | |
+| m3_bgp_change@CGBDE | pass | pass | pass | |
 | m3_bgp_change@DMG | pass | pass | pass | |
-| m3_lcdc_win_en_change_multiple@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
-| m3_lcdc_win_en_change_multiple@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 9137 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
-| m3_lcdc_win_en_change_multiple@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 468 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_lcdc_win_en_change_multiple@CGBBC | pass | pass | pass | |
+| m3_lcdc_win_en_change_multiple@CGBDE | pass | pass | pass | |
+| m3_lcdc_win_en_change_multiple@DMG | pass | pass | pass | |
 | m3_scx_low_3_bits@CGBBC | pass | pass | pass | |
 | m3_scx_low_3_bits@CGBDE | pass | pass | pass | |
 | m3_scx_low_3_bits@DMG | pass | pass | pass | |
-| m3_window_timing@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 138 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
+| m3_window_timing@CGBBC | pass | pass | pass | |
 | m3_window_timing@CGBDE | pass | pass | pass | |
 | m3_window_timing@DMG | pass | pass | pass | |
 | m3_wx_6_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |

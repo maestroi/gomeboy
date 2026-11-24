@@ -257,13 +257,20 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		p.winTileMap = v >> 6 & 1
 		// On physical CGB hardware (including DMG-compatible mode),
-		// turning off LCDC.5 clears the window's latched WY match.
-		// DMG keeps the match until the end of the frame.
+		// turning off LCDC.5 clears the window's latched WY match —
+		// but not mid-Mode-3, where the current window tile must
+		// finish first (Mealybug WIN_EN docs / m3_lcdc_win_en).
 		if p.enabled && p.b.Model().IsCGB() &&
-			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 {
+			oldLCDC&types.Bit5 != 0 && v&types.Bit5 == 0 &&
+			p.mode != ModeVRAM {
 			p.winTriggerWy = false
 		}
 		p.winEnabled = v&types.Bit5 > 0
+		// Re-sample WY when the window is turned back on (CGB may have
+		// cleared the latch on the previous disable).
+		if p.winEnabled {
+			p.checkWindowTriggerWY()
+		}
 		p.addressMode = 1 &^ (v >> 4 & 1)
 		p.bgTileMap = v >> 3 & 1
 		p.objSize = 8 + (v & types.Bit2 << 1)
@@ -409,8 +416,14 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		// Mid-Mode-3 DMG BGP conflict (SameBoy GB_CONFLICT_READ_OR): the
 		// write-dot keeps the old render palette; the next Mode-3 dot
 		// commits (new|old), then the following dot settles to new.
+		// CGB revisions applying DMG-cart colourisation skip the OR
+		// overlap (Mealybug m3_bgp_change CGB references).
 		p.bgpPending = v
-		p.bgpPendingFirst = v | old
+		if p.b.Model().IsCGB() {
+			p.bgpPendingFirst = v
+		} else {
+			p.bgpPendingFirst = v | old
+		}
 		p.bgpPendingArmed = true
 		return v
 	})
@@ -973,8 +986,16 @@ func (p *PPU) handleVisualLine() {
 		p.scxToDiscard = p.scx & 7
 		p.scxDiscarded = 0
 		p.postOffscreenStall = 11
+		// CPU CGB C samples mid-Mode-3 writes one dot earlier than DE/DMG
+		// relative to our Dummy@85 + stall bridge (Mealybug m3_window_timing).
+		if p.b.Model() == types.CGBBC {
+			p.postOffscreenStall = 10
+		}
 		if p.ly == 0 {
 			p.postOffscreenStall = 7 // Mealybug LY0 handler is 4 cycles shorter
+			if p.b.Model() == types.CGBBC {
+				p.postOffscreenStall = 6
+			}
 		}
 		p.lineState = PixelTransferLX
 		fallthrough
@@ -1537,14 +1558,9 @@ const (
 // stepPixelFetcher advances the pixel slice fetcher forward by 1 step depending
 // on the state it's currently in.
 func (p *PPU) stepPixelFetcher() {
-	// if the pixel slice fetcher is currently fetching a window, it could be aborted
-	// due to WIN_EN being reset in LCDC. When this happens the fetcher simply switches
-	// to BG fetching rather than restarting the process
-	if p.fetcherState >= WinGetTileNoT1 && p.fetcherState <= WinGetTileDataHighT1 {
-		if !p.winEnabled {
-			p.fetcherState -= 8 // roll back to background fetching and continue on
-		}
-	}
+	// WIN_EN clear mid-Mode-3 takes effect only after the current window
+	// tile finishes (Mealybug PPU docs). Do not abort an in-flight window
+	// fetch — BGWinActivating observes !winEnabled at the tile boundary.
 
 	switch p.fetcherState {
 	case BGWinActivating:
@@ -1558,8 +1574,11 @@ func (p *PPU) stepPixelFetcher() {
 				return
 			}
 
-			// window fetch was aborted, proceed with bg fetch
+			// Window tile finished and WIN_EN is clear: resume BG on a
+			// tile boundary — SCX fine scroll no longer applies this line.
 			p.winTriggerWx = false
+			p.scxToDiscard = 0
+			p.scxDiscarded = 0
 		}
 
 		// we're fetching background
@@ -1979,11 +1998,23 @@ func (p *PPU) checkWindowTriggerWX() {
 	case p.lx < 8:
 		if p.wx == 0 && p.ly == 0 {
 			p.postOffscreenStall = 6
-		} else if p.postOffscreenStall > 10 {
-			p.postOffscreenStall = 10
+			if p.b.Model() == types.CGBBC {
+				p.postOffscreenStall = 5
+			}
+		} else {
+			trim := uint8(10)
+			if p.b.Model() == types.CGBBC {
+				trim = 9
+			}
+			if p.postOffscreenStall > trim {
+				p.postOffscreenStall = trim
+			}
 		}
 	case p.lx == 8:
 		p.postOffscreenStall = 17 // 11 BGP stall + 6 window fetch
+		if p.b.Model() == types.CGBBC {
+			p.postOffscreenStall = 16
+		}
 	case p.lx == p.wx+1:
 		p.bgpSettleExtra = 1
 	}
