@@ -92,6 +92,7 @@ type Bus struct {
 	LoadedCheats   []Cheat
 	GameGenieCodes []GameGenieCode
 	GameSharkCodes []GameSharkCode
+
 }
 
 func (b *Bus) Debugf(f string, a ...interface{}) {
@@ -735,6 +736,20 @@ func (b *Bus) ClockedWrite(address uint16, value byte) {
 	if address >= 0xfe00 && address <= 0xfe9f && b.model.IsCGB() &&
 		b.IsGBCCart() && !b.s.DoubleSpeed() {
 		b.s.Tick(3)
+		b.Write(address, value)
+		b.s.Tick(1)
+		return
+	}
+	// DMG BGP/OBP bus conflict (SameBoy GB_CONFLICT_PALETTE_DMG): drive
+	// (new|old) for one T-state then the clean value one T early, still
+	// within a 4 T write M-cycle. CGB palette phasing stays at the
+	// default T4 sample until Mode-3 X alignment is settled.
+	if !b.model.IsCGB() && (address == uint16(types.BGP) ||
+		address == uint16(types.OBP0) || address == uint16(types.OBP1)) {
+		b.s.Tick(2)
+		old := b.data[address]
+		b.Write(address, value|old)
+		b.s.Tick(1)
 		b.Write(address, value)
 		b.s.Tick(1)
 		return
