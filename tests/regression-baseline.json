@@ -852,8 +852,7 @@
       "collection": "ppu",
       "name": "m2_win_en_toggle@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m2_win_en_toggle@CGBDE",
@@ -861,8 +860,7 @@
       "collection": "ppu",
       "name": "m2_win_en_toggle@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 8894 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m2_win_en_toggle@DMG",

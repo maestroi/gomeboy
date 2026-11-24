@@ -153,6 +153,8 @@ func TestCGBWindowDisableClearsYCondition(t *testing.T) {
 				t.Fatal("initial WY=LY match did not latch")
 			}
 
+			// CGB clears the latch on HBlank/VBlank WIN_EN fall only.
+			p.mode = ModeHBlank
 			b.Write(types.LCDC, types.Bit7) // LCD stays on; window disabled
 			keepLatch := !tc.model.IsCGB()
 			if p.winTriggerWy != keepLatch {

@@ -57,3 +57,21 @@ func TestCGBKeepsWYLatchAcrossMidMode3WinEnClear(t *testing.T) {
 		})
 	}
 }
+
+// Mode-2 WIN_EN clear on CGB must also keep the WY latch (Mealybug
+// m2_win_en_toggle toggles the window every Mode-2 IRQ).
+func TestCGBKeepsWYLatchAcrossMode2WinEnClear(t *testing.T) {
+	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
+		t.Run(model.String(), func(t *testing.T) {
+			p := newWindowWXTriggerTestPPU(model)
+			p.b.Set(types.LCDC, types.Bit7|types.Bit5)
+			p.winEnabled = true
+			p.winTriggerWy = true
+			p.mode = ModeOAM
+			p.b.Write(types.LCDC, types.Bit7)
+			if !p.winTriggerWy {
+				t.Fatal("Mode-2 WIN_EN clear dropped CGB WY latch")
+			}
+		})
+	}
+}
