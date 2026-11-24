@@ -1488,13 +1488,15 @@ const (
 // stepPixelFetcher advances the pixel slice fetcher forward by 1 step depending
 // on the state it's currently in.
 func (p *PPU) stepPixelFetcher() {
-	// if the pixel slice fetcher is currently fetching a window, it could be aborted
-	// due to WIN_EN being reset in LCDC. When this happens the fetcher simply switches
-	// to BG fetching rather than restarting the process
-	if p.fetcherState >= WinGetTileNoT1 && p.fetcherState <= WinGetTileDataHighT1 {
-		if !p.winEnabled {
-			p.fetcherState -= 8 // roll back to background fetching and continue on
-		}
+	// WIN_EN clear mid-window-fetch must not remap window fetcher states
+	// onto BG states with -=8: that can pair window low-plane data with a
+	// BG high plane and push a corrupt tile (Mealybug win_en 60..64 strip).
+	// Restart BG fetch cleanly; FIFO pixels already queued still drain.
+	if p.fetcherState >= WinGetTileNoT1 && p.fetcherState <= WinGetTileDataHighT1 && !p.winEnabled {
+		p.winTriggerWx = false
+		p.fetcherState = BGWinActivating
+		p.fetcherTileAttr = 0
+		p.fetcherData = [2]uint8{}
 	}
 
 	switch p.fetcherState {

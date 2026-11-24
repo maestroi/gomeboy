@@ -477,7 +477,7 @@ Useful benchmark groups include headless frame stepping, no-video stepping, `Ste
 
 The repository runs automated regression tests against a broad set of Game Boy test ROM suites.
 
-![progress](https://progress-bar.xyz/89/?scale=100&title=passing%20295,%20failing%2034&width=500)
+![progress](https://progress-bar.xyz/90/?scale=100&title=passing%20298,%20failing%2031&width=500)
 
 | Test suite | Pass rate | Passed | Failed | Total |
 | --- | ---: | ---: | ---: | ---: |
