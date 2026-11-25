@@ -150,3 +150,24 @@ func TestBGPMode3CGBBCAddsSettleDot(t *testing.T) {
 		})
 	}
 }
+
+
+func TestBGPMode3CGBNCMSkipsOROverlap(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := gbio.NewBus(s, make([]byte, 0x8000))
+	b.Map(types.CGBDE)
+	p := New(b, s)
+	b.Write(types.BGP, 0xE4)
+	b.Write(types.LCDC, types.Bit7|types.Bit4|types.Bit0)
+
+	for i := 0; i < 8000; i++ {
+		s.Tick(1)
+		if p.ly == 1 && p.mode == ModeVRAM && p.lx >= 10 {
+			break
+		}
+	}
+	b.Write(types.BGP, 0x00)
+	if p.bgpPendingFirst != 0x00 {
+		t.Fatalf("CGB NCM Mode-3 BGP should skip OR overlap: got %02x", p.bgpPendingFirst)
+	}
+}

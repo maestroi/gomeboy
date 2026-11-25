@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/92/?scale=100&title=passing%20304,%20failing%2025&width=500)
+![progress](https://progress-bar.xyz/93/?scale=100&title=passing%20306,%20failing%2023&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 304 |
-| XFAIL | 25 |
+| PASS | 306 |
+| XFAIL | 23 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -56,7 +56,7 @@ is compared against a reference image from a known good emulator.
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
-| mealybug | 72% | 13 | 5 | 18 |
+| mealybug | 83% | 15 | 3 | 18 |
 | mooneye | 100% | 114 | 0 | 114 |
 | samesuite | 100% | 82 | 0 | 82 |
 | scribbltests | 100% | 5 | 0 | 5 |
@@ -274,8 +274,8 @@ is compared against a reference image from a known good emulator.
 | m2_win_en_toggle@CGBBC | pass | pass | pass |  |
 | m2_win_en_toggle@CGBDE | pass | pass | pass |  |
 | m2_win_en_toggle@DMG | pass | pass | pass |  |
-| m3_bgp_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 496 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
-| m3_bgp_change@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 496 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
+| m3_bgp_change@CGBBC | pass | pass | pass |  |
+| m3_bgp_change@CGBDE | pass | pass | pass |  |
 | m3_bgp_change@DMG | pass | pass | pass |  |
 | m3_lcdc_win_en_change_multiple@CGBBC | pass | pass | pass |  |
 | m3_lcdc_win_en_change_multiple@CGBDE | pass | pass | pass |  |
