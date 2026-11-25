@@ -991,7 +991,7 @@
       "name": "m3_wx_6_change@DMG",
       "model": "DMG",
       "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 13799 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+      "reason": "Measured Mealybug PPU screenshot mismatch: 6965 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
     },
     {
       "id": "mooneye/acceptance/add_sp_e_timing",

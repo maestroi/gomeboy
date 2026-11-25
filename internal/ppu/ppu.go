@@ -84,13 +84,14 @@ type PPU struct {
 	wly          uint8 // Window line counter
 	winTriggerWy bool  // Window Y-position trigger
 	winTriggerWx bool  // Window X-position trigger
-	// DMG: a WX=6 write on the current scanline suppresses window open
-	// for the rest of that line. SameBoy's mid-write GB_CONFLICT_WX_DMG
-	// path suppresses the position+6 edge; without modelling the full
-	// conflict T-state, a same-line WX=6 poke must not open via the
-	// ordinary +7 column (Mealybug m3_wx_6_change). Preset WX=6 from a
-	// previous line still opens normally (AGE window STAT).
+	// DMG: a same-line WX=6 write suppresses the ordinary open at that
+	// column. If LX reaches the open edge while WX is still 6, the line
+	// is poisoned so a later WX (e.g. 80) cannot open either — matching
+	// the SameBoy position+6 desync consuming the window for that line
+	// (Mealybug m3_wx_6_change). Preset WX=6 from a previous line still
+	// opens normally (AGE window STAT).
 	wx6SuppressLine bool
+	wx6PoisonedLine bool
 
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
@@ -1117,6 +1118,7 @@ func (p *PPU) handleVisualLine() {
 	case EnterHBlank: // variable
 		p.flushBGP()
 		p.wx6SuppressLine = false
+		p.wx6PoisonedLine = false
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
@@ -2018,10 +2020,16 @@ func (p *PPU) checkWindowTriggerWX() {
 			return
 		}
 	} else {
-		if p.wx6SuppressLine && p.wx == 6 {
+		if p.wx6PoisonedLine {
 			return
 		}
 		windowX := p.lx > 0 && p.lx >= p.wx+1
+		if p.wx6SuppressLine && p.wx == 6 && windowX {
+			// Glitch column reached while WX is still 6 after a same-line
+			// write: do not open, and ignore later WX opens this line.
+			p.wx6PoisonedLine = true
+			return
+		}
 		if !(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB())) {
 			return
 		}
