@@ -950,8 +950,7 @@
       "collection": "ppu",
       "name": "m3_window_timing@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 138 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m3_window_timing@CGBDE",
