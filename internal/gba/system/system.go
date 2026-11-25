@@ -204,6 +204,13 @@ func (m *Machine) Step() (StepResult, error) {
 	}
 
 	m.memory.cpuCycles = 0
+	// If the IRQ propagation deadline falls inside the upcoming instruction's
+	// first couple of cycles, deliver it at this boundary so the instruction
+	// becomes the exception return target. This matches the mGBA-suite
+	// timer-irq tip (IRQ taken before LDRH) without mid-instruction abort,
+	// which would otherwise spend a fetch before EnterException and skew the
+	// freeze counter by +1.
+	m.deliverImminentIRQBeforeInstruction()
 	m.memory.inInstruction = true
 	result, err := m.CPU.Step(&m.memory)
 	m.memory.inInstruction = false
@@ -555,6 +562,20 @@ func (m *Machine) advanceHardware(cycles uint32) {
 	}
 }
 
+// deliverImminentIRQBeforeInstruction advances to a pending IRQ propagation
+// deadline when it falls within the next two master cycles and raises the
+// CPU IRQ line so the subsequent Step takes the exception at the boundary.
+func (m *Machine) deliverImminentIRQBeforeInstruction() {
+	if m.CPU.CPSR().IRQDisabled() || !m.irqScheduled || m.irqEventAt <= m.cycles {
+		return
+	}
+	if m.irqEventAt > m.cycles+2 {
+		return
+	}
+	m.advanceCPU(uint32(m.irqEventAt - m.cycles))
+	m.serviceDueIRQ()
+}
+
 // timedMemory is the CPU-facing bus adapter. It advances master time at each
 // actual ARM7 bus/idle phase instead of waiting until the instruction returns.
 type timedMemory struct {
@@ -691,8 +712,24 @@ func (t *timedMemory) Idle(cycles uint32) {
 }
 
 func (t *timedMemory) consume(cycles uint32) {
-	t.cpuCycles += cycles
-	t.m.advanceCPU(cycles)
+	if cycles == 0 {
+		return
+	}
+	// Advance in IRQ-deadline-sized slices so the CPU-visible IRQ line rises
+	// on the exact propagation cycle even when that cycle falls inside a
+	// multi-cycle bus/idle phase.
+	remaining := cycles
+	for remaining > 0 {
+		step := remaining
+		if t.m.irqScheduled && t.m.irqEventAt > t.m.cycles {
+			if until := t.m.irqEventAt - t.m.cycles; until > 0 && until < uint64(step) {
+				step = uint32(until)
+			}
+		}
+		t.cpuCycles += step
+		t.m.advanceCPU(step)
+		remaining -= step
+	}
 }
 
 func (t *timedMemory) flushDeferredDMARequest() {
