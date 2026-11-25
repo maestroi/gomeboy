@@ -235,15 +235,17 @@ func TestPartialARMWordPrefetchHonorsFastSecondAccess(t *testing.T) {
 }
 
 
-func TestThumbFetchWaitsForCompletePrefetchHalfword(t *testing.T) {
+func TestThumbFetchTakesOverInFlightPrefetchHalfword(t *testing.T) {
 	b := testBus()
 	b.SetWAITCNT(1 << 14)
 
 	b.Read16(ROM0Start, Access{Instruction: true})
 	b.Idle(1)
 
-	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 3 {
-		t.Fatalf("Thumb fetch with incomplete prefetch = %d cycles, want full sequential 3", cycles)
+	// Default WS0 sequential halfwords cost three cycles. One idle cycle of
+	// progress leaves two remaining; Thumb charges only that countdown.
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 2 {
+		t.Fatalf("Thumb fetch with incomplete prefetch = %d cycles, want remaining 2", cycles)
 	}
 }
 

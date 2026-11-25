@@ -72,16 +72,14 @@ func (p *prefetchState) finishPending(addr, width uint32, wait func(uint32) (uin
 
 	_, seqWait := wait(aligned)
 	halfCost := uint32(1 + seqWait)
+	// Both ARM and Thumb can take over an in-flight sequential halfword and
+	// preserve its partial progress (NBA Prefetch Case #2: charge only the
+	// remaining countdown). A full ARM word still needs the second halfword.
 	remaining := halfCost
-	if width == 4 {
-		// ARM can take over the in-flight first halfword and preserve its
-		// partial progress. Thumb only benefits once the halfword has fully
-		// entered the prefetch queue.
-		if p.credit < halfCost {
-			remaining -= p.credit
-		} else {
-			remaining = 0
-		}
+	if p.credit < halfCost {
+		remaining -= p.credit
+	} else {
+		remaining = 0
 	}
 
 	cycles := remaining
