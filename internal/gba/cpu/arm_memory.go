@@ -50,6 +50,9 @@ func (c *CPU) executeARMSingleTransfer(instruction uint32, mem Memory) (Executio
 		} else {
 			value, cycles = mem.Read32(address, access)
 		}
+		if irqPreempted(mem) {
+			return ExecutionResult{MemoryCycles: cycles, IRQPreempt: true}, nil
+		}
 
 		if writeBack {
 			c.WriteRegister(rn, indexed)
@@ -73,6 +76,9 @@ func (c *CPU) executeARMSingleTransfer(instruction uint32, mem Memory) (Executio
 			cycles = mem.Write8(address, byte(value), access)
 		} else {
 			cycles = mem.Write32(address, value, access)
+		}
+		if irqPreempted(mem) {
+			return ExecutionResult{MemoryCycles: cycles, IRQPreempt: true}, nil
 		}
 		if writeBack {
 			c.WriteRegister(rn, indexed)
@@ -170,12 +176,18 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 				value = uint32(int32(int16(raw)))
 			}
 		}
+		if irqPreempted(mem) {
+			return ExecutionResult{MemoryCycles: cycles, IRQPreempt: true}, nil
+		}
 		if writeBack {
 			c.WriteRegister(rn, indexed)
 		}
 		c.WriteRegister(rd, value)
 	} else {
 		cycles = mem.Write16(address, uint16(c.ReadRegister(rd)), access)
+		if irqPreempted(mem) {
+			return ExecutionResult{MemoryCycles: cycles, IRQPreempt: true}, nil
+		}
 		if writeBack {
 			c.WriteRegister(rn, indexed)
 		}
@@ -187,4 +199,15 @@ func (c *CPU) executeARMHalfwordTransfer(instruction uint32, mem Memory) (Execut
 		internalCycles = 1
 	}
 	return ExecutionResult{InternalCycles: internalCycles, MemoryCycles: cycles}, nil
+}
+
+type irqPreemptMemory interface {
+	ConsumeIRQPreempt() bool
+}
+
+func irqPreempted(mem Memory) bool {
+	if p, ok := mem.(irqPreemptMemory); ok {
+		return p.ConsumeIRQPreempt()
+	}
+	return false
 }

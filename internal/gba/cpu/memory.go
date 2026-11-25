@@ -96,6 +96,20 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 	if err != nil {
 		return StepResult{FetchCycles: fetch}, err
 	}
+	if exec.IRQPreempt {
+		if err := c.EnterException(ExceptionIRQ, c.pc+4); err != nil {
+			return StepResult{FetchCycles: fetch, MemoryCycles: exec.MemoryCycles}, err
+		}
+		return StepResult{
+			FetchCycles:    fetch,
+			MemoryCycles:   exec.MemoryCycles,
+			InternalCycles: 1,
+			TotalCycles:    fetch + exec.MemoryCycles + 1,
+			PipelineFlush:  true,
+			ExceptionTaken: true,
+			Exception:      ExceptionIRQ,
+		}, nil
+	}
 
 	if exec.InternalCycles != 0 {
 		mem.Idle(uint32(exec.InternalCycles))
@@ -140,6 +154,7 @@ func (c *CPU) Step(mem Memory) (StepResult, error) {
 		PipelineFlush:  exec.PipelineFlush,
 	}, nil
 }
+
 
 func (c *CPU) pendingInterrupt() (Exception, bool) {
 	if c.fiqLine && !c.cpsr.FIQDisabled() {

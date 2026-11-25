@@ -204,6 +204,7 @@ func (m *Machine) Step() (StepResult, error) {
 	}
 
 	m.memory.cpuCycles = 0
+	m.memory.irqPreempt = false
 	m.memory.inInstruction = true
 	result, err := m.CPU.Step(&m.memory)
 	m.memory.inInstruction = false
@@ -555,6 +556,15 @@ func (m *Machine) advanceHardware(cycles uint32) {
 	}
 }
 
+
+// ConsumeIRQPreempt reports and clears a mid-instruction IRQ preemption that
+// fired while a data-bus access was advancing master time.
+func (t *timedMemory) ConsumeIRQPreempt() bool {
+	preempt := t.irqPreempt
+	t.irqPreempt = false
+	return preempt
+}
+
 // timedMemory is the CPU-facing bus adapter. It advances master time at each
 // actual ARM7 bus/idle phase instead of waiting until the instruction returns.
 type timedMemory struct {
@@ -562,16 +572,25 @@ type timedMemory struct {
 	cpuCycles          uint32
 	inBusCall          bool
 	inInstruction      bool
+	irqPreempt         bool
 	requestAfterAccess uint8
 }
 
 func (t *timedMemory) Read8(addr uint32, access gbamemory.Access) (byte, uint32) {
 	value, cycles := t.m.Bus.Read8(addr, access)
-	t.consume(cycles)
+	t.consume(cycles, false)
 	return value, cycles
 }
 
 func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint32) {
+	// If IRQ rose during this instruction's fetch, preempt before the data
+	// phase samples the bus. Needed for the mGBA-suite timer-irq tip when the
+	// deadline falls on the LDRH opcode fetch rather than its data access.
+	if !access.Instruction && t.inInstruction && t.m.CPU.IRQLine() &&
+		!t.m.CPU.CPSR().IRQDisabled() && t.m.IRQ != nil && t.m.IRQ.IRQAsserted() {
+		t.irqPreempt = true
+		return 0, 0
+	}
 	value, cycles := t.m.Bus.Read16(addr, access)
 	if !access.Instruction {
 		if timer, ok := timerCounterIndex(addr); ok {
@@ -603,7 +622,7 @@ func (t *timedMemory) Read16(addr uint32, access gbamemory.Access) (uint16, uint
 		// physical-bus value if it starts during the fetch.
 		t.m.Bus.SetCPUOpenBus(open)
 	}
-	t.consume(cycles)
+	t.consume(cycles, !access.Instruction)
 	return value, cycles
 }
 
@@ -621,7 +640,7 @@ func (t *timedMemory) Read32(addr uint32, access gbamemory.Access) (uint32, uint
 		// during the fetch can still take ownership of the physical bus.
 		t.m.Bus.SetCPUOpenBus(t.m.Bus.Peek32(addr + 8))
 	}
-	t.consume(cycles)
+	t.consume(cycles, false)
 	return value, cycles
 }
 
@@ -639,7 +658,7 @@ func (t *timedMemory) Write8(addr uint32, value byte, access gbamemory.Access) u
 	}
 	cycles := t.m.Bus.Write8(addr, value, access)
 	t.inBusCall = false
-	t.consume(cycles)
+	t.consume(cycles, false)
 	if t.inInstruction {
 		t.m.Timers.EndWriteBusAccess()
 	}
@@ -654,7 +673,7 @@ func (t *timedMemory) Write16(addr uint32, value uint16, access gbamemory.Access
 	}
 	cycles := t.m.Bus.Write16(addr, value, access)
 	t.inBusCall = false
-	t.consume(cycles)
+	t.consume(cycles, false)
 	if t.inInstruction {
 		t.m.Timers.EndWriteBusAccess()
 	}
@@ -669,7 +688,7 @@ func (t *timedMemory) Write32(addr uint32, value uint32, access gbamemory.Access
 	}
 	cycles := t.m.Bus.Write32(addr, value, access)
 	t.inBusCall = false
-	t.consume(cycles)
+	t.consume(cycles, false)
 	if t.inInstruction {
 		t.m.Timers.EndWriteBusAccess()
 	}
@@ -682,17 +701,40 @@ func (t *timedMemory) AccessCycles(addr uint32, width uint32, access gbamemory.A
 }
 
 func (t *timedMemory) SpendCycles(cycles uint32) {
-	t.consume(cycles)
+	t.consume(cycles, false)
 }
 
 func (t *timedMemory) Idle(cycles uint32) {
 	t.m.Bus.Idle(cycles)
-	t.consume(cycles)
+	t.consume(cycles, false)
 }
 
-func (t *timedMemory) consume(cycles uint32) {
-	t.cpuCycles += cycles
-	t.m.advanceCPU(cycles)
+func (t *timedMemory) consume(cycles uint32, allowPreempt bool) {
+	if cycles == 0 {
+		return
+	}
+	// Slice at the IRQ deadline so a propagation event that falls inside a
+	// multi-cycle data access can preempt that instruction — matching the
+	// mGBA-suite timer-irq tip without pulling the deadline into earlier
+	// instructions (which regresses timer count-up).
+	remaining := cycles
+	for remaining > 0 {
+		step := remaining
+		if allowPreempt && t.inInstruction && t.m.irqScheduled && t.m.irqEventAt > t.m.cycles {
+			if until := t.m.irqEventAt - t.m.cycles; until > 0 && until < uint64(step) {
+				step = uint32(until)
+			}
+		}
+		hadLine := t.m.CPU.IRQLine()
+		t.cpuCycles += step
+		t.m.advanceCPU(step)
+		remaining -= step
+		if allowPreempt && t.inInstruction && !hadLine && t.m.CPU.IRQLine() &&
+			!t.m.CPU.CPSR().IRQDisabled() && t.m.IRQ != nil && t.m.IRQ.IRQAsserted() {
+			t.irqPreempt = true
+			return
+		}
+	}
 }
 
 func (t *timedMemory) flushDeferredDMARequest() {

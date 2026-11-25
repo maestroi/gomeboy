@@ -16,6 +16,8 @@ type ExecutionResult struct {
 	// refill phases when PipelineRefill is set.
 	PipelineRefillCycles uint8
 	BreakSequentialFetch bool
+	// IRQPreempt is set when IRQ rose mid data-access; Step enters IRQ without committing the transfer.
+	IRQPreempt bool
 }
 
 // Exception identifies an ARM exception vector.

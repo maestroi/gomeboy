@@ -22,10 +22,10 @@ const (
 // With this minimal handler the freeze value is lower (~0x1c) because the
 // dispatcher is absent; the tip index is what matters here.
 //
-// Current GomeBoy tip is the 6-NOP sample (two NOPs late vs hardware). The
-// suite's 11 failures are exactly those early post-tip samples across
-// FFFF..FFFA. Do not "fix" the tip by lowering IRQPropagationLatency: that
-// moves the tip correctly but drops the libgba freeze from 0x51 to 0x4F.
+// GomeBoy preempts a halfword data access when the IRQ line rises during that
+// access (or during the same instruction's fetch, before the data phase
+// samples). That moves the tip to hardware's nops=4 without lowering
+// IRQPropagationLatency (which would skew the libgba freeze away from 0x51).
 func TestTimerIRQFFFFTipWithSuiteBIOS(t *testing.T) {
 	results := make([]uint16, 10)
 
@@ -120,11 +120,7 @@ func TestTimerIRQFFFFTipWithSuiteBIOS(t *testing.T) {
 		}
 	}
 
-	// Hardware tips at 4. Guard against regressions that push the tip later.
-	if tip > 6 {
-		t.Errorf("timer IRQ tip regressed to nops=%d (freeze %#04x); was 6, hardware is 4", tip, freeze)
-	}
 	if tip != 4 {
-		t.Logf("TODO: tip is nops=%d (freeze %#04x); hardware tips at 4 — likely ~2 cycles late on IRQ return", tip, freeze)
+		t.Errorf("timer IRQ tip = nops=%d (freeze %#04x); want hardware tip at 4", tip, freeze)
 	}
 }
