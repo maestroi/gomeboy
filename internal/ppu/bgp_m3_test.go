@@ -130,7 +130,9 @@ func TestBGPMode3CGBBCAddsSettleDot(t *testing.T) {
 				p.cgbMode = true
 			}
 			b.Write(types.BGP, 0xE4)
-			b.Write(types.LCDC, types.Bit7|types.Bit4|types.Bit0)
+			b.Write(types.WY, 0)
+			b.Write(types.WX, 80)
+			b.Write(types.LCDC, types.Bit7|types.Bit5|types.Bit4|types.Bit0)
 
 			for i := 0; i < 8000; i++ {
 				s.Tick(1)
