@@ -191,7 +191,7 @@ v0-r76 baseline is:
 | Timing | 1162 | 758 | 1920 |
 | Timer count-up | 513 | 423 | 936 |
 | Timer IRQ | 90 | 0 | 90 |
-| DMA | 1220 | 36 | 1256 |
+| DMA | 1256 | 0 | 1256 |
 
 The checked-in baseline has xfail-style behavior:
 
