@@ -22,10 +22,10 @@ const (
 // With this minimal handler the freeze value is lower (~0x1c) because the
 // dispatcher is absent; the tip index is what matters here.
 //
-// GomeBoy delivers an imminent IRQ propagation deadline at the instruction
-// boundary when it falls within the next two master cycles, so the tip
-// matches hardware at nops=4 without lowering IRQPropagationLatency (which
-// would skew the libgba freeze away from 0x51).
+// GomeBoy preempts a halfword data access when the IRQ line rises during that
+// access (or during the same instruction's fetch, before the data phase
+// samples). That moves the tip to hardware's nops=4 without lowering
+// IRQPropagationLatency (which would skew the libgba freeze away from 0x51).
 func TestTimerIRQFFFFTipWithSuiteBIOS(t *testing.T) {
 	results := make([]uint16, 10)
 
