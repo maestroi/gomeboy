@@ -84,6 +84,13 @@ type PPU struct {
 	wly          uint8 // Window line counter
 	winTriggerWy bool  // Window Y-position trigger
 	winTriggerWx bool  // Window X-position trigger
+	// DMG: a WX=6 write on the current scanline suppresses window open
+	// for the rest of that line. SameBoy's mid-write GB_CONFLICT_WX_DMG
+	// path suppresses the position+6 edge; without modelling the full
+	// conflict T-state, a same-line WX=6 poke must not open via the
+	// ordinary +7 column (Mealybug m3_wx_6_change). Preset WX=6 from a
+	// previous line still opens normally (AGE window STAT).
+	wx6SuppressLine bool
 
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
@@ -129,7 +136,7 @@ type PPU struct {
 	fetcherTileAttr      uint8                  // Current attributes
 	fetcherData          [2]uint8               // Tile pattern data (low + high bytes)
 	fetcherTileNoAddress uint16                 // VRAM address of current tile map entry
-	tileSelectGlitch bool // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
+	tileSelectGlitch     bool                   // Pending CGB LCDC.4 1->0 high-bitplane bus conflict
 
 	// Object fetcher
 	objectFetcherState ObjectFetcherState // Current object fetcher phase
@@ -421,6 +428,9 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		return v
 	})
 	b.ReserveAddress(types.WX, func(v byte) byte {
+		if !p.b.Model().IsCGB() && v == 6 {
+			p.wx6SuppressLine = true
+		}
 		p.wx = v
 		// Mid-Mode-3 WX writes can arrive after the exact trigger LX; re-check
 		// so a late write still opens the window for the remainder of the line.
@@ -842,6 +852,7 @@ func (p *PPU) cpuVisibleSTAT() byte {
 //   - [mooneye/acceptance/ppu/intr_2_mode_0_timing]
 //   - [mooneye/acceptance/ppu/intr_2_mode3_timing]
 //   - [mooneye/acceptance/ppu/intr_2_oam_ok_timing]
+//
 // scanOAMEntry performs one of the 40 Mode 2 object checks. Hardware
 // advances to a new four-byte OAM entry every two dots; keeping that cadence
 // visible to the scheduler is required for OAM DMA overlap tests such as
@@ -1030,6 +1041,7 @@ func (p *PPU) handleVisualLine() {
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 		return
 	case EnterHBlank: // variable
+		p.wx6SuppressLine = false
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
@@ -1899,6 +1911,9 @@ func (p *PPU) checkWindowTriggerWX() {
 			return
 		}
 	} else {
+		if p.wx6SuppressLine && p.wx == 6 {
+			return
+		}
 		windowX := p.lx > 0 && p.lx >= p.wx+1
 		if !(windowX && (p.wx < 166 || p.wx == 166 && p.b.Model().IsCGB())) {
 			return
@@ -1934,6 +1949,8 @@ func (p *PPU) resetFetcher() {
 	p.winFetcherX = 0
 	p.winTriggerWx = false
 	p.windowMode3Stall = 0
+	// Keep wx6SuppressLine across Mode-3 start: a Mode-2 WX=6 write on
+	// this same scanline must still suppress. Clear at HBlank instead.
 
 	p.fetcherState = BGWinActivating
 	p.tileSelectGlitch = false
