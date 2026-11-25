@@ -13,7 +13,9 @@ import (
 // DMG-C and physical CGB B/C in either colour or compatibility mode
 // release CPU OAM reads after the last pixel at fine-scroll phases 3/7.
 // The CGB compatibility-mode write port has its own final-pixel SCX 3/7
-// handover; DMG and MGB writes remain locked here. D/E reads stay locked.
+// handover. DMG/MGB reopen CPU OAM writes as soon as the final pixel is
+// pushed (one enterHBlankDelay dot before the coarse Unlock). D/E reads
+// stay locked.
 func TestCGBBCNCMOAMReadAtEndOfRealScanline(t *testing.T) {
 	for _, tc := range []struct {
 		model types.Model
@@ -71,7 +73,7 @@ func TestCGBBCNCMOAMReadAtEndOfRealScanline(t *testing.T) {
 				}
 				b.Write(0xfe00, 0x99)
 				wantOAM := byte(0x5a)
-				if tc.model.IsCGB() &&
+				if !tc.model.IsCGB() ||
 					(tc.colour && scx&2 != 0 || !tc.colour && scx&3 == 3) {
 					wantOAM = 0x99
 				}

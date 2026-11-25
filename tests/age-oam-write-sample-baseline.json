@@ -12,7 +12,7 @@
     },
     "oam-write-dmgC.gb@DMG": {
       "sample_count": 480,
-      "minimum_matching_samples": 432
+      "minimum_matching_samples": 440
     },
     "oam-write-ncmBCE.gb@CGBBC": {
       "sample_count": 480,
