@@ -1036,6 +1036,13 @@ func (p *PPU) handleVisualLine() {
 		if !p.s.DoubleSpeed() {
 			p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		}
+		// DMG: CPU OAM writes reopen when the final pixel has been
+		// pushed, one enterHBlankDelay dot before the coarse OAM/VRAM
+		// Unlock in EnterHBlank. AGE oam-write-dmgC probe 2/3 Mode-0
+		// edge samples depend on that earlier write port.
+		if !p.b.Model().IsCGB() {
+			p.b.WUnlock(io.OAM)
+		}
 
 		p.lineState = EnterHBlank
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
