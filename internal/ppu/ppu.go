@@ -125,9 +125,10 @@ type PPU struct {
 	bgpPending      uint8
 	bgpPendingFirst uint8
 	bgpPendingArmed bool
+	bgpSettleExtra  uint8 // extra Mode-3 dots before BGP OR/settle
 	// Extra Mode-3 dots after LX=8 before visible shifts. Candidate count
-	// is loaded for Mode-2-STAT / window-off lines; bgpStallActive makes
-	// it engage only after a Mode-3 BGP write (Mealybug m3_bgp_change)
+	// is loaded for Mode-2-STAT lines; bgpStallActive makes it engage only
+	// after a Mode-3 BGP write (Mealybug m3_bgp_change / m3_window_timing)
 	// so Mooneye Mode-2 STAT timing tests keep their Mode-3 length.
 	postOffscreenStall uint8
 	bgpStallActive     bool
@@ -418,9 +419,11 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		old := p.bgp
 		p.bgp = v
-		// Windowed Mode-3 keeps combinational BGP so win_en / window_timing
-		// stay on the existing phase. Non-window Mode-3 defers with OR.
-		if p.mode != ModeVRAM || p.winEnabled {
+		// Outside Mode 3 the palette is combinational. Mid-Mode-3 uses
+		// SameBoy GB_CONFLICT_READ_OR (write-dot keeps old; next dot OR;
+		// then settle) for both window-off and windowed lines so Mealybug
+		// m3_bgp_change and m3_window_timing share one phase model.
+		if p.mode != ModeVRAM {
 			p.applyBGP(v)
 			p.bgpPendingArmed = false
 			return v
@@ -1004,15 +1007,23 @@ func (p *PPU) handleVisualLine() {
 				p.windowMode3Stall = 4
 			}
 		}
-		// Candidate BGP alignment stall for Mode-2-IRQ / window-off lines.
-		// Inactive until a Mode-3 BGP write sets bgpStallActive. Do not
-		// clear bgpStallActive here: a write between Mode-3 start (dot 80)
-		// and Dummy (dot 85) must still engage the stall.
+		// Candidate BGP alignment stall for Mode-2-IRQ lines (window on or
+		// off). Inactive until a Mode-3 BGP write sets bgpStallActive. Do
+		// not clear bgpStallActive here: a write between Mode-3 start
+		// (dot 80) and Dummy (dot 85) must still engage the stall.
 		p.postOffscreenStall = 0
-		if !p.winEnabled && p.status&types.Bit5 != 0 {
+		if p.status&types.Bit5 != 0 {
 			p.postOffscreenStall = 11
 			if p.ly == 0 {
-				p.postOffscreenStall = 7
+				p.postOffscreenStall = 7 // Mealybug LY0 handler is 4 cycles shorter
+			}
+			// WY+WIN_EN already queues windowMode3Stall ahead of this
+			// BGP stall; keep the combined pause equal to the Mealybug
+			// calibration that predates #267.
+			if p.postOffscreenStall > p.windowMode3Stall {
+				p.postOffscreenStall -= p.windowMode3Stall
+			} else {
+				p.postOffscreenStall = 0
 			}
 		}
 		p.lineState = PixelTransferLX
@@ -1435,6 +1446,10 @@ func (p *PPU) applyBGP(v uint8) {
 
 func (p *PPU) commitBGPAfterDot() {
 	if !p.bgpPendingArmed {
+		return
+	}
+	if p.bgpSettleExtra > 0 {
+		p.bgpSettleExtra--
 		return
 	}
 	p.applyBGP(p.bgpPendingFirst)
@@ -2006,6 +2021,32 @@ func (p *PPU) checkWindowTriggerWX() {
 	p.winFetcherX = 0
 	p.bgFIFO.Reset()
 	p.fetcherState = WinActivating
+
+	// Window tile-fetch already pauses Mode 3. Retune the BGP
+	// post-offscreen stall so the first visible window pixel lines up
+	// with mid-Mode-3 BGP writes (Mealybug m3_window_timing):
+	//
+	//   - Early window (LX<8): trim one BGP-stall dot.
+	//   - LY0 WX=0: absolute 6-dot BGP pause (minus pending WY+WIN_EN stall).
+	//   - WX=7 (LX==8): BGP stall + window fetch = 17, minus WY+WIN_EN stall.
+	//   - Exact WX>7 boundary (LX==WX+1): one extra BGP settle dot.
+	//     Mid-scanline WIN_EN re-opens (LX already past WX) skip this.
+	switch {
+	case p.lx < 8:
+		if p.wx == 0 && p.ly == 0 {
+			if p.windowMode3Stall < 6 {
+				p.postOffscreenStall = 6 - p.windowMode3Stall
+			} else {
+				p.postOffscreenStall = 0
+			}
+		} else if p.postOffscreenStall > 0 {
+			p.postOffscreenStall--
+		}
+	case p.lx == 8:
+		p.postOffscreenStall = 17 - p.windowMode3Stall
+	case p.lx == p.wx+1:
+		p.bgpSettleExtra = 1
+	}
 }
 
 // renderBlank blanks the current screen.
@@ -2034,4 +2075,5 @@ func (p *PPU) resetFetcher() {
 	p.lx = 0
 	p.postOffscreenStall = 0
 	p.bgpStallActive = false
+	p.bgpSettleExtra = 0
 }

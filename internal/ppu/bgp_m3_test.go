@@ -81,3 +81,33 @@ func TestBGPMode3WriteORsOneDot(t *testing.T) {
 			p.bgpPendingFirst, neu|old)
 	}
 }
+
+func TestBGPMode3WriteDeferredWithWindowEnabled(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := gbio.NewBus(s, make([]byte, 0x8000))
+	b.Map(types.DMGABC)
+	p := New(b, s)
+	b.Write(types.BGP, 0xE4)
+	b.Write(types.WY, 0)
+	b.Write(types.WX, 80)
+	b.Write(types.LCDC, types.Bit7|types.Bit5|types.Bit4|types.Bit0)
+
+	for i := 0; i < 8000; i++ {
+		s.Tick(1)
+		if p.ly == 1 && p.mode == ModeVRAM && p.lx >= 10 {
+			break
+		}
+	}
+	if p.mode != ModeVRAM || !p.winEnabled {
+		t.Fatalf("expected windowed Mode 3, mode=%v win=%t lx=%d", p.mode, p.winEnabled, p.lx)
+	}
+
+	before := p.ColourPalette[0]
+	b.Write(types.BGP, 0x00)
+	if p.ColourPalette[0] != before {
+		t.Fatal("windowed Mode-3 BGP write must not update render palette on the write dot")
+	}
+	if !p.bgpPendingArmed || !p.bgpStallActive {
+		t.Fatal("expected pending BGP and stall arm after windowed Mode-3 write")
+	}
+}
