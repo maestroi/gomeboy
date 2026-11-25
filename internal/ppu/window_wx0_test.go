@@ -66,7 +66,8 @@ func TestWindowWXTriggerGuardsAndOrdinaryPhase(t *testing.T) {
 	}{
 		{"WX0 before initial dot, Y false", 0, 0, false, true, false},
 		{"WX0 disabled", 0, 0, true, false, false},
-		{"WX0 late", 0, 1, true, true, false},
+		{"WX0 mid-offscreen", 0, 1, true, true, true},
+		{"WX0 too late", 0, 8, true, true, false},
 		{"WX1 before", 1, 1, true, true, false},
 		{"WX1 boundary", 1, 2, true, true, true},
 		{"WX7 before", 7, 7, true, true, false},
