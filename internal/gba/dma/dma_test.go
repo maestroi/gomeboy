@@ -203,6 +203,38 @@ func TestDMASourceFixedAndDestinationFixedModes(t *testing.T) {
 	})
 }
 
+func TestDMAGamePakSourceIgnoresFixedAndDecrement(t *testing.T) {
+	rom := make([]byte, 0x20)
+	for i, value := range []uint16{0xbeef, 0xbef2, 0xdead, 0xc0de} {
+		binary.LittleEndian.PutUint16(rom[i*2:], value)
+	}
+	want := []uint16{0xbeef, 0xbef2, 0xdead, 0xc0de}
+	source := bus.ROM0Start
+
+	for _, tc := range []struct {
+		name string
+		mode uint16
+	}{
+		{name: "fixed", mode: 2},
+		{name: "decrement", mode: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := bus.New(nil, rom)
+			_ = New(b, nil, Hooks{})
+			dest := uint32(bus.IWRAMStart + 0x600)
+			// Hardware always increments Game Pak DMA sources regardless of
+			// Source Addr Control. DMA3 is required for ROM access.
+			programDMA(b, 3, source, dest, 4, controlEnable|(tc.mode<<7))
+			for i, w := range want {
+				got, _ := b.Read16(dest+uint32(i*2), bus.Access{})
+				if got != w {
+					t.Fatalf("ROM %s-source word%d = %04x, want %04x", tc.name, i, got, w)
+				}
+			}
+		})
+	}
+}
+
 func TestDMADecrementAddressing(t *testing.T) {
 	b := bus.New(nil, nil)
 	_ = New(b, nil, Hooks{})

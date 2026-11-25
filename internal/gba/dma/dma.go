@@ -542,7 +542,7 @@ func (d *DMA) ServiceUnit() UnitResult {
 		cycles = readCycles + writeCycles
 	}
 
-	c.sourceCurrent = adjustAddress(source, c.transferSourceMode, c.transferWidth, false)
+	c.sourceCurrent = adjustAddress(source, effectiveSourceMode(source, c.transferSourceMode), c.transferWidth, false)
 	c.destCurrent = adjustAddress(dest, c.transferDestMode, c.transferWidth, true)
 	c.transferRemaining--
 	c.transferCycles += cycles
@@ -680,7 +680,7 @@ func (d *DMA) run(index int) uint32 {
 			cycles += readCycles + writeCycles
 		}
 
-		source = adjustAddress(source, sourceMode, width, false)
+		source = adjustAddress(source, effectiveSourceMode(source, sourceMode), width, false)
 		dest = adjustAddress(dest, destMode, width, true)
 	}
 
@@ -724,6 +724,17 @@ func (d *DMA) run(index int) uint32 {
 		d.hooks.Complete(index, units, cycles)
 	}
 	return cycles
+}
+
+// effectiveSourceMode returns the address control used for the source endpoint.
+// Game Pak ROM/Flash DMA always increments the source latch regardless of the
+// programmed Source Addr Control — sequential Game Pak accesses assume an
+// advancing address, so Fixed/Decrement still walk forward on hardware.
+func effectiveSourceMode(source uint32, mode uint16) uint16 {
+	if isGamePak(source) {
+		return 0
+	}
+	return mode
 }
 
 func adjustAddress(address uint32, mode uint16, width uint32, destination bool) uint32 {
