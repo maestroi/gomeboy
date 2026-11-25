@@ -127,11 +127,13 @@ type PPU struct {
 	bgpPendingArmed bool
 	bgpSettleExtra  uint8 // extra Mode-3 dots before BGP OR/settle
 	// Extra Mode-3 dots after LX=8 before visible shifts. Candidate count
-	// is loaded for Mode-2-STAT lines; bgpStallActive makes it engage only
-	// after a Mode-3 BGP write (Mealybug m3_bgp_change / m3_window_timing)
-	// so Mooneye Mode-2 STAT timing tests keep their Mode-3 length.
+	// is loaded for Mode-2-STAT lines; bgpStallActive makes it engage on
+	// the write line. bgpStallSession keeps later lines of the same frame
+	// on the early-stall phase after the first Mode-3 BGP poke (Mealybug
+	// m3_window_timing) without lengthening win_en (no Mode-3 BGP).
 	postOffscreenStall uint8
 	bgpStallActive     bool
+	bgpStallSession    bool
 
 	// External components
 	b *io.Bus
@@ -432,6 +434,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		p.bgpPendingFirst = v | old
 		p.bgpPendingArmed = true
 		p.bgpStallActive = true
+		p.bgpStallSession = true
 		return v
 	})
 	b.ReserveAddress(types.OBP0, func(v byte) byte {
@@ -1070,7 +1073,7 @@ func (p *PPU) handleVisualLine() {
 			return
 		}
 
-		if p.lx >= 8 && p.postOffscreenStall > 0 && p.bgpStallActive {
+		if p.lx >= 8 && p.postOffscreenStall > 0 && (p.bgpStallActive || p.bgpStallSession) {
 			p.postOffscreenStall--
 			p.commitBGPAfterDot()
 			p.stepPixelFetcher()
@@ -1349,6 +1352,7 @@ func (p *PPU) handleOffscreenLine() {
 	case StartVBlank: // dot 0
 		p.lineDot = p.s.Cycle()
 		p.lyForComparison = 0xffff
+		p.bgpStallSession = false
 		p.statUpdate()
 	case VBlankUpdateLY: // dot 2
 		p.b.Set(types.LY, p.ly)
@@ -1999,7 +2003,9 @@ func (p *PPU) checkWindowTriggerWX() {
 	// Monochrome hardware has a distinct WX=166 whole-line glitch and
 	// must not be treated as this ordinary CGB handover.
 	if p.wx == 0 {
-		if p.lx != 0 {
+		// Mealybug Mode-2 IRQ may program WX=0 after LX has left 0 but
+		// still before the first visible column; own the offscreen phase.
+		if p.lx >= 8 {
 			return
 		}
 	} else {
