@@ -111,3 +111,63 @@ func TestBGPMode3WriteDeferredWithWindowEnabled(t *testing.T) {
 		t.Fatal("expected pending BGP and stall arm after windowed Mode-3 write")
 	}
 }
+
+func TestBGPMode3CGBBCAddsSettleDot(t *testing.T) {
+	for _, tc := range []struct {
+		model      types.Model
+		wantSettle uint8
+	}{
+		{types.CGBBC, 1},
+		{types.CGBDE, 0},
+		{types.DMGABC, 0},
+	} {
+		t.Run(tc.model.String(), func(t *testing.T) {
+			s := scheduler.NewScheduler()
+			b := gbio.NewBus(s, make([]byte, 0x8000))
+			b.Map(tc.model)
+			p := New(b, s)
+			if tc.model.IsCGB() {
+				p.cgbMode = true
+			}
+			b.Write(types.BGP, 0xE4)
+			b.Write(types.WY, 0)
+			b.Write(types.WX, 80)
+			b.Write(types.LCDC, types.Bit7|types.Bit5|types.Bit4|types.Bit0)
+
+			for i := 0; i < 8000; i++ {
+				s.Tick(1)
+				if p.ly == 1 && p.mode == ModeVRAM && p.lx >= 10 {
+					break
+				}
+			}
+			if p.mode != ModeVRAM {
+				t.Fatalf("expected Mode 3, got %v lx=%d", p.mode, p.lx)
+			}
+			b.Write(types.BGP, 0x00)
+			if p.bgpSettleExtra != tc.wantSettle {
+				t.Fatalf("bgpSettleExtra=%d want %d", p.bgpSettleExtra, tc.wantSettle)
+			}
+		})
+	}
+}
+
+
+func TestBGPMode3CGBNCMSkipsOROverlap(t *testing.T) {
+	s := scheduler.NewScheduler()
+	b := gbio.NewBus(s, make([]byte, 0x8000))
+	b.Map(types.CGBDE)
+	p := New(b, s)
+	b.Write(types.BGP, 0xE4)
+	b.Write(types.LCDC, types.Bit7|types.Bit4|types.Bit0)
+
+	for i := 0; i < 8000; i++ {
+		s.Tick(1)
+		if p.ly == 1 && p.mode == ModeVRAM && p.lx >= 10 {
+			break
+		}
+	}
+	b.Write(types.BGP, 0x00)
+	if p.bgpPendingFirst != 0x00 {
+		t.Fatalf("CGB NCM Mode-3 BGP should skip OR overlap: got %02x", p.bgpPendingFirst)
+	}
+}

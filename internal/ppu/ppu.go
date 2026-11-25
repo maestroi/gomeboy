@@ -432,9 +432,18 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		p.bgpPending = v
 		p.bgpPendingFirst = v | old
+		if p.b.Model().IsCGB() && !p.winEnabled {
+			// CGB NCM Mealybug m3_bgp_change: skip OR overlap on first settle.
+			p.bgpPendingFirst = v
+		}
 		p.bgpPendingArmed = true
 		p.bgpStallActive = true
 		p.bgpStallSession = true
+		// CGB-C settles mid-Mode-3 BGP one dot later than D/E
+		// (Mealybug m3_window_timing@CGBBC and m3_bgp_change@CGBBC).
+		if p.b.Model() == types.CGBBC {
+			p.bgpSettleExtra++
+		}
 		return v
 	})
 	b.ReserveAddress(types.OBP0, func(v byte) byte {
