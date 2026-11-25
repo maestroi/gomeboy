@@ -120,6 +120,18 @@ type PPU struct {
 	OBJ0ColourisationPalette Palette       // OBJ0 Palette used for DMG->CGB colourisation
 	OBJ1ColourisationPalette Palette       // OBJ1 Palette used for DMG->CGB colourisation
 
+	// DMG BGP mid-Mode-3 write pipeline (SameBoy GB_CONFLICT_READ_OR).
+	bgp             uint8
+	bgpPending      uint8
+	bgpPendingFirst uint8
+	bgpPendingArmed bool
+	// Extra Mode-3 dots after LX=8 before visible shifts. Candidate count
+	// is loaded for Mode-2-STAT / window-off lines; bgpStallActive makes
+	// it engage only after a Mode-3 BGP write (Mealybug m3_bgp_change)
+	// so Mooneye Mode-2 STAT timing tests keep their Mode-3 length.
+	postOffscreenStall uint8
+	bgpStallActive     bool
+
 	// External components
 	b *io.Bus
 	s *scheduler.Scheduler
@@ -404,7 +416,19 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		if p.b.IsGBCCart() && p.b.IsGBC() {
 			return v
 		}
-		p.ColourPalette[0] = p.BGColourisationPalette.remap(v)
+		old := p.bgp
+		p.bgp = v
+		// Windowed Mode-3 keeps combinational BGP so win_en / window_timing
+		// stay on the existing phase. Non-window Mode-3 defers with OR.
+		if p.mode != ModeVRAM || p.winEnabled {
+			p.applyBGP(v)
+			p.bgpPendingArmed = false
+			return v
+		}
+		p.bgpPending = v
+		p.bgpPendingFirst = v | old
+		p.bgpPendingArmed = true
+		p.bgpStallActive = true
 		return v
 	})
 	b.ReserveAddress(types.OBP0, func(v byte) byte {
@@ -980,7 +1004,17 @@ func (p *PPU) handleVisualLine() {
 				p.windowMode3Stall = 4
 			}
 		}
-
+		// Candidate BGP alignment stall for Mode-2-IRQ / window-off lines.
+		// Inactive until a Mode-3 BGP write sets bgpStallActive. Do not
+		// clear bgpStallActive here: a write between Mode-3 start (dot 80)
+		// and Dummy (dot 85) must still engage the stall.
+		p.postOffscreenStall = 0
+		if !p.winEnabled && p.status&types.Bit5 != 0 {
+			p.postOffscreenStall = 11
+			if p.ly == 0 {
+				p.postOffscreenStall = 7
+			}
+		}
 		p.lineState = PixelTransferLX
 		fallthrough
 	case PixelTransferLX:
@@ -1019,12 +1053,22 @@ func (p *PPU) handleVisualLine() {
 
 		if p.windowMode3Stall > 0 && p.lx >= 8 {
 			p.windowMode3Stall--
+			p.commitBGPAfterDot()
+			p.stepPixelFetcher()
+			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
+			return
+		}
+
+		if p.lx >= 8 && p.postOffscreenStall > 0 && p.bgpStallActive {
+			p.postOffscreenStall--
+			p.commitBGPAfterDot()
 			p.stepPixelFetcher()
 			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
 			return
 		}
 
 		p.pushPixel()
+		p.commitBGPAfterDot()
 		p.stepPixelFetcher()
 
 		// have we reached the end of the line yet?
@@ -1048,6 +1092,7 @@ func (p *PPU) handleVisualLine() {
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 		return
 	case EnterHBlank: // variable
+		p.flushBGP()
 		p.wx6SuppressLine = false
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
@@ -1381,6 +1426,31 @@ func (p *PPU) handleOffscreenLine() {
 
 	p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, p.offscreenStateCycles(p.offscreenLineState))
 	p.offscreenLineState++
+}
+
+// applyBGP remaps the DMG background palette into ColourPalette[0].
+func (p *PPU) applyBGP(v uint8) {
+	p.ColourPalette[0] = p.BGColourisationPalette.remap(v)
+}
+
+func (p *PPU) commitBGPAfterDot() {
+	if !p.bgpPendingArmed {
+		return
+	}
+	p.applyBGP(p.bgpPendingFirst)
+	if p.bgpPendingFirst != p.bgpPending {
+		p.bgpPendingFirst = p.bgpPending
+		return
+	}
+	p.bgpPendingArmed = false
+}
+
+func (p *PPU) flushBGP() {
+	if !p.bgpPendingArmed {
+		return
+	}
+	p.applyBGP(p.bgpPending)
+	p.bgpPendingArmed = false
 }
 
 // pushPixel attempts to push a pixel out from one of the two FIFOs and into
@@ -1962,4 +2032,6 @@ func (p *PPU) resetFetcher() {
 	p.fetcherState = BGWinActivating
 	p.tileSelectGlitch = false
 	p.lx = 0
+	p.postOffscreenStall = 0
+	p.bgpStallActive = false
 }

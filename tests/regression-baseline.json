@@ -877,7 +877,7 @@
       "name": "m3_bgp_change@CGBBC",
       "model": "CGBBC",
       "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 3888 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
+      "reason": "Measured Mealybug PPU screenshot mismatch: 496 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d)"
     },
     {
       "id": "mealybug/ppu/m3_bgp_change@CGBDE",
@@ -886,7 +886,7 @@
       "name": "m3_bgp_change@CGBDE",
       "model": "CGBDE",
       "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 4752 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+      "reason": "Measured Mealybug PPU screenshot mismatch: 496 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
     },
     {
       "id": "mealybug/ppu/m3_bgp_change@DMG",
@@ -894,8 +894,7 @@
       "collection": "ppu",
       "name": "m3_bgp_change@DMG",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 4384 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+      "expected": "pass"
     },
     {
       "id": "mealybug/ppu/m3_lcdc_win_en_change_multiple@CGBBC",
@@ -961,7 +960,7 @@
       "name": "m3_window_timing@CGBDE",
       "model": "CGBDE",
       "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
+      "reason": "Measured Mealybug PPU screenshot mismatch: 1224 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d)"
     },
     {
       "id": "mealybug/ppu/m3_window_timing@DMG",
@@ -970,7 +969,7 @@
       "name": "m3_window_timing@DMG",
       "model": "DMG",
       "expected": "fail",
-      "reason": "Measured Mealybug PPU screenshot mismatch: 1227 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
+      "reason": "Measured Mealybug PPU screenshot mismatch: 1224 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d)"
     },
     {
       "id": "mealybug/ppu/m3_wx_6_change@CGBBC",

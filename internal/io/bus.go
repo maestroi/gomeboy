@@ -740,12 +740,11 @@ func (b *Bus) ClockedWrite(address uint16, value byte) {
 		b.s.Tick(1)
 		return
 	}
-	// DMG BGP/OBP bus conflict (SameBoy GB_CONFLICT_PALETTE_DMG): drive
-	// (new|old) for one T-state then the clean value one T early, still
-	// within a 4 T write M-cycle. CGB palette phasing stays at the
-	// default T4 sample until Mode-3 X alignment is settled.
-	if !b.model.IsCGB() && (address == uint16(types.BGP) ||
-		address == uint16(types.OBP0) || address == uint16(types.OBP1)) {
+	// DMG OBP bus conflict (SameBoy GB_CONFLICT_PALETTE_DMG). BGP Mode-3
+	// alignment is owned by the PPU deferred commit + post-offscreen stall
+	// path; bus-level OR would double-arm that pipeline.
+	if !b.model.IsCGB() && (address == uint16(types.OBP0) ||
+		address == uint16(types.OBP1)) {
 		b.s.Tick(2)
 		old := b.data[address]
 		b.Write(address, value|old)

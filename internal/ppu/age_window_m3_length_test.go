@@ -8,7 +8,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 )
 
-func measureMode3Dots(t *testing.T, model types.Model, cgbMode bool, wx, scx uint8, winEn bool) (dots int, winTriggered bool) {
+func measureMode3Dots(t *testing.T, model types.Model, cgbMode bool, wx, wy, scx uint8, winEn bool) (dots int, winTriggered bool) {
 	t.Helper()
 	s := scheduler.NewScheduler()
 	b := gbio.NewBus(s, make([]byte, 0x8000))
@@ -18,7 +18,7 @@ func measureMode3Dots(t *testing.T, model types.Model, cgbMode bool, wx, scx uin
 	p.cgbMode = cgbMode
 	p.winEnabled = winEn
 	p.bgEnabled = false
-	p.wy = 0
+	p.wy = wy
 	p.wx = wx
 	p.scx = scx
 	p.wly = 255
@@ -59,11 +59,13 @@ func TestWindowMode3StallExtendsTransfer(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			base, opened := measureMode3Dots(t, tc.model, tc.cgbMode, 167, 0, false)
+			// Base: WIN_EN on but WY never latches — no windowMode3Stall and
+			// no BGP post-offscreen stall (winEnabled). withWin: WY latched.
+			base, opened := measureMode3Dots(t, tc.model, tc.cgbMode, 167, 255, 0, true)
 			if opened {
-				t.Fatalf("window opened without WIN_EN")
+				t.Fatalf("window opened without WY latch")
 			}
-			withWin, opened := measureMode3Dots(t, tc.model, tc.cgbMode, 167, 0, true)
+			withWin, opened := measureMode3Dots(t, tc.model, tc.cgbMode, 167, 0, 0, true)
 			if opened {
 				t.Fatalf("WX=167 must not open the window for pixel push")
 			}
