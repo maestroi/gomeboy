@@ -288,7 +288,7 @@ is compared against a reference image from a known good emulator.
 | m3_window_timing@DMG | pass | pass | pass |  |
 | m3_wx_6_change@CGBBC | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBBC reference at LD B,B (revision 70e88fb90b59d) |
 | m3_wx_6_change@CGBDE | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 19819 RGB pixels against pinned CGBDE reference at LD B,B (revision 70e88fb90b59d) |
-| m3_wx_6_change@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 13799 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
+| m3_wx_6_change@DMG | fail | fail | xfail | Measured Mealybug PPU screenshot mismatch: 6965 RGB pixels against pinned DMG reference at LD B,B (revision 70e88fb90b59d) |
 
 ### mooneye
 
