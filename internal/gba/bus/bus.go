@@ -355,16 +355,32 @@ func (b *Bus) Write32(addr uint32, value uint32, access Access) uint32 {
 		return cycles
 	}
 	aligned := addr &^ 3
+	prefetchCredit := cycles
 	if isIO(aligned) {
 		b.io.Write32(aligned-IOStart, value)
+		prefetchCredit = ioWritePrefetchCredit(aligned, cycles)
 	} else {
 		for i := uint32(0); i < 4; i++ {
 			b.writeByteWide(aligned+i, byte(value>>(i*8)))
 		}
 	}
 	b.openBus = value
-	b.afterAccess(addr, 4, access, true, cycles)
+	b.afterAccess(addr, 4, access, true, prefetchCredit)
 	return cycles
+}
+
+// ioWritePrefetchCredit returns the Game Pak prefetch credit earned by a 32-bit
+// I/O write that took cycles CPU cycles. The 16-bit I/O bus splits the word into
+// two halves, and the cartridge bus only becomes free after the first one, so
+// the prefetcher starts one cycle after the write begins. mGBA's timing suite
+// shows this for the TM0 enable STR (Calibration, Thumb P.S/PNS). DMA register
+// writes are excluded: DMA start-up has its own latency model, and giving them
+// the same loss breaks the DMA timing tests.
+func ioWritePrefetchCredit(addr, cycles uint32) uint32 {
+	if cycles == 0 || (addr >= 0x040000B0 && addr < 0x040000E0) {
+		return cycles
+	}
+	return cycles - 1
 }
 
 // Peek16 reads an aligned mapped halfword without timing or open-bus latch

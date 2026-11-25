@@ -249,6 +249,31 @@ func TestThumbFetchTakesOverInFlightPrefetchHalfword(t *testing.T) {
 	}
 }
 
+func TestThumbFetchAfter32BitIOWriteLosesOnePrefetchCycle(t *testing.T) {
+	// mGBA suite Calibration: the 2-cycle 32-bit TM0 write gives the prefetcher
+	// one cycle of progress, so the next Thumb fetch pays 3-1 = 2 cycles
+	// (the suite reports that minus the timer read edge, i.e. 1).
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+	b.Read16(ROM0Start, Access{Instruction: true})
+	b.Write32(IOStart+0x100, 0, Access{})
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 2 {
+		t.Fatalf("Thumb fetch after 32-bit TM0 write = %d cycles, want 2", cycles)
+	}
+}
+
+func TestDMARegister32BitWriteKeepsFullPrefetchCredit(t *testing.T) {
+	// DMA register writes keep the full credit: DMA start-up has its own
+	// latency model and the mGBA DMA timing tests depend on it.
+	b := testBus()
+	b.SetWAITCNT(1 << 14)
+	b.Read16(ROM0Start, Access{Instruction: true})
+	b.Write32(IOStart+0xD4, 0, Access{})
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 1 {
+		t.Fatalf("Thumb fetch after 32-bit DMA register write = %d cycles, want 1", cycles)
+	}
+}
+
 func TestOpcodeFetchFinishesPartiallyFilledPrefetchHalfword(t *testing.T) {
 	b := testBus()
 	b.SetWAITCNT(1 << 14)
