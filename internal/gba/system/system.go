@@ -392,10 +392,8 @@ func (m *Machine) scheduleDMAStart(channels uint8) {
 }
 
 // scheduleDMAStartAfter arms pending channels to take the bus after the given
-// remaining master-clock delay. CPU Enable writes that were deferred across an
-// in-progress I/O access use one remaining cycle because that write already
-// consumed the first cycle of GBATEK's two-cycle start delay. PPU/event paths
-// keep the full DMAStartLatency.
+// remaining master-clock delay. Callers that already accounted for part of
+// GBATEK's two-cycle start delay may pass a smaller remaining value.
 func (m *Machine) scheduleDMAStartAfter(channels uint8, remaining uint64) {
 	channels &= m.DMA.PendingMask()
 	for channel := 0; channel < 4; channel++ {
@@ -754,9 +752,8 @@ func (t *timedMemory) flushDeferredDMARequest() {
 		channels := t.requestAfterAccess
 		t.requestAfterAccess = 0
 		if t.m.DMA.Pending() {
-			// The enabling I/O write that deferred this request already used
-			// one cycle of the two-cycle DMA start delay.
-			t.m.scheduleDMAStartAfter(channels, 1)
+			// DMA start latency begins after the enabling I/O write completes.
+			t.m.scheduleDMAStartAfter(channels, DMAStartLatency)
 		}
 	}
 	if t.m.stopPending {

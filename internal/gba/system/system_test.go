@@ -394,9 +394,8 @@ func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
 	m.Bus.Write32(base+4, dest, bus.Access{})
 	m.Bus.Write16(base+8, 1, bus.Access{})
 
-	// Use the CPU-facing timed memory adapter for CNT_H. The enabling I/O
-	// write itself is the first cycle of GBATEK's two-cycle DMA start delay,
-	// so only one master cycle remains after the write completes.
+	// Use the CPU-facing timed memory adapter for CNT_H. Start latency begins
+	// after the enabling I/O write completes.
 	if cycles := m.memory.Write16(base+10, 1<<15, bus.Access{}); cycles != 1 {
 		t.Fatalf("DMA control write cycles = %d, want 1", cycles)
 	}
@@ -408,12 +407,16 @@ func TestCPURegisterWriteStartsLatencyAfterBusAccess(t *testing.T) {
 	}
 
 	m.Advance(1)
-	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0xcafe {
-		t.Fatalf("DMA did not start one cycle after control write: %04x", got)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0 {
+		t.Fatalf("DMA started too early at remaining latency 1: %04x", got)
 	}
-	// 1 write + 1 remaining latency + 4 transfer = cycle 6.
-	if m.Cycle() != 6 {
-		t.Fatalf("cycle after CPU-programmed DMA = %d, want 6", m.Cycle())
+	m.Advance(1)
+	if got, _ := m.Bus.Read16(dest, bus.Access{}); got != 0xcafe {
+		t.Fatalf("DMA did not start after full start latency: %04x", got)
+	}
+	// 1 write + 2 latency + 4 transfer = cycle 7.
+	if m.Cycle() != 7 {
+		t.Fatalf("cycle after CPU-programmed DMA = %d, want 7", m.Cycle())
 	}
 }
 

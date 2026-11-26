@@ -16,6 +16,7 @@ func TestDefaultMemoryTiming(t *testing.T) {
 		{"EWRAM half", EWRAMStart, 2, Access{}, 3},
 		{"EWRAM word", EWRAMStart, 4, Access{}, 6},
 		{"IO word", IOStart, 4, Access{}, 2},
+		{"DMA IO word", IOStart + 0xb0, 4, Access{}, 1},
 		{"VRAM word", VRAMStart, 4, Access{}, 2},
 		{"OAM word", OAMStart, 4, Access{}, 1},
 		{"WS0 nonseq half", ROM0Start, 2, Access{}, 5},
@@ -263,14 +264,15 @@ func TestThumbFetchAfter32BitIOWriteLosesOnePrefetchCycle(t *testing.T) {
 }
 
 func TestDMARegister32BitWriteKeepsFullPrefetchCredit(t *testing.T) {
-	// DMA register writes keep the full credit: DMA start-up has its own
-	// latency model and the mGBA DMA timing tests depend on it.
+	// DMA register 32-bit writes take one cycle (mGBA IO waitstatesNonseq32=0)
+	// and keep the full prefetch credit for that cycle. One credit leaves the
+	// next sequential Thumb fetch one cycle short of a free hit.
 	b := testBus()
 	b.SetWAITCNT(1 << 14)
 	b.Read16(ROM0Start, Access{Instruction: true})
 	b.Write32(IOStart+0xD4, 0, Access{})
-	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 1 {
-		t.Fatalf("Thumb fetch after 32-bit DMA register write = %d cycles, want 1", cycles)
+	if _, cycles := b.Read16(ROM0Start+2, Access{Sequential: true, Instruction: true}); cycles != 2 {
+		t.Fatalf("Thumb fetch after 32-bit DMA register write = %d cycles, want 2", cycles)
 	}
 }
 
