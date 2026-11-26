@@ -103,3 +103,32 @@ func TestWindowMode3StallSkippedWithoutWYLatch(t *testing.T) {
 	}
 	t.Fatal("no Mode3 end")
 }
+
+// WX=7 opens at the first stall dot (lx==8). Stall must not advance the
+// restarted window fetcher, or Mode 3 ends ~windowMode3Stall dots early
+// compared with WX=8 (AGE window STAT expects equal Mode-3 length).
+func TestWindowMode3WX7MatchesWX8(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		model   types.Model
+		cgbMode bool
+	}{
+		{name: "DMG", model: types.DMGABC, cgbMode: false},
+		{name: "CGB-NCM", model: types.CGBBC, cgbMode: false},
+		{name: "CGB-colour", model: types.CGBBC, cgbMode: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wx7, opened7 := measureMode3Dots(t, tc.model, tc.cgbMode, 7, 0, 0, true)
+			if !opened7 {
+				t.Fatal("WX=7 must open the window")
+			}
+			wx8, opened8 := measureMode3Dots(t, tc.model, tc.cgbMode, 8, 0, 0, true)
+			if !opened8 {
+				t.Fatal("WX=8 must open the window")
+			}
+			if wx7 != wx8 {
+				t.Fatalf("Mode3 length WX=7 (%d) != WX=8 (%d)", wx7, wx8)
+			}
+		})
+	}
+}

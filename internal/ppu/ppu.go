@@ -1080,7 +1080,13 @@ func (p *PPU) handleVisualLine() {
 		if p.windowMode3Stall > 0 && p.lx >= 8 {
 			p.windowMode3Stall--
 			p.commitBGPAfterDot()
-			p.stepPixelFetcher()
+			// When the window has already opened, WY+WIN_EN Mode-3 stall
+			// must not advance the restarted window fetcher. Otherwise
+			// WX=7 (open at lx==8) overlaps stall with fetch and Mode 3
+			// ends ~windowMode3Stall dots early versus WX>=8 / AGE.
+			if !p.winTriggerWx {
+				p.stepPixelFetcher()
+			}
 			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
 			return
 		}
@@ -1103,7 +1109,10 @@ func (p *PPU) handleVisualLine() {
 			return // remain in the PixelTransferLX state until we reach LX==168
 		}
 
-		if !p.s.DoubleSpeed() {
+		// Native CGB colour window lines keep internal Mode 3 until
+		// EnterHBlank so SCX phases 2/6 do not sample a one-dot Mode-0
+		// hole after ordinary WX opens (AGE window STAT).
+		if !p.s.DoubleSpeed() && !(p.cgbMode && p.winTriggerWx) {
 			p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		}
 		// DMG: CPU OAM writes reopen when the final pixel has been
@@ -2045,7 +2054,17 @@ func (p *PPU) checkWindowTriggerWX() {
 	// Restart tile fetching from the window map.
 	p.winFetcherX = 0
 	p.bgFIFO.Reset()
-	p.fetcherState = WinActivating
+	// WX=0 keeps the one-dot WinActivating pause (AGE / kevtris: WX=0
+	// Mode 3 is one dot longer than ordinary window opens). Ordinary WX
+	// values restart at BGWinActivating so Mode 3 matches AGE. Mealybug
+	// m3_window_timing writes BGP mid-Mode-3 before the window opens and
+	// needs the activating idle to keep the stair-step BGP edge; detect
+	// that via the BGP stall session armed by those writes.
+	if p.wx == 0 || p.bgpStallActive || p.bgpStallSession {
+		p.fetcherState = WinActivating
+	} else {
+		p.fetcherState = BGWinActivating
+	}
 
 	// Window tile-fetch already pauses Mode 3. Retune the BGP
 	// post-offscreen stall so the first visible window pixel lines up

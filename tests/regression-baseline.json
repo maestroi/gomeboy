@@ -340,8 +340,7 @@
       "collection": "stat-mode-window",
       "name": "stat-mode-window-cgbBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-window/stat-mode-window-cgbBCE@CGBDE",
@@ -349,8 +348,7 @@
       "collection": "stat-mode-window",
       "name": "stat-mode-window-cgbBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-window/stat-mode-window-dmgC@DMG",
@@ -358,8 +356,7 @@
       "collection": "stat-mode-window",
       "name": "stat-mode-window-dmgC@DMG",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-window/stat-mode-window-ds-cgbBCE@CGBBC",
@@ -385,8 +382,7 @@
       "collection": "stat-mode-window",
       "name": "stat-mode-window-ncmBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-window/stat-mode-window-ncmBCE@CGBDE",
@@ -394,8 +390,7 @@
       "collection": "stat-mode-window",
       "name": "stat-mode-window-ncmBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode/stat-mode-cgbE@CGBDE",

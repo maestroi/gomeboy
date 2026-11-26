@@ -33,8 +33,10 @@ func TestCGBWX166WindowFetchAtFinalPixel(t *testing.T) {
 						lx, p.winTriggerWx, want)
 				}
 				if want {
+					// Ordinary WX (including 166) restarts at BGWinActivating;
+					// only WX=0 / BGP-stall sessions use WinActivating.
 					if p.wly != 0 || p.bgFIFO.Size != 0 ||
-						p.fetcherState != WinActivating || p.winFetcherX != 0 {
+						p.fetcherState != BGWinActivating || p.winFetcherX != 0 {
 						t.Fatalf("CGB final-pixel handover: WLY=%d fifo=%d state=%s fetchX=%d",
 							p.wly, p.bgFIFO.Size, p.fetcherState, p.winFetcherX)
 					}
