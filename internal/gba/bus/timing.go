@@ -79,7 +79,16 @@ func (b *Bus) accessCycles(addr uint32, width uint32, access Access) uint32 {
 			return 6
 		}
 		return 3
-	case 0x04, 0x05, 0x06:
+	case 0x04:
+		// mGBA models waitstatesNonseq32[IO]=0 (1-cycle 32-bit I/O). Apply that
+		// to the DMA register block first; other 32-bit I/O stays at 2 until the
+		// timer enable / IRQ path is recalibrated for the uniform 1-cycle cost.
+		off := addr & 0x00ffffff
+		if width == 4 && !(off >= 0xb0 && off < 0xe0) {
+			return 2
+		}
+		return 1
+	case 0x05, 0x06:
 		if width == 4 {
 			return 2
 		}
