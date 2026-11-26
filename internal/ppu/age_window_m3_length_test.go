@@ -55,7 +55,7 @@ func TestWindowMode3StallExtendsTransfer(t *testing.T) {
 	}{
 		{name: "DMG", model: types.DMGABC, cgbMode: false, wantAdd: 4},
 		{name: "CGB-NCM", model: types.CGBBC, cgbMode: false, wantAdd: 4},
-		{name: "CGB-colour", model: types.CGBBC, cgbMode: true, wantAdd: 2},
+		{name: "CGB-colour", model: types.CGBBC, cgbMode: true, wantAdd: 3},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

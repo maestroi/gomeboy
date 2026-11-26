@@ -1015,7 +1015,9 @@ func (p *PPU) handleVisualLine() {
 			// colour already retains Mode 3 through enterHBlankDelay,
 			// so it needs a smaller stall than DMG/NCM.
 			if p.cgbMode {
-				p.windowMode3Stall = 2
+				// Native CGB colour needs one more Mode-3 stall dot than the
+				// prior Mealybug-tuned 2 (AGE window STAT 482/512, DS 757/768).
+				p.windowMode3Stall = 3
 			} else {
 				p.windowMode3Stall = 4
 			}
