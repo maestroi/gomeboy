@@ -17,7 +17,10 @@ import (
 )
 
 const (
-	// DMAStartLatency is the delay from a DMA request/enable edge to bus ownership.
+	// DMAStartLatency is the delay from a DMA request/enable edge to bus ownership
+	// when the request is not nested inside a CPU I/O write. CPU Enable writes
+	// that defer across an in-progress bus access use one remaining cycle after
+	// that write, because the write itself is the first cycle of this delay.
 	// The transfer then stalls the CPU for the bus/internal cycles reported by DMA.
 	DMAStartLatency uint64 = 2
 
@@ -385,13 +388,22 @@ func (m *Machine) cancelDMAStart(channel int) {
 }
 
 func (m *Machine) scheduleDMAStart(channels uint8) {
+	m.scheduleDMAStartAfter(channels, DMAStartLatency)
+}
+
+// scheduleDMAStartAfter arms pending channels to take the bus after the given
+// remaining master-clock delay. CPU Enable writes that were deferred across an
+// in-progress I/O access use one remaining cycle because that write already
+// consumed the first cycle of GBATEK's two-cycle start delay. PPU/event paths
+// keep the full DMAStartLatency.
+func (m *Machine) scheduleDMAStartAfter(channels uint8, remaining uint64) {
 	channels &= m.DMA.PendingMask()
 	for channel := 0; channel < 4; channel++ {
 		bit := uint8(1 << channel)
 		if channels&bit == 0 || m.dmaScheduled&bit != 0 {
 			continue
 		}
-		m.dmaStartAt[channel] = m.cycles + DMAStartLatency
+		m.dmaStartAt[channel] = m.cycles + remaining
 		m.dmaScheduled |= bit
 	}
 }
@@ -742,7 +754,9 @@ func (t *timedMemory) flushDeferredDMARequest() {
 		channels := t.requestAfterAccess
 		t.requestAfterAccess = 0
 		if t.m.DMA.Pending() {
-			t.m.scheduleDMAStart(channels)
+			// The enabling I/O write that deferred this request already used
+			// one cycle of the two-cycle DMA start delay.
+			t.m.scheduleDMAStartAfter(channels, 1)
 		}
 	}
 	if t.m.stopPending {
