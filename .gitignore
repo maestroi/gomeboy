@@ -10,3 +10,5 @@ tests/gba/compatibility/roms/
 *.state
 tests/gba/mgba-suite/roms/\n
 tests/regression-results.json
+
+.worktrees/
