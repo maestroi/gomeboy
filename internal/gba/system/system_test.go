@@ -145,6 +145,31 @@ func TestImmediateDMAStartsAfterTwoCyclesAndStallsCPU(t *testing.T) {
 	}
 }
 
+func TestTimerEventsShareMachineMasterClock(t *testing.T) {
+	m := New(nil, nil)
+
+	// Even with every timer disabled, the event scheduler is the machine clock
+	// used by future timer deadlines rather than a private timer-local epoch.
+	m.Advance(37)
+	s := m.Snapshot()
+	if s.Cycles != 37 || s.Timers.SchedulerNow != s.Cycles {
+		t.Fatalf("machine/timer scheduler cycles = %d/%d, want shared 37",
+			s.Cycles, s.Timers.SchedulerNow)
+	}
+
+	m.Bus.Write16(bus.IOStart+0x100, 0xfffe, bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x102, 1<<7, bus.Access{})
+	m.Advance(2)
+	s = m.Snapshot()
+	if s.Cycles != 39 || s.Timers.SchedulerNow != s.Cycles {
+		t.Fatalf("machine/timer scheduler after overflow = %d/%d, want shared 39",
+			s.Cycles, s.Timers.SchedulerNow)
+	}
+	if got := m.Timers.Counter(0); got != 0xfffe {
+		t.Fatalf("timer counter after shared-clock overflow = %04x, want fffe", got)
+	}
+}
+
 func TestPPUHBlankDMAUsesCentralStartLatency(t *testing.T) {
 	m := New(nil, nil)
 
@@ -222,6 +247,35 @@ func TestCentralClockDelaysTimerIRQPropagation(t *testing.T) {
 	}
 }
 
+func TestPendingIRQRestoreRebuildsSharedSchedulerEvent(t *testing.T) {
+	m := New(nil, nil)
+	m.Bus.Write16(bus.IOStart+0x200, uint16(gbairq.VBlank), bus.Access{})
+	m.Bus.Write16(bus.IOStart+0x208, 1, bus.Access{})
+	m.IRQ.Request(gbairq.VBlank)
+
+	m.Advance(3)
+	s := m.Snapshot()
+	if !s.IRQScheduled {
+		t.Fatal("snapshot lost pending IRQ propagation event")
+	}
+
+	m.Advance(uint32(IRQPropagationLatency))
+	if !m.CPU.IRQLine() {
+		t.Fatal("original machine did not deliver pending IRQ")
+	}
+
+	if err := m.Restore(s); err != nil {
+		t.Fatal(err)
+	}
+	if m.CPU.IRQLine() {
+		t.Fatal("restored pending IRQ was delivered too early")
+	}
+	m.Advance(uint32(IRQPropagationLatency - 3))
+	if !m.CPU.IRQLine() {
+		t.Fatal("restored shared-scheduler IRQ event did not fire")
+	}
+}
+
 func TestIRQExceptionInternalCycleAdvancesCentralClock(t *testing.T) {
 	m := New(nil, nil)
 	if err := m.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
@@ -265,10 +319,9 @@ func TestCPUTimerWritesCommitAtInstructionBoundary(t *testing.T) {
 	//   strh r2, [r1]   ; update reload latch while running
 	//   ldrh r0, [r1]   ; sample the live counter
 	//
-	// Timer enable/control commits at the instruction boundary, while TMxCNT_L
-	// reload writes are visible at their I/O bus phase. That lets the running
-	// timer use the new 0000 latch on an overflow during STRH; the following
-	// LDRH still samples the preceding timer phase.
+	// TMxCNT_L is visible at the I/O write phase while control transitions stay
+	// timestamped. Therefore an overflow during the STRH transfer sees the new
+	// 0000 reload latch, matching the suite's bus-phase dependency.
 	code := uint32(bus.IWRAMStart + 0x1a00)
 	m.Bus.Write32(code+0, 0xe5813000, bus.Access{}) // STR  r3,[r1]
 	m.Bus.Write32(code+4, 0xe1c120b0, bus.Access{}) // STRH r2,[r1]
@@ -342,8 +395,9 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 		t.Fatalf("Timer0 sampled load = %04x, want pre-fetch fff9", got)
 	}
 
-	// If the instruction fetch itself crosses the overflow edge, the data read
-	// still sees the pre-fetch FFFF value rather than the freshly reloaded latch.
+	// If the instruction fetch itself crosses the overflow edge, internal state
+	// reloads at that timestamp but the CPU data phase still samples the pre-edge
+	// FFFF value.
 	m2 := New(nil, nil)
 	if err := m2.CPU.SetCPSR(cpu.PSR(cpu.ModeSystem)); err != nil {
 		t.Fatal(err)
@@ -378,7 +432,7 @@ func TestCPUTimerReadUsesPreFetchCountWithoutHidingOverflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := m2.CPU.ReadRegister(0); got != 0xffff {
-		t.Fatalf("Timer0 overflow-edge sample = %04x, want pre-overflow ffff", got)
+		t.Fatalf("Timer0 overflow-edge sample = %04x, want pre-edge ffff", got)
 	}
 }
 

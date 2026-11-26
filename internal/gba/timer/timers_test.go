@@ -126,26 +126,26 @@ func TestTimerReloadByteWritesMergeAgainstReloadNotCounter(t *testing.T) {
 	}
 }
 
-func TestDeferredTimerControlButImmediateReloadLatch(t *testing.T) {
+func TestTimestampedTimerWritesRespectEventOrdering(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 
-	// The reload half of a CPU timer write is visible at the I/O bus phase,
-	// while the enable transition remains deferred to the instruction boundary.
+	// The reload latch is visible in the CPU I/O write phase, while control is
+	// a timestamped event at the instruction-completion boundary.
 	timers.BeginWriteAccess()
 	b.Write32(timerLow(0), uint32(controlEnable)<<16|0xffff, bus.Access{})
 	if timers.Control(0) != 0 || timers.Reload(0) != 0xffff || timers.Counter(0) != 0 {
-		t.Fatalf("timer start bus phase = control:%04x reload:%04x counter:%04x",
+		t.Fatalf("timer write phase = control:%04x reload:%04x counter:%04x",
 			timers.Control(0), timers.Reload(0), timers.Counter(0))
 	}
 	timers.Advance(2)
 	timers.EndWriteAccess()
 	if timers.Control(0) != controlEnable || timers.Reload(0) != 0xffff || timers.Counter(0) != 0xffff {
-		t.Fatalf("timer start commit = control:%04x reload:%04x counter:%04x",
+		t.Fatalf("timer start events = control:%04x reload:%04x counter:%04x",
 			timers.Control(0), timers.Reload(0), timers.Counter(0))
 	}
 
-	// A running reload write is also bus-phase visible. If the timer overflows
-	// during that access, it reloads the new latch immediately.
+	// A reload write in the bus phase precedes an overflow that lands during
+	// that transfer, so the same-edge overflow uses the new 0000 latch.
 	timers.BeginWriteAccess()
 	b.Write16(timerLow(0), 0x0000, bus.Access{})
 	timers.Advance(1)
@@ -154,15 +154,15 @@ func TestDeferredTimerControlButImmediateReloadLatch(t *testing.T) {
 		t.Fatalf("reload latch = %04x, want 0000", got)
 	}
 	if got := timers.Counter(0); got != 0x0000 {
-		t.Fatalf("reload write overflow counter = %04x, want 0000", got)
+		t.Fatalf("same-edge overflow counter = %04x, want new reload 0000", got)
 	}
 	timers.Advance(1)
 	if got := timers.Counter(0); got != 0x0001 {
-		t.Fatalf("tick after reload write = %04x, want 0001", got)
+		t.Fatalf("tick after new reload = %04x, want 0001", got)
 	}
 }
 
-func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
+func TestCounterForCPUReadSamplesTickPhase(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xfffe, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -181,11 +181,11 @@ func TestCounterForCPUReadSamplesPreOverflowPhase(t *testing.T) {
 		t.Fatalf("live counter after overflow = %04x, want 0000", got)
 	}
 	if got := timers.CounterForCPURead(0); got != 0xffff {
-		t.Fatalf("CPU read on overflow edge = %04x, want pre-overflow ffff", got)
+		t.Fatalf("CPU read on overflow edge = %04x, want pre-edge ffff", got)
 	}
 }
 
-func TestCounterForCPUReadSamplesPreCascadePhase(t *testing.T) {
+func TestCounterForCPUReadSamplesCascadePhase(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xffff, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -196,22 +196,22 @@ func TestCounterForCPUReadSamplesPreCascadePhase(t *testing.T) {
 	if got := timers.Counter(1); got != 0x1235 {
 		t.Fatalf("live cascaded counter = %04x, want 1235", got)
 	}
-	if got := timers.CounterForCPURead(1); got != 0x1234 {
-		t.Fatalf("CPU read on cascade edge = %04x, want pre-tick 1234", got)
+	if got := timers.CounterForCPURead(1); got != 0x1235 {
+		t.Fatalf("CPU read on cascade edge = %04x, want committed 1235", got)
 	}
 
-	// If the cascaded timer itself overflows on that parent edge, the CPU still
-	// observes ffff rather than the freshly reloaded value.
+	// If the cascaded timer itself overflows on that parent edge, the event has
+	// already reloaded the child before the CPU-visible read.
 	b.Write16(timerHigh(1), 0, bus.Access{})
 	b.Write16(timerLow(1), 0xffff, bus.Access{})
 	b.Write16(timerHigh(1), controlEnable|controlCountUp, bus.Access{})
 	timers.Advance(1)
 	if got := timers.CounterForCPURead(1); got != 0xffff {
-		t.Fatalf("CPU read on cascade overflow = %04x, want ffff", got)
+		t.Fatalf("CPU read on cascade overflow = %04x, want reloaded ffff", got)
 	}
 }
 
-func TestDeferredTimerDisableCommitsAtEndOfWriteBusPhase(t *testing.T) {
+func TestTimestampedTimerDisableCommitsAfterWriteCompletion(t *testing.T) {
 	timers, b, _ := newTestTimers(t, Hooks{})
 	b.Write16(timerLow(0), 0xff00, bus.Access{})
 	b.Write16(timerHigh(0), controlEnable, bus.Access{})
@@ -226,20 +226,23 @@ func TestDeferredTimerDisableCommitsAtEndOfWriteBusPhase(t *testing.T) {
 		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
 	}
 
-	// The store's bus cycles still belong to the running timer. The disable
-	// becomes visible at the transfer-completion edge, before the next CPU phase.
+	// The write's bus cycles still belong to the running timer. The disable is
+	// committed as a same-timestamp event at transfer completion.
 	timers.Advance(4)
 	if got := timers.Counter(0); got != 0xff07 {
 		t.Fatalf("timer did not advance through disable bus phase: %04x, want ff07", got)
 	}
+	if got := timers.Control(0); got != controlEnable {
+		t.Fatalf("timer disable became visible before bus completion: control=%04x", got)
+	}
 	timers.EndWriteBusAccess()
 	if got := timers.Control(0); got != 0 {
-		t.Fatalf("timer disable not visible at bus completion: control=%04x", got)
+		t.Fatalf("timer disable event not visible at bus completion: control=%04x", got)
 	}
 	timers.EndWriteAccess()
 	timers.Advance(1)
 	if got := timers.Counter(0); got != 0xff07 {
-		t.Fatalf("timer advanced after disable bus phase: %04x, want ff07", got)
+		t.Fatalf("timer advanced after disable event: %04x, want ff07", got)
 	}
 }
 
@@ -290,6 +293,28 @@ func TestTimerPrescalers(t *testing.T) {
 				t.Fatalf("counter after four ticks = %04x, want 0004", got)
 			}
 		})
+	}
+}
+
+
+func TestTimerPrescalerChangePreservesAccumulatedPhase(t *testing.T) {
+	timers, b, _ := newTestTimers(t, Hooks{})
+	b.Write16(timerLow(0), 0x0000, bus.Access{})
+	b.Write16(timerHigh(0), controlEnable|1, bus.Access{}) // /64
+
+	timers.Advance(63)
+	if got := timers.Counter(0); got != 0 {
+		t.Fatalf("counter before /64 tick = %04x, want 0000", got)
+	}
+
+	b.Write16(timerHigh(0), controlEnable|2, bus.Access{})
+	timers.Advance(192)
+	if got := timers.Counter(0); got != 0 {
+		t.Fatalf("counter before preserved /256 edge = %04x, want 0000", got)
+	}
+	timers.Advance(1)
+	if got := timers.Counter(0); got != 1 {
+		t.Fatalf("counter at preserved /256 edge = %04x, want 0001", got)
 	}
 }
 

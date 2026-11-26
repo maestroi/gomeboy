@@ -3,22 +3,33 @@ package timer
 import (
 	"reflect"
 	"testing"
+
+	gbascheduler "github.com/maestroi/gomeboy/internal/gba/scheduler"
 )
 
 func TestStateRoundTripActiveTimersAndDeferredWrites(t *testing.T) {
+	s := gbascheduler.New()
+	s.Advance(100)
 	timers := &Timers{
+		scheduler:   s,
 		active:      0x0b,
 		deferWrites: true,
 		pendingWrites: []pendingWrite{
-			{index: 0, kind: pendingReload, value: 0xff00},
-			{index: 1, kind: pendingControl, value: 0x00c4},
+			{index: 0, value: 0x00c0},
+			{index: 1, value: 0x00c4},
 		},
 		pendingBusWrites: []pendingWrite{
-			{index: 3, kind: pendingReload, value: 0x1234},
+			{index: 3, value: 0},
 		},
 	}
-	timers.timer[0] = state{reload: 0xff00, counter: 0xff80, control: 0x00c0, phase: 3, lastTickOverflow: true}
-	timers.timer[1] = state{reload: 0x2200, counter: 0x2233, control: 0x00c4, phase: 1}
+	timers.timer[0] = state{
+		reload: 0xff00, counter: 0xff80, control: 0x00c0,
+		lastEvent: 96, lastTickAt: 99, lastOverflowAt: 64,
+	}
+	timers.timer[1] = state{
+		reload: 0x2200, counter: 0x2233, control: 0x00c4,
+		lastEvent: 100,
+	}
 
 	want := timers.Snapshot()
 	timers.timer = [4]state{}
