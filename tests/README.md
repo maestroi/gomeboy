@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/93/?scale=100&title=passing%20306,%20failing%2023&width=500)
+![progress](https://progress-bar.xyz/94/?scale=100&title=passing%20311,%20failing%2018&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 306 |
-| XFAIL | 23 |
+| PASS | 311 |
+| XFAIL | 18 |
 | REGRESSION | 0 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -52,7 +52,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 63% | 35 | 20 | 55 |
+| age | 72% | 40 | 15 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -143,13 +143,13 @@ is compared against a reference image from a known good emulator.
 #### stat-mode-window
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| stat-mode-window-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-mode-window-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-mode-window-dmgC@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-cgbBCE@CGBBC | pass | pass | pass |  |
+| stat-mode-window-cgbBCE@CGBDE | pass | pass | pass |  |
+| stat-mode-window-dmgC@DMG | pass | pass | pass |  |
 | stat-mode-window-ds-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
 | stat-mode-window-ds-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-mode-window-ncmBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-mode-window-ncmBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-mode-window-ncmBCE@CGBBC | pass | pass | pass |  |
+| stat-mode-window-ncmBCE@CGBDE | pass | pass | pass |  |
 
 #### stat-mode
 | Test | Expected | Actual | Status | Context |

@@ -107,7 +107,7 @@ func TestLateWXWriteCatchesUpDuringMode3(t *testing.T) {
 	if !p.winTriggerWx {
 		t.Fatal("late WX=10 write during Mode 3 did not open the window")
 	}
-	if p.fetcherState != WinActivating {
+	if p.fetcherState != BGWinActivating {
 		t.Fatalf("window fetch not restarted after late WX write: state=%v", p.fetcherState)
 	}
 }

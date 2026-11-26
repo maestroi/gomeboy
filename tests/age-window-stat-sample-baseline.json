@@ -4,31 +4,31 @@
   "cases": {
     "stat-mode-window-cgbBCE.gb@CGBBC": {
       "sample_count": 512,
-      "minimum_matching_samples": 482
+      "minimum_matching_samples": 512
     },
     "stat-mode-window-cgbBCE.gb@CGBDE": {
       "sample_count": 512,
-      "minimum_matching_samples": 482
+      "minimum_matching_samples": 512
     },
     "stat-mode-window-dmgC.gb@DMG": {
       "sample_count": 512,
-      "minimum_matching_samples": 482
+      "minimum_matching_samples": 512
     },
     "stat-mode-window-ds-cgbBCE.gb@CGBBC": {
       "sample_count": 768,
-      "minimum_matching_samples": 757
+      "minimum_matching_samples": 765
     },
     "stat-mode-window-ds-cgbBCE.gb@CGBDE": {
       "sample_count": 768,
-      "minimum_matching_samples": 757
+      "minimum_matching_samples": 765
     },
     "stat-mode-window-ncmBCE.gb@CGBBC": {
       "sample_count": 512,
-      "minimum_matching_samples": 480
+      "minimum_matching_samples": 512
     },
     "stat-mode-window-ncmBCE.gb@CGBDE": {
       "sample_count": 512,
-      "minimum_matching_samples": 480
+      "minimum_matching_samples": 512
     }
   }
 }
