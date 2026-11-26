@@ -380,3 +380,22 @@ func TestDMAResetClearsAllState(t *testing.T) {
 		}
 	}
 }
+
+func TestDMAROMToROMHasNoTrailingInternalCycles(t *testing.T) {
+	rom := make([]byte, 16)
+	b := bus.New(nil, rom)
+	d := New(b, nil, Hooks{})
+	// DMA3 can access ROM as destination.
+	programDMA(b, 3, bus.ROM0Start, bus.ROM0Start+8, 2, controlEnable)
+	units, cycles := d.LastTransfer(3)
+	// Two 16-bit Game Pak accesses each way use nonseq+seq waitstates.
+	// mGBA adds no trailing internal cycles when both ends are on the Game Pak.
+	// With default WS0 (N=5,S=3): reads 5+3, writes 5+3 = 16; trailing 0.
+	if units != 2 {
+		t.Fatalf("units=%d, want 2", units)
+	}
+	t.Logf("ROM-to-ROM cycles=%d", cycles)
+	if cycles != 16 {
+		t.Fatalf("ROM-to-ROM cycles=%d, want 16 (no trailing internals)", cycles)
+	}
+}

@@ -549,11 +549,13 @@ func (d *DMA) ServiceUnit() UnitResult {
 
 	completed := c.transferRemaining == 0
 	if completed {
-		// Preserve the existing aggregate timing model: two internal cycles once
-		// per transfer, or four when both endpoints are on the Game Pak bus.
+		// Trailing internal cycles: two when either endpoint is off the Game
+		// Pak, none when both ends are on the Game Pak. Matches mGBA's
+		// GBADMAService completion rule (and the mGBA-suite ROM↔ROM timing
+		// cluster); the previous +4 Game Pak tax was inverted.
 		internal := uint32(2)
 		if isGamePak(c.transferStartSource) && isGamePak(c.transferStartDest) {
-			internal = 4
+			internal = 0
 		}
 		cycles += internal
 		c.transferCycles += internal
@@ -688,11 +690,11 @@ func (d *DMA) run(index int) uint32 {
 	c.destCurrent = dest
 	c.countCurrent = 0
 
-	// DMA processing adds two internal cycles normally. If both ends are on
-	// the Game Pak bus, ARM7/GBA documentation specifies four internal cycles.
+	// Trailing internal cycles: two when either endpoint is off the Game Pak,
+	// none when both ends are on the Game Pak (mGBA GBADMAService).
 	internal := uint32(2)
 	if isGamePak(startSource) && isGamePak(startDest) {
-		internal = 4
+		internal = 0
 	}
 	cycles += internal
 
