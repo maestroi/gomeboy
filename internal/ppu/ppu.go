@@ -86,12 +86,14 @@ type PPU struct {
 	winTriggerWx bool  // Window X-position trigger
 	// DMG: a same-line WX=6 write suppresses the ordinary open at that
 	// column. If LX reaches the open edge while WX is still 6, the line
-	// is poisoned so a later WX (e.g. 80) cannot open either — matching
-	// the SameBoy position+6 desync consuming the window for that line
-	// (Mealybug m3_wx_6_change). Preset WX=6 from a previous line still
-	// opens normally (AGE window STAT).
+	// is poisoned so a later WX cannot open. When WX then stays 6 deep
+	// into visible Mode 3 before departing (Mealybug LY=6: WX=LY keeps
+	// 6 until the trailing WX=80), the LCD/PPU desync fills that
+	// scanline with BGP colour 3. Preset WX=6 without a same-line write
+	// still opens (AGE window STAT).
 	wx6SuppressLine bool
 	wx6PoisonedLine bool
+	wx6DesyncLine   bool
 
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
@@ -470,6 +472,17 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	b.ReserveAddress(types.WX, func(v byte) byte {
 		if !p.b.Model().IsCGB() && v == 6 {
 			p.wx6SuppressLine = true
+		}
+		// Poisoned line that kept WX=6 deep into visible Mode 3, then
+		// departs (Mealybug LY=6: WX=LY is also 6, so the first departure
+		// is the trailing WX=80): LCD/PPU desync fills the scanline with
+		// BGP colour 3. Early departures at LX≈8 (WX=LY on LY≠6) must not.
+		if !p.b.Model().IsCGB() && p.wx6PoisonedLine && p.wx == 6 && v != 6 && p.lx >= 16 {
+			p.wx6DesyncLine = true
+			fill := p.ColourPalette[0][3]
+			for x := uint8(0); x < ScreenWidth; x++ {
+				p.PreparedFrame[p.ly][x] = fill
+			}
 		}
 		p.wx = v
 		// Mid-Mode-3 WX writes can arrive after the exact trigger LX; re-check
@@ -1130,6 +1143,7 @@ func (p *PPU) handleVisualLine() {
 		p.flushBGP()
 		p.wx6SuppressLine = false
 		p.wx6PoisonedLine = false
+		p.wx6DesyncLine = false
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
 		p.b.Unlock(io.OAM | io.VRAM)
@@ -1579,6 +1593,11 @@ func (p *PPU) pushPixel() {
 	}
 
 	// draw pixel to frame
+	if p.wx6DesyncLine {
+		// SameBoy LCD/PPU desync fill after the WX=6 glitch column:
+		// remainder of the line is BGP colour 3 (black under $E4).
+		color = p.ColourPalette[0][3]
+	}
 	p.PreparedFrame[p.ly][p.lx-8] = color
 	p.lx++
 }
