@@ -39,8 +39,8 @@
       "enabled": true,
       "step_limit": 50000000,
       "baseline": {
-        "passed": 1486,
-        "failed": 434,
+        "passed": 1506,
+        "failed": 414,
         "total": 1920
       }
     },
