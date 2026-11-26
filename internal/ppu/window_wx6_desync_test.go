@@ -20,7 +20,7 @@ func TestDMGWX6WriteSuppressesSameLineOpen(t *testing.T) {
 		t.Fatal("same-line DMG WX=6 must not open at LX=7")
 	}
 	if !p.wx6PoisonedLine {
-		t.Fatal("reaching WX=6 column under suppress should poison the line")
+		t.Fatal("reaching WX=6 column under suppress should poison")
 	}
 	p.wx = 80
 	p.lx = 81
@@ -30,21 +30,34 @@ func TestDMGWX6WriteSuppressesSameLineOpen(t *testing.T) {
 	}
 }
 
-func TestDMGWX6ClearedBeforeColumnStillOpens(t *testing.T) {
+func TestDMGWX6LateDepartureDesyncs(t *testing.T) {
 	p := newWindowWXTriggerTestPPU(types.DMGABC)
 	p.mode = ModeOAM
 	p.b.Write(types.WX, 6)
 	p.mode = ModeVRAM
-	p.lx = 3
+	p.lx = 7
 	p.checkWindowTriggerWX()
-	if p.wx6PoisonedLine || p.winTriggerWx {
-		t.Fatal("WX=6 before column must not poison or open")
-	}
+	p.lx = 100
 	p.b.Write(types.WX, 80)
-	p.lx = 81
+	if !p.wx6DesyncLine {
+		t.Fatal("late departure from WX=6 while poisoned must desync")
+	}
+	if p.PreparedFrame[p.ly][0] != p.ColourPalette[0][3] {
+		t.Fatal("desync should fill the scanline with BGP colour 3")
+	}
+}
+
+func TestDMGWX6EarlyDepartureNoDesync(t *testing.T) {
+	p := newWindowWXTriggerTestPPU(types.DMGABC)
+	p.mode = ModeOAM
+	p.b.Write(types.WX, 6)
+	p.mode = ModeVRAM
+	p.lx = 7
 	p.checkWindowTriggerWX()
-	if !p.winTriggerWx {
-		t.Fatal("WX changed away from 6 before glitch column must still open")
+	p.lx = 8
+	p.b.Write(types.WX, 4)
+	if p.wx6DesyncLine {
+		t.Fatal("early WX=LY departure must not desync")
 	}
 }
 
