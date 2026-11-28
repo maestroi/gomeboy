@@ -79,6 +79,12 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 - DELAY sweep no longer collapses; DS/NS groups start near LY 0. Residual row mismatches need ~+5 DS / −2 NS fudge plus LY&(LY+1) glitch — not committed (regress ly-* / tellinglys)
 - Still XFAIL lcd-align-ly CGBBC+CGBDE; no magic KX offsets in tree
 
+
+### P5b — LY bus AND-glitch — FAILED
+
+- Gated `lyBusGlitch` between HBlankUpdateLY and HBlankUpdateVisibleLY returning `busLY&p.ly`: **regresses** `ly-cgbE` / `ly-dmgC-cgbBC`; lcd-align bad-row set unchanged (samples miss the 2-dot gap without phase fudge)
+- Mealybug clear-poison-on-WX-rewrite: 6945→7478 (worse) — reverted
+
 ## Remaining XFAIL (11)
 
 | Family | Count | Notes |
