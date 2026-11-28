@@ -4,19 +4,19 @@ import "github.com/maestroi/gomeboy/internal/types"
 
 const (
 	// speedSwitchHaltCycles is SameBoy's speed_switch_halt_countdown: a KEY1
-	// STOP with no pending interrupt halts the CPU for this many CPU T-cycles
-	// (in whichever speed is active, so 0x10004 device dots in double speed).
+	// STOP with no pending interrupthalts the CPU for this many CPU T-cycles.
 	speedSwitchHaltCycles = 0x20008
-	// speedSwitchDelay is speed_switch_countdown: the speed flip lands this
-	// many cycles after STOP when entering double speed.
+	// speedSwitchDelay is speed_switch_countdown: when entering double speed
+	// the flip lands this many cycles after STOP.
 	speedSwitchDelay = 6
 	// speedSwitchFreeze is speed_switch_freeze: the PPU is frozen for the
-	// first cycles of the switch.
+	// first cycles of a no-IRQ speed switch.
 	speedSwitchFreeze = 5
 )
 
 // keyOneSwitch performs the KEY1 speed switch triggered by STOP, following
-// SameBoy's stop(). The caller has already handled DIV reset and PC++.
+// SameBoy's stop() + GB_advance_cycles speed_switch_* handling.
+// The caller has already handled DIV reset and PC++.
 func (c *CPU) keyOneSwitch() {
 	enteringDS := !c.DoubleSpeed
 	noIRQ := !c.b.HasInterrupts()
@@ -26,15 +26,16 @@ func (c *CPU) keyOneSwitch() {
 		c.s.Tick(4)
 	}
 
-	c.DoubleSpeed = !c.DoubleSpeed
-	if c.DoubleSpeed {
-		c.b.SetBit(types.KEY1, types.Bit7)
-	} else {
-		c.b.ClearBit(types.KEY1, types.Bit7)
-	}
-	c.b.ClearBit(types.KEY1, types.Bit0) // clear armed bit
+	// KEY1 is cleared immediately (armed + current-speed bit), matching
+	// SameBoy writing KEY1 = 0. The CGB double-speed flag is updated below.
+	c.b.Set(types.KEY1, 0)
 
 	if !noIRQ {
+		// Interrupt pending: flip immediately, no halt/freeze.
+		c.DoubleSpeed = !c.DoubleSpeed
+		if c.DoubleSpeed {
+			c.b.SetBit(types.KEY1, types.Bit7)
+		}
 		c.s.ChangeSpeed(c.DoubleSpeed)
 		return
 	}
@@ -43,28 +44,35 @@ func (c *CPU) keyOneSwitch() {
 	c.Halted = true
 
 	left := uint64(speedSwitchHaltCycles)
-	step := func(n uint64, frozen uint64) {
-		if frozen > 0 {
-			c.s.TickFrozen(frozen)
-		}
-		c.s.Tick(n - frozen)
+
+	haltStep := func(n uint64) {
+		c.hasFrame = false
+		c.hasInt = false
+		c.s.Tick(n)
 		left -= n
 	}
 
 	if enteringDS {
-		// First cycles run at normal speed; the flip lands mid-way.
-		step(speedSwitchDelay, speedSwitchFreeze)
+		// SameBoy: countdown=6, freeze=5 (no-IRQ). PPU frozen for 5 cycles
+		// at normal speed, then one more NS cycle, then the flip.
+		c.s.TickFrozen(speedSwitchFreeze)
+		left -= speedSwitchFreeze
+		haltStep(speedSwitchDelay - speedSwitchFreeze)
+		c.DoubleSpeed = true
+		c.b.SetBit(types.KEY1, types.Bit7)
+		c.s.ChangeSpeed(true)
 	} else {
-		step(speedSwitchFreeze, speedSwitchFreeze)
+		// SameBoy: leaving DS flips cgb_double_speed immediately, then
+		// freeze=5 + halt. PPU freeze and halt run at the new (NS) rate.
+		c.DoubleSpeed = false
+		c.s.ChangeSpeed(false)
+		c.s.TickFrozen(speedSwitchFreeze)
+		left -= speedSwitchFreeze
 	}
-	c.s.ChangeSpeed(c.DoubleSpeed)
 
-	// Halt in M-cycles; an interrupt wakes the CPU early. Clear the frame
-	// latches so a halt spanning several VBlanks is not cut short.
+	// Halt remainder in M-cycles; an interrupt wakes the CPU early.
 	for left > 0 && !c.b.HasInterrupts() {
-		c.hasFrame = false
-		c.hasInt = false
-		step(min(left, 4), 0)
+		haltStep(min(left, 4))
 	}
 
 	c.s.Halted = false
