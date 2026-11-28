@@ -39,12 +39,16 @@
 
 - See prior notes; tellinglys or mooneye regressions
 
-### P4 — STAT interrupt IRQ at lx==168 — FAILED
+### P4 — STAT interrupt — PARTIAL (Mode-0/Mode-2 rows)
 
-- AGE stat-int: always Mode2 (`82`) vs expected alternating Mode0/2 (`80`/`82`)
-- Moving Mode-0 IRQ to lx==168 (set mode+IRQ there): +2/+5 samples but **regressed** `halt-m0-interrupt`×3 + `hblank_ly_scx_timing-GS` — reverted
-- Calling `statUpdate()` at existing lx==168 HBlank arm (without moving bus unlock): same +2/+5 and **same regressions** — reverted
-- Need longer post-IRQ Mode-0 without earlier IRQ edge / without breaking halt-m0
+- Root cause: after Mode-0 IRQ, DELAY 34's `ldh a,[rSTAT]` samples exactly at our Mode-2 visible edge → always `82`
+- **Fix (landed):** Mode-0-IRQ-gated CPU-visible Mode-0 hold into `StartOAMScan` (DMG/NCM 4 dots; CGB SS 8; CGB DS 4/2 by SCX parity). `modeToInt` / bus / Mode-2 IRQ unchanged
+- Raw matrix: DMG/NCM **36/40** (Mode-0 + Mode-2 rows green); CGB native **72/80** (SS Mode-0/2 green). Mode-1 VBlank rows still `82/82`
+- Guards: `halt-m0-interrupt` PASS, AGE `stat-mode-*` PASS (STAT enables clear → hold not armed), PPU Mode-2 entry unit tests PASS
+- Ungated hold got 40/40 including Mode-1 but **regressed AGE stat-mode** — cannot use
+- Early Mode-0 IRQ (`lx==166`/`164`): AGE gain but **regresses halt-m0** — cannot use
+- Mode-1 residual: DELAY 1237/1238 at LY=0→1 edge; SCX=0 vs SCX=7 need opposite hold lengths; blocked for XPASS
+- Still XFAIL all 5 stat-int ROM@model until Mode-1 lands
 
 ### P6 — Mealybug WX=6 — BLOCKED (instrumented)
 
@@ -68,15 +72,15 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 | Family | Count | Notes |
 |---|---|---|
 | sprites | 5 | SCX=0 residual + incomplete matrix |
-| STAT int | 5 | Mode0/2 edge after IRQ |
+| STAT int | 5 | Mode-0/2 rows fixed; Mode-1 VBlank residual |
 | Mealybug wx6 | 3 | DMG desync incomplete; CGB refs missing |
 | LCD-align-LY | 2 | LCD-on LY phase |
 | OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
 
-1. Continue sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
-2. STAT-int: longer Mode-0 *after* IRQ without moving the edge (halt-m0 sensitive)
-3. Mealybug: SameBoy `lcd_x` + early WX+6 — additive probe left score at 6945 and needs suppress/poison rethink first
-4. LCD-align-LY: 40/40 first-sample inverted — LCD-on LY phase (not a one-dot tweak)
+1. LCD-align-LY: 40/40 first-sample inverted — LCD-on LY phase
+2. Sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
+3. STAT-int Mode-1: needs LY=0 Mode-0 duration fix distinct from Mode-0-IRQ hold
+4. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink first
 5. Skip inventing CGB Mealybug refs

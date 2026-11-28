@@ -95,6 +95,13 @@ type PPU struct {
 	wx6PoisonedLine bool
 	wx6DesyncLine   bool
 
+	// After a Mode-0 STAT IRQ, keep CPU-visible Mode 0 for a few dots
+	// into StartOAMScan so AGE stat-int DELAY 34 still samples Mode 0.
+	// Gated on the Mode-0 IRQ edge so AGE stat-mode (STAT enables
+	// clear) keeps its Mode-2 entry timing.
+	mode0IRQHoldLine      bool
+	mode0VisibleHoldUntil uint64
+
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
 	scxToDiscard uint8 // Target number of pixels to discard based on SCX % 8
@@ -841,6 +848,18 @@ func (p *PPU) cpuVisibleSTAT() byte {
 			mode = ModeVBlank
 		}
 	}
+	// Mode-0-IRQ-gated visible Mode 0 hold into StartOAMScan (AGE
+	// stat-int Mode-0/Mode-2 rows). modeToInt / bus locks / Mode-2
+	// IRQ stay on the existing edges.
+	if p.enabled && mode == ModeOAM && p.lineState == StartOAMScan &&
+		p.mode0VisibleHoldUntil != 0 && p.s.Cycle() < p.mode0VisibleHoldUntil {
+		mode = ModeHBlank
+		if p.cgbMode && p.b.Model() == types.CGBDE &&
+			!p.s.DoubleSpeed() && p.ly == 0 &&
+			p.oamScanIndex == 1 && p.s.Cycle() == p.lineDot {
+			mode = ModeVBlank
+		}
+	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		!p.s.DoubleSpeed() && mode == ModeVRAM &&
 		p.lineState == PixelTransferDummy &&
@@ -980,6 +999,26 @@ func (p *PPU) handleVisualLine() {
 			p.statUpdate()
 			p.modeToInt = 255
 			p.statUpdate()
+			if p.mode0IRQHoldLine {
+				p.mode0IRQHoldLine = false
+				holdDots := uint64(4)
+				switch {
+				case p.cgbMode && p.s.DoubleSpeed():
+					holdDots = 4
+					if p.scx&1 != 0 {
+						holdDots = 2
+					}
+				case p.cgbMode:
+					holdDots = 8
+				}
+				hold := holdDots
+				if p.s.DoubleSpeed() {
+					hold = holdDots * 2
+				}
+				p.mode0VisibleHoldUntil = p.s.Cycle() + hold
+			} else {
+				p.mode0VisibleHoldUntil = 0
+			}
 		}
 
 		p.scanOAMEntry()
@@ -1173,8 +1212,16 @@ func (p *PPU) handleVisualLine() {
 		p.wx6SuppressLine = false
 		p.wx6PoisonedLine = false
 		p.wx6DesyncLine = false
+		wasStat := p.statInt
 		p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		p.statUpdate()
+		// Arm a read-port Mode-0 hold only when this HBlank raised a
+		// Mode-0 STAT IRQ (Bit3). AGE stat-mode keeps STAT enables
+		// clear, so it is unaffected; AGE stat-int Mode-0/2 rows need
+		// the hold so DELAY 34 still samples Mode 0.
+		if !wasStat && p.statInt && p.status&types.Bit3 != 0 {
+			p.mode0IRQHoldLine = true
+		}
 		p.b.Unlock(io.OAM | io.VRAM)
 
 		// Physical CGB B/C in DMG compatibility mode exposes one
