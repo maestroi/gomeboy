@@ -87,15 +87,17 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 
 ### P5 — LCD-align-LY — PARTIAL (SameBoy KEY1 landed, still XFAIL)
 
-- Offset-0 normal-speed groups **PASS**
-- Landed SameBoy-faithful KEY1 STOP: `countdown=6`, `freeze=5` via `TickFrozen`, halt `0x20008`, plus device-stamp rebase on `ChangeSpeed`/`TickFrozen` (`internal/cpu/speed_switch.go`, scheduler)
-- DELAY sweep no longer collapses; DS/NS groups start near LY 0. Residual row mismatches need ~+5 DS / −2 NS fudge plus LY&(LY+1) glitch — not committed (regress ly-* / tellinglys)
-- Still XFAIL lcd-align-ly CGBBC+CGBDE; no magic KX offsets in tree
+- Offset-0 normal-speed groups **PASS**; raw matrix ~35 byte mismatches (mostly enter-DS groups one LY behind + missing `LY&(LY+1)` glitch rows)
+- Landed SameBoy-faithful KEY1 STOP: `countdown=6`, `freeze=5` via `TickFrozen`, halt `0x20008`, leave-DS flip-before-freeze, device-stamp rebase
+- Compact probes baseline **11/12**; freeze/delay sweep best **10/9** at freeze=5 delay=7 — still XFAIL
+- Post-enter-DS `Tick` fudge has **zero** effect (halt absorbs relative phase); `TickFrozen(10)` (NS×2 hypothesis) worsens to ~28
+- Flip-before-preflip enter-DS order worsens probes; leave-DS path mostly OK (g=2 NS passes on CGBBC)
+- Still XFAIL lcd-align-ly CGBBC+CGBDE
 
+### P5b — LY bus AND-glitch — PARTIAL / insufficient
 
-### P5b — LY bus AND-glitch — FAILED
-
-- Gated `lyBusGlitch` between HBlankUpdateLY and HBlankUpdateVisibleLY returning `busLY&p.ly`: **regresses** `ly-cgbE` / `ly-dmgC-cgbBC`; lcd-align bad-row set unchanged (samples miss the 2-dot gap without phase fudge)
+- Lazy LY reader returning `bus&p.ly` during `HBlankUpdateOAM` does **not** regress `^TestAge$/^ly-` (earlier note used a filter that also matched lcd-align)
+- Alone does **not** fix lcd-align: edge samples still miss the 2-dot glitch window (phase), so AND never observed on failing delays
 - Mealybug clear-poison-on-WX-rewrite: 6945→7478 (worse) — reverted
 
 ## Remaining XFAIL (6)
