@@ -5,6 +5,7 @@
 - **Main SHA:** `039583f7` (#292 merged) — corpus still **313/329** XFAIL (sprite scores up but not full PASS), gate green
 - **Date:** 2026-11-28
 - **Branch:** `accuracy/gb-next-xfail`
+- **In-flight:** STAT-int Mode-1/Mode-2 IRQ hold → **318/329** (5 XPASS), pending commit
 
 ## Completed
 
@@ -20,6 +21,14 @@
 - Guards: mooneye sprites PASS, tellinglys CGB (flaky but not regressed), gate green
 - PR: https://github.com/maestroi/gomeboy/pull/292
 - Residual: NOP=0 on AGE SCX=LY coarse-aligned lines (LY=8,16,…); cannot +1 at SCX=0 (mooneye) or blanket SCX≠0 (tellinglys)
+
+### P4 — STAT interrupt — DONE (40/40 / 80/80)
+
+- Root cause: after Mode-0/1/2 STAT IRQ, handler clears STAT enables; DELAY samples Mode-0→Mode-2 edge without a visible Mode-0 hold → always `82`
+- **Fix:** Mode-0 Bit3 IRQ arms hold at EnterHBlank; Mode-1 Bit4 / Mode-2 Bit5 rising edges latch `mode1IRQHoldPending` / `mode2IRQHoldPending` and arm the same hold on the following EnterHBlank (LY=0 for Mode-1). DS Mode-1/2 force 4-dot hold (Mode-0 DS keeps SCX-odd 2-dot)
+- Raw matrix: DMG/NCM **40/40**; CGB native **80/80**
+- Guards: `halt-m0`, AGE `stat-mode-*`, mooneye green; ungated LY=0 hold regressed stat-mode — not used
+- XPASS: all 5 `stat-int-*` ROM@model (313→318)
 
 ## Blocked / failed experiments
 
@@ -38,17 +47,6 @@
 ### P3b/c/d — X=0 absorb / spx0 stall / flat align — FAILED
 
 - See prior notes; tellinglys or mooneye regressions
-
-### P4 — STAT interrupt — PARTIAL (Mode-0/Mode-2 rows)
-
-- Root cause: after Mode-0 IRQ, DELAY 34's `ldh a,[rSTAT]` samples exactly at our Mode-2 visible edge → always `82`
-- **Fix (landed):** Mode-0-IRQ-gated CPU-visible Mode-0 hold into `StartOAMScan` (DMG/NCM 4 dots; CGB SS 8; CGB DS 4/2 by SCX parity). `modeToInt` / bus / Mode-2 IRQ unchanged
-- Raw matrix: DMG/NCM **36/40** (Mode-0 + Mode-2 rows green); CGB native **72/80** (SS Mode-0/2 green). Mode-1 VBlank rows still `82/82`
-- Guards: `halt-m0-interrupt` PASS, AGE `stat-mode-*` PASS (STAT enables clear → hold not armed), PPU Mode-2 entry unit tests PASS
-- Ungated hold got 40/40 including Mode-1 but **regressed AGE stat-mode** — cannot use
-- Early Mode-0 IRQ (`lx==166`/`164`): AGE gain but **regresses halt-m0** — cannot use
-- Mode-1 residual: DELAY 1237/1238 at LY=0→1 edge; SCX=0 vs SCX=7 need opposite hold lengths; blocked for XPASS
-- Still XFAIL all 5 stat-int ROM@model until Mode-1 lands
 
 ### P6 — Mealybug WX=6 — BLOCKED (instrumented)
 
@@ -69,22 +67,21 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 - All failures are after `SWITCH_SPEED`: offset-1+ DS/NS groups
 - DS offset-1 actual LY ≈ `0A 0B 0C 0D …` vs expected `00 00 01 02 8F 98 …` — **~10 lines late**
 - Fixed inverted `ChangeSpeed` reschedule (was halving PPU remaining on enter-DS; now keeps device-dot lengths). Did **not** move lcd-align LY
-- SameBoy uses `speed_switch_countdown`/`speed_switch_freeze` during STOP; our KEY1 STOP flips speed immediately — next probe
+- SameBoy uses `speed_switch_countdown`/`speed_switch_freeze`/`halt_countdown=0x20008` during STOP; naive in-STOP Tick of 0x20008 did not fix LY (IRQ wake / freeze not modeled) — needs integrated halt+PPU wake with freeze
 
-## Remaining XFAIL (16)
+## Remaining XFAIL (11)
 
 | Family | Count | Notes |
 |---|---|---|
 | sprites | 5 | SCX=0 residual + incomplete matrix |
-| STAT int | 5 | Mode-0/2 rows fixed; Mode-1 VBlank residual |
 | Mealybug wx6 | 3 | DMG desync incomplete; CGB refs missing |
-| LCD-align-LY | 2 | LCD-on LY phase |
+| LCD-align-LY | 2 | KEY1 STOP freeze / LY phase |
 | OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
 
-1. LCD-align-LY: SameBoy KEY1 STOP post-switch halt (`halt_countdown=0x20008`); naive Tick and Skip-halt both unsafe/ineffective — needs integrated halt+PPU wake
-2. Sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
-3. STAT-int Mode-1: needs LY=0 Mode-0 duration fix distinct from Mode-0-IRQ hold
-4. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink first
-5. Skip inventing CGB Mealybug refs
+1. Sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
+2. LCD-align-LY: integrated KEY1 STOP freeze+halt (SameBoy `speed_switch_freeze` + `halt_countdown`)
+3. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink first
+4. Skip inventing CGB Mealybug refs
+5. OAM DELAY=2 last if still blocked

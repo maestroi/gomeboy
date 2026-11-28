@@ -2,13 +2,13 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/95/?scale=100&title=passing%20313,%20failing%2016&width=500)
+![progress](https://progress-bar.xyz/96/?scale=100&title=passing%20317,%20failing%2012&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 313 |
-| XFAIL | 16 |
-| REGRESSION | 0 |
+| PASS | 317 |
+| XFAIL | 11 |
+| REGRESSION | 1 |
 | XPASS | 0 |
 | New tests | 0 |
 | Missing tests | 0 |
@@ -52,13 +52,13 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 76% | 42 | 13 | 55 |
+| age | 85% | 47 | 8 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
 | mealybug | 83% | 15 | 3 | 18 |
 | mooneye | 100% | 114 | 0 | 114 |
-| samesuite | 100% | 82 | 0 | 82 |
+| samesuite | 98% | 81 | 1 | 82 |
 | scribbltests | 100% | 5 | 0 | 5 |
 | strikethrough | 100% | 2 | 0 | 2 |
 
@@ -125,11 +125,11 @@ is compared against a reference image from a known good emulator.
 #### stat-interrupt
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| stat-int-dmgC-cgbBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-int-dmgC-cgbBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-int-dmgC-cgbBCE@DMG | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-int-ncmBCE@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| stat-int-ncmBCE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| stat-int-dmgC-cgbBCE@CGBBC | pass | pass | pass |  |
+| stat-int-dmgC-cgbBCE@CGBDE | pass | pass | pass |  |
+| stat-int-dmgC-cgbBCE@DMG | pass | pass | pass |  |
+| stat-int-ncmBCE@CGBBC | pass | pass | pass |  |
+| stat-int-ncmBCE@CGBDE | pass | pass | pass |  |
 
 #### stat-mode-sprites
 | Test | Expected | Actual | Status | Context |
@@ -534,7 +534,7 @@ is compared against a reference image from a known good emulator.
 #### apu/channel_4
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| channel_4_align | pass | pass | pass |  |
+| channel_4_align | pass | fail | regression | expected pass, observed failure |
 | channel_4_delay | pass | pass | pass |  |
 | channel_4_equivalent_frequencies | pass | pass | pass |  |
 | channel_4_extra_length_clocking-cgb0B@CGB0 | pass | pass | pass |  |

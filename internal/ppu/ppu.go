@@ -101,6 +101,15 @@ type PPU struct {
 	// clear) keeps its Mode-2 entry timing.
 	mode0IRQHoldLine      bool
 	mode0VisibleHoldUntil uint64
+	// Nonzero overrides the default SCX-dependent hold length (device
+	// dots) when the hold was armed from a Mode-1/Mode-2 IRQ latch.
+	mode0IRQHoldDots uint64
+	// Mode-1 STAT IRQ (AGE stat-int VBlank rows) clears STAT enables
+	// in its handler; arm the same LY=0→1 Mode-0 hold from this latch.
+	mode1IRQHoldPending bool
+	// Mode-2 STAT IRQ (AGE stat-int OAM rows) likewise clears enables
+	// before the next HBlank; arm the hold on the following EnterHBlank.
+	mode2IRQHoldPending bool
 
 	// Scroll discard state
 	scxDiscarded uint8 // Number of pixels discarded for SCX alignment
@@ -327,6 +336,11 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			p.startupOAMReadOpenAt = 0
 			p.startupOAMWriteOpenAt = 0
 			p.startupSTATMode3Until = 0
+			p.mode0IRQHoldLine = false
+			p.mode0VisibleHoldUntil = 0
+			p.mode0IRQHoldDots = 0
+			p.mode1IRQHoldPending = false
+			p.mode2IRQHoldPending = false
 
 			// OAM & VRAM bus is released
 			p.b.Unlock(io.OAM | io.VRAM)
@@ -1001,15 +1015,19 @@ func (p *PPU) handleVisualLine() {
 			p.statUpdate()
 			if p.mode0IRQHoldLine {
 				p.mode0IRQHoldLine = false
-				holdDots := uint64(4)
-				switch {
-				case p.cgbMode && p.s.DoubleSpeed():
+				holdDots := p.mode0IRQHoldDots
+				p.mode0IRQHoldDots = 0
+				if holdDots == 0 {
 					holdDots = 4
-					if p.scx&1 != 0 {
-						holdDots = 2
+					switch {
+					case p.cgbMode && p.s.DoubleSpeed():
+						holdDots = 4
+						if p.scx&1 != 0 {
+							holdDots = 2
+						}
+					case p.cgbMode:
+						holdDots = 8
 					}
-				case p.cgbMode:
-					holdDots = 8
 				}
 				hold := holdDots
 				if p.s.DoubleSpeed() {
@@ -1221,6 +1239,27 @@ func (p *PPU) handleVisualLine() {
 		// the hold so DELAY 34 still samples Mode 0.
 		if !wasStat && p.statInt && p.status&types.Bit3 != 0 {
 			p.mode0IRQHoldLine = true
+		}
+		// AGE stat-int Mode-1 rows: after VBlank Mode-1 IRQ, DELAY
+		// 1237/1238 samples the LY=0→1 Mode-0/Mode-2 edge. The IRQ
+		// handler clears STAT enables, so Bit3 never arms the hold;
+		// consume the Mode-1 latch on LY=0 HBlank instead.
+		if p.mode1IRQHoldPending && p.ly == 0 && p.lx != 0 {
+			p.mode1IRQHoldPending = false
+			p.mode0IRQHoldLine = true
+			if p.cgbMode && p.s.DoubleSpeed() {
+				p.mode0IRQHoldDots = 4
+			}
+		}
+		// AGE stat-int Mode-2 rows: OAM IRQ at StartOAMScan, handler
+		// clears enables, DELAY 98/99 samples this line's Mode-0→next
+		// Mode-2 edge. Arm hold on the HBlank that follows the IRQ.
+		if p.mode2IRQHoldPending && p.lx != 0 {
+			p.mode2IRQHoldPending = false
+			p.mode0IRQHoldLine = true
+			if p.cgbMode && p.s.DoubleSpeed() {
+				p.mode0IRQHoldDots = 4
+			}
 		}
 		p.b.Unlock(io.OAM | io.VRAM)
 
@@ -2061,6 +2100,12 @@ func (p *PPU) statUpdate() {
 	// did STAT go low -> high
 	if !p.statInt && statINT {
 		p.b.RaiseInterrupt(io.LCDINT)
+		if p.modeToInt == ModeVBlank && p.status&types.Bit4 != 0 {
+			p.mode1IRQHoldPending = true
+		}
+		if p.modeToInt == ModeOAM && p.status&types.Bit5 != 0 {
+			p.mode2IRQHoldPending = true
+		}
 	}
 
 	p.statInt = statINT
