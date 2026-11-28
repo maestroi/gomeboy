@@ -102,7 +102,7 @@ Unit tests updated for deferred poison.
 
 | Family | Count | Notes |
 |---|---|---|
-| Mealybug wx6 | 3 | DMG 6702 px; CGB refs missing |
+| Mealybug wx6 | 3 | DMG 6702 px; CGB C/D expected PNGs are byte-identical stubs |
 | OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
