@@ -8,7 +8,7 @@ import (
 	"github.com/maestroi/gomeboy/internal/types"
 )
 
-func TestKEY1StopHaltBurnsDeviceDots(t *testing.T) {
+func TestKEY1StopHaltsForSpeedSwitchCycles(t *testing.T) {
 	rom := make([]byte, 0x8000)
 	rom[0x143] = 0x80
 	s := scheduler.NewScheduler()
@@ -22,8 +22,8 @@ func TestKEY1StopHaltBurnsDeviceDots(t *testing.T) {
 	start := s.Cycle()
 	InstructionSet[0x10].fn(c)
 	elapsed := s.Cycle() - start
-	// 0x20008 device dots × 2 CPU cycles in DS
-	if elapsed < 0x40000 {
+	// SameBoy halts for 0x20008 CPU T-cycles in total
+	if elapsed < speedSwitchHaltCycles {
 		t.Fatalf("KEY1 enter-DS halt too short: elapsed=%d", elapsed)
 	}
 	if !c.DoubleSpeed || !s.DoubleSpeed() {

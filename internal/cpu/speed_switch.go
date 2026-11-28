@@ -1,17 +1,6 @@
 package cpu
 
-import (
-	"os"
-	"strconv"
-
-	"github.com/maestroi/gomeboy/internal/types"
-)
-
-var expExtra, expExtraNS = func() (int, int) {
-	a, _ := strconv.Atoi(os.Getenv("KX"))
-	b, _ := strconv.Atoi(os.Getenv("KXN"))
-	return a, b
-}()
+import "github.com/maestroi/gomeboy/internal/types"
 
 const (
 	// speedSwitchHaltCycles is SameBoy's speed_switch_halt_countdown: a KEY1
@@ -53,10 +42,7 @@ func (c *CPU) keyOneSwitch() {
 	c.s.Halted = true
 	c.Halted = true
 
-	left := uint64(speedSwitchHaltCycles + expExtra)
-	if !enteringDS {
-		left = uint64(speedSwitchHaltCycles + expExtraNS)
-	}
+	left := uint64(speedSwitchHaltCycles)
 	step := func(n uint64, frozen uint64) {
 		if frozen > 0 {
 			c.s.TickFrozen(frozen)
