@@ -25,10 +25,18 @@ func TestDMGWX6WriteSuppressesSameLineOpen(t *testing.T) {
 	p.lx = 8
 	p.checkWindowTriggerWX()
 	if p.winTriggerWx {
-		t.Fatal("visible LX=8 with WX still 6 must not open")
+		t.Fatal("LX=8 with WX still 6 must not open yet")
+	}
+	if p.wx6PoisonedLine {
+		t.Fatal("LX=8 must not poison; WX=LY rewrite window extends further")
+	}
+	p.lx = 12
+	p.checkWindowTriggerWX()
+	if p.winTriggerWx {
+		t.Fatal("LX=12 with WX still 6 must not open")
 	}
 	if !p.wx6PoisonedLine {
-		t.Fatal("reaching visible WX=6 column under suppress should poison")
+		t.Fatal("past rewrite window with WX still 6 should poison")
 	}
 	p.wx = 80
 	p.lx = 81
@@ -43,7 +51,7 @@ func TestDMGWX6LateDepartureDesyncs(t *testing.T) {
 	p.mode = ModeOAM
 	p.b.Write(types.WX, 6)
 	p.mode = ModeVRAM
-	p.lx = 8
+	p.lx = 12
 	p.checkWindowTriggerWX()
 	p.lx = 100
 	p.b.Write(types.WX, 80)

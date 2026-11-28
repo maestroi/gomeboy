@@ -2204,12 +2204,12 @@ func (p *PPU) checkWindowTriggerWX() {
 		}
 		windowX := p.lx > 0 && p.lx >= p.wx+1
 		if p.wx6SuppressLine && p.wx == 6 && windowX {
-			// Offscreen LX==7 with WX still 6: skip open but do not poison
-			// yet so Mode-3 may rewrite WX=LY at LX==8.
-			if p.lx < 8 {
+			// Mode-3 IRQ rewrites WX=LY around LX==8..11. Skip open while
+			// WX is still 6 through that window; poison only if WX remains
+			// 6 afterward (Mealybug LY=6 where WX=LY keeps 6).
+			if p.lx < 12 {
 				return
 			}
-			// Visible column still at WX=6: poison (Mealybug LY=6).
 			p.wx6PoisonedLine = true
 			return
 		}
