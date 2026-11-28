@@ -321,83 +321,47 @@ func (s *Scheduler) DoEvent() uint64 {
 
 // ChangeSpeed informs the scheduler that the speed of the CPU has either gone
 // from normal speed to double speed, or from double speed to normal speed.
-// This is useful for the scheduler to know when to schedule events for the
-// CPU, as events are scheduled for the CPU at a different rate when the
-// CPU is running at double speed.
+//
+// Device events (APU/PPU/…) are scheduled in device dots. ScheduleEvent
+// converts those to CPU cycles with a ×2 when doubleSpeed is set. On a
+// KEY1 flip we therefore: (1) recover each queued event's remaining
+// length in dots, (2) flip doubleSpeed, (3) reschedule with that same
+// dot length so ScheduleEvent applies the new conversion. The old
+// implementation halved remaining cycles when entering double speed,
+// which made the PPU run 2× fast after KEY1 (AGE lcd-align-ly DS rows).
 func (s *Scheduler) ChangeSpeed(speed bool) {
-	if !s.doubleSpeed && speed {
-		eventsProcessed := [len(_EventType_index) - 1]bool{} // filthy hack to avoid processing the same event twice
-		// we are going from normal speed to double speed
-		// so we need to halve the event cycles for events
-		// affected by the speed change
+	if s.doubleSpeed == speed {
+		return
+	}
 
-		// we need to iterate over the linked list of events
-		// and halve the cycle for each event if the event
-		// is affected by the speed change (APU, PPU, Serial)
-		event := s.root
-		for event != nil && event.cycle != math.MaxUint64 {
-			if event.eventType <= PPUHandleOffscreenLine {
-				if eventsProcessed[event.eventType] {
-					event = event.next
-					continue
-				}
-				eventsProcessed[event.eventType] = true
-				// first we need to get the cycle at which the event
-				// would be executed at normal speed
-				cycleToExecute := event.cycle
+	type pending struct {
+		typ  EventType
+		dots uint64
+	}
+	var list []pending
+	seen := [len(_EventType_index) - 1]bool{}
 
-				// then we need to calculate in how many cycles that
-				// is from the current cycle
-				cyclesFromNow := cycleToExecute - s.cycles
-
-				// then we need to halve the cycles from now
-				cyclesFromNow = cyclesFromNow / 2
-
-				// then we need to add the cycles from now to the
-				// current cycle to get the cycle at which the event
-				// will be executed at double speed
-
-				// we need to reschedule the event at the new cycle (not just change the cycle, as that would mess up the linked list)
-				s.DescheduleEvent(event.eventType)
-				s.ScheduleEvent(event.eventType, cyclesFromNow)
-			}
-			event = event.next
+	for event := s.root; event != nil && event.cycle != math.MaxUint64; event = event.next {
+		if event.eventType > PPUHandleOffscreenLine || seen[event.eventType] {
+			continue
 		}
-	} else if s.doubleSpeed && !speed {
-		// we are going from double speed to normal speed
-		// so we need to double the event cycles for events
-		// affected by the speed change
-
-		// we need to iterate over the linked list of events
-		// and double the cycle for each event if the event
-		// is affected by the speed change (APU, PPU, Serial)
-		event := s.root
-		for event != nil && event.cycle != math.MaxUint64 {
-			if event.eventType <= PPUHandleOffscreenLine {
-				// first we need to get the cycle at which the event
-				// would be executed at double speed
-				cycleToExecute := event.cycle
-
-				// then we need to calculate in how many cycles that
-				// is from the current cycle
-				cyclesFromNow := cycleToExecute - s.cycles
-
-				// then we need to double the cycles from now
-				cyclesFromNow = cyclesFromNow * 2
-
-				// then we need to add the cycles from now to the
-				// current cycle to get the cycle at which the event
-				// will be executed at normal speed
-
-				// we need to change the cycle of the event (not just reschedule it, as that would mess up the linked list)
-				s.DescheduleEvent(event.eventType)
-				s.ScheduleEvent(event.eventType, cyclesFromNow)
-			}
-			event = event.next
+		seen[event.eventType] = true
+		cyclesFromNow := event.cycle - s.cycles
+		dots := cyclesFromNow
+		if s.doubleSpeed {
+			dots = cyclesFromNow / 2
 		}
+		list = append(list, pending{event.eventType, dots})
+	}
+	for _, p := range list {
+		s.DescheduleEvent(p.typ)
 	}
 
 	s.doubleSpeed = speed
+
+	for _, p := range list {
+		s.ScheduleEvent(p.typ, p.dots)
+	}
 }
 
 // Skip invokes the scheduler to execute the next event, by setting the

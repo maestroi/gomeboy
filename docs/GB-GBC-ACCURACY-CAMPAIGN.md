@@ -63,13 +63,13 @@ Forensics (Mode-2 IRQ ROM `m3_wx_6_change`):
 
 Baseline remains **6945** px DMG with poison/desync from #289. Experiments reverted.
 
-### P5 — LCD-align-LY — BLOCKED (DS speed-switch phase)
+### P5 — LCD-align-LY — BLOCKED (STOP/KEY1 freeze)
 
 - Offset-0 normal-speed groups **PASS** (LY_VALUES match EXPECTED)
 - All failures are after `SWITCH_SPEED`: offset-1+ DS/NS groups
-- DS offset-1 actual LY ≈ `0A 0B 0C 0D …` vs expected `00 00 01 02 8F 98 …` — **~10 lines late** after the post-switch DELAY
-- SameBoy tracks `speed_switch_countdown` / `double_speed_alignment`; our KEY1 path likely mis-phases PPU vs CPU across the switch
-- Not a one-dot LY tweak — needs speed-switch alignment model
+- DS offset-1 actual LY ≈ `0A 0B 0C 0D …` vs expected `00 00 01 02 8F 98 …` — **~10 lines late**
+- Fixed inverted `ChangeSpeed` reschedule (was halving PPU remaining on enter-DS; now keeps device-dot lengths). Did **not** move lcd-align LY
+- SameBoy uses `speed_switch_countdown`/`speed_switch_freeze` during STOP; our KEY1 STOP flips speed immediately — next probe
 
 ## Remaining XFAIL (16)
 
