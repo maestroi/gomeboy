@@ -859,13 +859,21 @@ func (p *PPU) cpuVisibleSTAT() byte {
 	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		p.s.DoubleSpeed() && mode == ModeVRAM &&
-		p.lineState == EnterHBlank && p.lx == 168 && p.scx&1 == 0 {
+		p.lineState == EnterHBlank && p.lx == 168 && p.scx&1 == 0 &&
+		!(p.winTriggerWx && p.wx == 0 && p.scx&7 != 0) {
 		// For regular lines, even SCX phases expose Mode 0 as
 		// soon as the final pixel is buffered. The shortened first
 		// LCD-on line also uses EnterHBlank during its *entire* startup
 		// transfer, with lx=0; it must keep returning Mode 3 until
 		// HBlank actually begins. Internal mode, bus ownership and
 		// STAT IRQ continue to hand over at the scheduled PPU event.
+		//
+		// WX=0 routes the SCX fine-scroll discard through window
+		// pixels. Under double speed that discard shifts the
+		// CPU-visible Mode-3→0 edge: even SCX with nonzero fine
+		// scroll keeps Mode 3 through enterHBlankDelay (AGE DS
+		// window STAT), while fine SCX 0 still exposes Mode 0 at
+		// the buffered-pixel edge like an ordinary even phase.
 		mode = ModeHBlank
 	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
