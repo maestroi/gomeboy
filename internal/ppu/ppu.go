@@ -900,7 +900,8 @@ func (p *PPU) cpuVisibleSTAT() byte {
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&
 		p.s.DoubleSpeed() && mode == ModeVRAM &&
 		p.lineState == EnterHBlank && p.lx == 168 && p.scx&1 == 0 &&
-		!(p.winTriggerWx && p.wx == 0 && p.scx&7 != 0) {
+		!(p.winTriggerWx && p.wx == 0 && p.scx&7 != 0) &&
+		!(p.spritesFetchedLine && p.scx != 0) {
 		// For regular lines, even SCX phases expose Mode 0 as
 		// soon as the final pixel is buffered. The shortened first
 		// LCD-on line also uses EnterHBlank during its *entire* startup
@@ -914,6 +915,11 @@ func (p *PPU) cpuVisibleSTAT() byte {
 		// scroll keeps Mode 3 through enterHBlankDelay (AGE DS
 		// window STAT), while fine SCX 0 still exposes Mode 0 at
 		// the buffered-pixel edge like an ordinary even phase.
+		//
+		// Sprite lines with nonzero SCX keep CPU-visible Mode 3
+		// through enterHBlankDelay under DS as well (AGE sprite
+		// STAT); the even-phase early Mode-0 handoff would otherwise
+		// truncate the sprite-extended Mode-3 window.
 		mode = ModeHBlank
 	}
 	if p.enabled && p.cgbMode && p.b.Model().IsCGB() &&

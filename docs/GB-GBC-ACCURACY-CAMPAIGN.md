@@ -4,8 +4,8 @@
 
 - **Branch:** `accuracy/gb-next-xfail`
 - **Date:** 2026-11-28
-- **Corpus:** **321/329** (8 XFAIL) after NS sprite XPASS
-- **In-flight:** DS sprite residual (935/1024); lcd-align / Mealybug / OAM
+- **Corpus:** **323/329** (6 XFAIL) after full sprite STAT XPASS
+- **In-flight:** lcd-align / Mealybug / OAM
 
 ## Completed
 
@@ -27,6 +27,13 @@
 - Combined with Mode-3 hold + enterHBlankDelay +2: NS **640/640**, DS **935/1024**
 - XPASS: all 3 `stat-mode-sprites-dmgC-cgbBCE@*` (318→321); mooneye sprites PASS; tellinglys still flaky-ok
 - Earlier “blanket SCX≠0 regresses tellinglys” was without Mode-3 hold — with hold, gate accepts
+
+### P3i — DS sprite keep Mode 3 through even-phase HBlank — DONE (1024/1024)
+
+- DS `cpuVisibleSTAT` early Mode-0 at EnterHBlank (`scx&1==0`) truncated sprite-extended Mode 3
+- Gate out `spritesFetchedLine && scx!=0` (same predicate as Mode-3 hold); window WX=0 exception unchanged
+- DS **935→1024/1024**; NS 640/640; window 512/768; mooneye sprites PASS
+- XPASS: both `stat-mode-sprites-ds-cgbBCE@*` (321→323)
 
 ### P4 — STAT interrupt — DONE (40/40 / 80/80)
 
@@ -91,19 +98,17 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 - Gated `lyBusGlitch` between HBlankUpdateLY and HBlankUpdateVisibleLY returning `busLY&p.ly`: **regresses** `ly-cgbE` / `ly-dmgC-cgbBC`; lcd-align bad-row set unchanged (samples miss the 2-dot gap without phase fudge)
 - Mealybug clear-poison-on-WX-rewrite: 6945→7478 (worse) — reverted
 
-## Remaining XFAIL (8)
+## Remaining XFAIL (6)
 
 | Family | Count | Notes |
 |---|---|---|
-| sprites DS | 2 | 935/1024; DS Mode-3 end phase / penalty shape |
 | Mealybug wx6 | 3 | DMG desync incomplete; CGB refs missing |
 | LCD-align-LY | 2 | KEY1 residual LY phase |
 | OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
 
-1. DS sprite residual (935→1024) without regressing NS/mooneye/window
-2. LCD-align-LY residual after KEY1
-3. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink
-4. Skip inventing CGB Mealybug refs
-5. OAM DELAY=2 last if still blocked
+1. LCD-align-LY residual after KEY1
+2. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink
+3. Skip inventing CGB Mealybug refs
+4. OAM DELAY=2 last if still blocked

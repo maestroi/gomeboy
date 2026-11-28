@@ -314,8 +314,7 @@
       "collection": "stat-mode-sprites",
       "name": "stat-mode-sprites-ds-cgbBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-sprites/stat-mode-sprites-ds-cgbBCE@CGBDE",
@@ -323,8 +322,7 @@
       "collection": "stat-mode-sprites",
       "name": "stat-mode-sprites-ds-cgbBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-window/stat-mode-window-cgbBCE@CGBBC",
