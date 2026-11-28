@@ -27,6 +27,8 @@
 
 - `SCX==LY && SCX!=0` ready-path +1: AGE **+4/+8/+4** samples but **regresses tellinglys** (DMG+CGB) — reverted
 - Blanket `SCX!=0` also regresses tellinglys; always-on ready bubble breaks mooneye
+- Gating on Mode-2 STAT Bit5 still regresses tellinglys; gating on `SCX` written in Mode 2 gave **no AGE gain** (Mode may not read as OAM at IRQ write) and still flaked tellinglys — reverted
+- Telliglys is LY/joypad-entropy sensitive to even rare Mode-3 length changes
 
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
