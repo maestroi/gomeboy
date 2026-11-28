@@ -183,6 +183,7 @@ type PPU struct {
 	// SCX is nonzero (AGE sprite STAT). Mooneye's sprite Mode-0 table
 	// keeps SCX=0, so it is unaffected.
 	objAlignStall uint8
+	spritesFetchedLine bool // any OBJ fetch started this line
 
 	// Internal rendering state
 	lineState          LineState          // Visible line progression
@@ -1168,6 +1169,7 @@ func (p *PPU) handleVisualLine() {
 				}
 				p.stepPixelFetcher()
 				p.fetcherObj = true
+				p.spritesFetchedLine = true
 				p.objectFetcherState = OBJGetTileNoT1
 				p.fetchingObj = p.objBuffer[0]
 				p.objBuffer = p.objBuffer[1:]
@@ -1213,7 +1215,11 @@ func (p *PPU) handleVisualLine() {
 		// Native CGB colour window lines keep internal Mode 3 until
 		// EnterHBlank so SCX phases 2/6 do not sample a one-dot Mode-0
 		// hole after ordinary WX opens (AGE window STAT).
-		if !p.s.DoubleSpeed() && !(p.cgbMode && p.winTriggerWx) {
+		// Sprite lines with nonzero SCX keep Mode 3 through
+		// enterHBlankDelay (AGE SCX=LY). Mooneye sprites keep SCX=0.
+		keepMode3 := (p.cgbMode && p.winTriggerWx) ||
+			(p.spritesFetchedLine && p.scx != 0)
+		if !p.s.DoubleSpeed() && !keepMode3 {
 			p.mode, p.modeToInt = ModeHBlank, ModeHBlank
 		}
 		// DMG: CPU OAM writes reopen when the final pixel has been
@@ -1228,6 +1234,7 @@ func (p *PPU) handleVisualLine() {
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
 		return
 	case EnterHBlank: // variable
+		p.spritesFetchedLine = false
 		p.flushBGP()
 		p.wx6SuppressLine = false
 		p.wx6PoisonedLine = false

@@ -46,6 +46,13 @@
 - Gating on Mode-2 STAT Bit5 still regresses tellinglys; gating on `SCX` written in Mode 2 gave **no AGE gain** (Mode may not read as OAM at IRQ write) and still flaked tellinglys — reverted
 - Telliglys is LY/joypad-entropy sensitive to even rare Mode-3 length changes
 
+
+### P3g — Sprite-line Mode-3 hold through enterHBlankDelay — PARTIAL
+
+- NS: keep Mode 3 until EnterHBlank when `spritesFetchedLine && scx!=0` (AGE SCX=LY; mooneye SCX=0 safe)
+- AGE NS samples **536→566 / 553→566**; DS unchanged **867**; still XFAIL
+- Mooneye `intr_2_mode0_timing_sprites` PASS; tellinglys DMG flaky at baseline rate
+
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
 - All 40 misses are probe DELAY=2; AGE `oam-write.inc` marks that line `(*)` LCD-off history dependent (TODO even in AGE)
