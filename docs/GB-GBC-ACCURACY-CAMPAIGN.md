@@ -67,7 +67,7 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 - All failures are after `SWITCH_SPEED`: offset-1+ DS/NS groups
 - DS offset-1 actual LY ≈ `0A 0B 0C 0D …` vs expected `00 00 01 02 8F 98 …` — **~10 lines late**
 - Fixed inverted `ChangeSpeed` reschedule (was halving PPU remaining on enter-DS; now keeps device-dot lengths). Did **not** move lcd-align LY
-- KEY1 enter-DS halt of **0x20008 device dots** (multi-frame; clear hasFrame/hasInt) moves LY from ~20 to ~0x8F; `0x20008+456*10+7` matches one DS row but DELAY variants collapse and post-leave NS stays wrong. SameBoy `speed_switch_countdown=6` + `freeze=5` not modeled — experiments reverted
+- Landed KEY1 enter-DS halt of **0x20008 device dots** (Tick(2)×N in DS; clear hasFrame/hasInt across frames). Moves LY ~20→~0x8F; still XFAIL. Next: SameBoy `countdown=6` + `freeze=5`; empirical `+456*10+7` matched one DS row only
 
 ## Remaining XFAIL (11)
 

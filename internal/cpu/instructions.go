@@ -60,6 +60,8 @@ var InstructionSet = [256]Instruction{
 
 		// CGB-capable hardware, including AGB compatibility mode, uses STOP for KEY1 speed switching.
 		if (c.b.Model().IsCGB() || c.b.Model() == types.AGB) && c.b.Get(types.KEY1)&types.Bit0 == types.Bit0 {
+			enteringDS := !c.DoubleSpeed
+			noIRQ := !c.b.HasInterrupts()
 			c.DoubleSpeed = !c.DoubleSpeed
 			c.s.ChangeSpeed(c.DoubleSpeed)
 
@@ -71,6 +73,25 @@ var InstructionSet = [256]Instruction{
 
 			// clear armed bit
 			c.b.ClearBit(types.KEY1, types.Bit0)
+
+			// SameBoy: KEY1 STOP into DS with no IRQ pending keeps the
+			// CPU halted for 0x20008 T-cycles while the PPU runs. In DS
+			// those map 1:1 to device dots (Tick(2) each). Clear frame
+			// latches so the halt spans multiple VBlanks (AGE lcd-align).
+			if enteringDS && noIRQ {
+				c.s.Halted = true
+				c.Halted = true
+				for left := uint64(0x20008); left > 0 && !c.b.HasInterrupts(); {
+					c.hasFrame = false
+					c.hasInt = false
+					c.s.Tick(2)
+					left--
+				}
+				c.s.Halted = false
+				c.Halted = false
+				c.hasFrame = false
+				c.hasInt = false
+			}
 		}
 	}},
 	0x11: {"LD DE, d16", func(c *CPU) { *c.DE[1] = c.readOperand(); *c.DE[0] = c.readOperand() }},
