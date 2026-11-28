@@ -4,7 +4,7 @@
 
 - **Main SHA:** `850e2860` (#290 merged) — corpus **313/329**, 16 XFAIL, gate green
 - **Date:** 2026-11-28
-- **Branch:** `accuracy/gb-sprite-stat-m3` (docs only; no PPU change yet)
+- **Branch:** `accuracy/gb-sprite-stat-m3`
 
 ## Completed
 
@@ -13,6 +13,13 @@
 - 765/768 → **768/768**; both DS window ROMs required PASS
 - Rule: under DS, even-SCX early Mode-0 STAT expose at lx==168/EnterHBlank is suppressed for WX=0 when `SCX&7 != 0`
 - PR: https://github.com/maestroi/gomeboy/pull/290
+
+### P3a — Sprite ready-path fine-SCX Mode-3 bubble (this branch)
+
+- Ready-path sprite fetch inserts 1 Mode-3 idle when `SCX&7 != 0`
+- AGE sprites: DMG **512→536**, CGB **533→553**, DS **802→867**
+- Guards: mooneye `intr_2_mode0_timing_sprites` PASS (SCX=0), tellinglys CGB PASS, `Test_Regressions` green
+- Residual: NOP=0 SPX 4–7 / 12–15 still Mode0 on fine SCX **0** only (1 sample each)
 
 ## Blocked / failed experiments
 
@@ -24,32 +31,25 @@
 ### P3b — X=0 absorb SCX discard — FAILED
 
 - On X=0 fetch complete, consume `min(remaining SCX discard, 5)` from `scxDiscarded`
-- Broke `cgb-acid-hell` (and ran XFAIL Mealybug as fail in Test_All) — reverted
+- Broke `cgb-acid-hell` — reverted
 
-### P3 — Sprite X=0 SCX stall — FAILED (partial AGE gain, regression)
+### P3c — Sprite X=0 SCX stall (`min(SCX&7,5)`) — FAILED
 
-- Tried post-fetch `objX0Stall = min(SCX&7,5)` after X=0 sprite (AGE `spx0_delay`)
-- AGE sprites: DMG 512→517, CGB 533→537, DS 802→808
-- **Regressed** `little-things-gb/tellinglys (CGB)` — reverted entire change
-- Do not re-apply naive post-fetch stall; need SameBoy-accurate x=0 render stall that preserves tellinglys
+- AGE +5/+4/+6 but **regressed tellinglys CGB** — reverted
 
-## P3 — Sprite Mode-3 STAT (ACTIVE)
+### P3d — Flat `objFetchAlign=1` every sprite — FAILED
 
-Raw scores (current main):
+- AGE 512→540 / 533→561 / 802→871 but **mooneye sprites + tellinglys CGB** fail — reverted
+
+## P3 — Sprite Mode-3 STAT (ACTIVE, residual)
 
 | Profile | Score |
 |---|---|
-| DMG NS | 512/640 |
-| CGBBC/CGBDE NS | 533/640 |
-| CGBBC/CGBDE DS | 802/1024 |
+| DMG NS | 536/640 |
+| CGBBC/CGBDE NS | 553/640 |
+| CGBBC/CGBDE DS | 867/1024 |
 
-AGE setup: 1 sprite/line X=0..15, SCX=LY, OBJ on.
-
-Next slices (distinct from reverted stall):
-
-1. SameBoy: “Rendering (including scrolling) does not occur while object at x=0 is pending” — stall SCX discard / lx advance until X=0 fetch completes, not a post-fetch idle
-2. BG-fetcher wait / extra advance before OBJ OAM sample (SameBoy display.c ~1956–972)
-3. Remeasure sprites + tellinglys + full gate after every change
+Remaining: fine SCX=0 samples for SPX≥4 (Mode3 still 1 dot short). Cannot flat-add on SCX=0 (breaks mooneye). Next: SCX=0-safe edge (STAT visibility / prelude timing), then other XFAIL families if blocked.
 
 Repro: `go test -tags test ./tests -run '^TestAgeSpriteSTATRawDiagnostics$' -count=1 -v`
 
@@ -59,4 +59,4 @@ OAM(1) + sprites(5) + STAT int(5) + LCD LY(2) + Mealybug wx6(3)
 
 ## Next action
 
-Implement SameBoy-style X=0 pending render stall (block pushPixel/SCX discard while X=0 sprite queued), verify tellinglys CGB still PASS, then remeasure sprite matrix.
+Land P3a PR; probe SCX=0 residual without lengthening mooneye's SCX=0 sprite table; if blocked, switch to STAT-interrupt or LCD-align-LY family.
