@@ -1,46 +1,62 @@
 # GB/GBC Accuracy Campaign
 
-Persistent engineering memory for the continuous GB/GBC hardware-conformance campaign.
-
 ## Verified baseline
 
-- **Main SHA (pre-session):** `f3b3ef052c10ece01fbefdba952597f0ae8b8c0d` (#289)
-- **Pending P1 branch:** `accuracy/gb-window-ds-wx0`
+- **Main SHA:** `850e2860` (#290 merged) — corpus **313/329**, 16 XFAIL, gate green
 - **Date:** 2026-11-28
-- **Corpus after P1 (local gate):** **313/329 PASS**, 16 XFAIL, 0 regressions, 0 XPASS
-- **AGE window STAT:** all 7 profiles 512/512 or 768/768
+- **Branch:** `accuracy/gb-sprite-stat-m3` (docs only; no PPU change yet)
 
-## Completed this session
+## Completed
 
-### P1 — Double-speed AGE window STAT (WX=0 residual)
+### P1 — DS AGE window STAT WX=0 (#290)
 
-- **Before:** DS CGBBC/CGBDE 765/768 (3 samples each, all WX=0)
-- **After:** 768/768 both; ROMs promoted to required PASS
-- **Rule:** Under DS, even-SCX early Mode-0 STAT expose at `lx==168`/`EnterHBlank` is suppressed for WX=0 window lines when fine SCX (`SCX&7`) is nonzero. Fine SCX 0 still exposes Mode 0. Ordinary WX unchanged.
-- **Evidence:** AGE samples are SCX=LY across lines; WX=0 expected Mode 3 one fine-scroll step longer than WX≥1. WinActivating already adds the Mode-3 dot; residual was CPU-visible STAT handover under DS.
-- **Failed experiments:**
-  - Suppress early Mode 0 for all WX=0 even SCX → 767/768 (broke fine=0 at nop+1)
-  - Extra `windowMode3Stall` under DS for WX=0 → 763/768 (Mode 3 too long)
-- **Files:** `internal/ppu/ppu.go`, `internal/ppu/cgb_double_speed_stat_hblank_read_test.go`
-- **Repro:** `go test -tags test ./tests -run '^TestAgeWindowSTATRawDiagnostics$' -count=1 -v`
+- 765/768 → **768/768**; both DS window ROMs required PASS
+- Rule: under DS, even-SCX early Mode-0 STAT expose at lx==168/EnterHBlank is suppressed for WX=0 when `SCX&7 != 0`
+- PR: https://github.com/maestroi/gomeboy/pull/290
 
-## Remaining XFAIL queue (16)
+## Blocked / failed experiments
 
-### Priority 2 — DMG OAM write (NEXT)
+### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
-- `oam-write-dmgC@DMG` — floor 440/480; probe-2 residual
-- Stash `stash@{0}` on old `fix/age-oam-write-dmg-probe2` has experimental glitched-line0 OAM reopen (unverified; do not apply blindly)
-- Repro: `go test -tags test ./tests -run '^TestAgeOAMWriteDiagnostics$' -count=1 -v`
+- All 40 misses are probe DELAY=2; AGE notes LCD-off history dependence
+- Glitched-line early OAM WUnlock: unit OK, AGE unchanged — reverted
 
-### Priority 3 — Sprite Mode-3 STAT (5 ROMs)
+### P3b — X=0 absorb SCX discard — FAILED
 
-### Priority 4 — STAT interrupt (5 ROMs)
+- On X=0 fetch complete, consume `min(remaining SCX discard, 5)` from `scxDiscarded`
+- Broke `cgb-acid-hell` (and ran XFAIL Mealybug as fail in Test_All) — reverted
 
-### Priority 5 — LCD align LY CGB (2 ROMs)
+### P3 — Sprite X=0 SCX stall — FAILED (partial AGE gain, regression)
 
-### Priority 6 — Mealybug `m3_wx_6_change` (DMG 6945 px, CGB 19819 px)
+- Tried post-fetch `objX0Stall = min(SCX&7,5)` after X=0 sprite (AGE `spx0_delay`)
+- AGE sprites: DMG 512→517, CGB 533→537, DS 802→808
+- **Regressed** `little-things-gb/tellinglys (CGB)` — reverted entire change
+- Do not re-apply naive post-fetch stall; need SameBoy-accurate x=0 render stall that preserves tellinglys
+
+## P3 — Sprite Mode-3 STAT (ACTIVE)
+
+Raw scores (current main):
+
+| Profile | Score |
+|---|---|
+| DMG NS | 512/640 |
+| CGBBC/CGBDE NS | 533/640 |
+| CGBBC/CGBDE DS | 802/1024 |
+
+AGE setup: 1 sprite/line X=0..15, SCX=LY, OBJ on.
+
+Next slices (distinct from reverted stall):
+
+1. SameBoy: “Rendering (including scrolling) does not occur while object at x=0 is pending” — stall SCX discard / lx advance until X=0 fetch completes, not a post-fetch idle
+2. BG-fetcher wait / extra advance before OBJ OAM sample (SameBoy display.c ~1956–972)
+3. Remeasure sprites + tellinglys + full gate after every change
+
+Repro: `go test -tags test ./tests -run '^TestAgeSpriteSTATRawDiagnostics$' -count=1 -v`
+
+## Remaining XFAIL (16)
+
+OAM(1) + sprites(5) + STAT int(5) + LCD LY(2) + Mealybug wx6(3)
 
 ## Next action
 
-1. Land/push P1 PR for DS WX=0 STAT.
-2. Start P2: measure OAM-write DMG mismatches; investigate probe-2.
+Implement SameBoy-style X=0 pending render stall (block pushPixel/SCX discard while X=0 sprite queued), verify tellinglys CGB still PASS, then remeasure sprite matrix.
