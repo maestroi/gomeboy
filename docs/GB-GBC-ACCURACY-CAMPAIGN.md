@@ -51,8 +51,8 @@
 
 - NS: keep Mode 3 until EnterHBlank when `spritesFetchedLine && scx!=0`; delay +=2
 - DS: delay +=3 (Mode 3 already held through delay)
-- AGE samples **536→638 / 553→638 / 867→903**; NS residual 2 samples (NOP=1 SPX=3/11); still XFAIL
-- Mooneye `intr_2_mode0_timing_sprites` PASS; +3 NS overshoots to 616
+- AGE samples **536→638 / 553→638 / 867→931**; NS residual 2 samples (NOP=1 SPX=3/11); still XFAIL
+- Mooneye `intr_2_mode0_timing_sprites` PASS; delay +2 NS/DS is the peak (larger overshoots)
 
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 

@@ -1000,11 +1000,8 @@ func (p *PPU) enterHBlankDelay() uint64 {
 	// AGE sprite STAT (SCX=LY): extend CPU-visible Mode 3 through a longer
 	// enterHBlankDelay. Mooneye sprites keep SCX=0 so they are unaffected.
 	if p.spritesFetchedLine && p.scx != 0 {
-		if p.s.DoubleSpeed() {
-			d += 3
-		} else {
-			d += 2
-		}
+		// Empirically peak AGE matrices: NS +2 → 638/640, DS +2 → 931/1024.
+		d += 2
 	}
 	return d
 }
