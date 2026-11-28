@@ -503,6 +503,12 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		// departs (Mealybug LY=6: WX=LY is also 6, so the first departure
 		// is the trailing WX=80): LCD/PPU desync fills the scanline with
 		// BGP colour 3. Early departures at LX≈8 (WX=LY on LY≠6) must not.
+		if !p.b.Model().IsCGB() && p.wx == 6 && v != 6 && p.lx < 16 {
+			// Early Mode-3 rewrite (WX=LY) before the deep-line desync
+			// point: allow the staircase open.
+			p.wx6PoisonedLine = false
+			p.wx6SuppressLine = false
+		}
 		if !p.b.Model().IsCGB() && p.wx6PoisonedLine && p.wx == 6 && v != 6 && p.lx >= 16 {
 			p.wx6DesyncLine = true
 			fill := p.ColourPalette[0][3]
@@ -2198,8 +2204,12 @@ func (p *PPU) checkWindowTriggerWX() {
 		}
 		windowX := p.lx > 0 && p.lx >= p.wx+1
 		if p.wx6SuppressLine && p.wx == 6 && windowX {
-			// Glitch column reached while WX is still 6 after a same-line
-			// write: do not open, and ignore later WX opens this line.
+			// Offscreen LX==7 with WX still 6: skip open but do not poison
+			// yet so Mode-3 may rewrite WX=LY at LX==8.
+			if p.lx < 8 {
+				return
+			}
+			// Visible column still at WX=6: poison (Mealybug LY=6).
 			p.wx6PoisonedLine = true
 			return
 		}

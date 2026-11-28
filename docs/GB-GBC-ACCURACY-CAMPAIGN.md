@@ -83,7 +83,9 @@ Forensics (Mode-2 IRQ ROM `m3_wx_6_change`):
 - SameBoy model: equality open + early `WX == position+6` with `lcd_x--` + end-of-line last-color fill; `wx_just_changed` for 1 T-cycle on DMG WX writes. Not yet implemented end-to-end
 - CGB expected PNGs remain **placeholders** — cannot XPASS
 
-Baseline remains **6945** px DMG with poison/desync from #289. Experiments reverted.
+Baseline was **6945** px DMG. Incremental: defer poison until visible LX>=8 and clear
+poison/suppress on early WX rewrite (LX<16) → **6702** px. Still XFAIL; staircase incomplete.
+Unit tests updated for deferred poison.
 
 ### P5 — LCD-align-LY — PARTIAL (SameBoy KEY1 landed, still XFAIL)
 
