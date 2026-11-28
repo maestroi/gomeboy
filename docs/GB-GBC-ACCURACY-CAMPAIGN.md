@@ -43,6 +43,10 @@
 
 - All 40 misses are probe DELAY=2; AGE `oam-write.inc` marks that line `(*)` LCD-off history dependent (TODO even in AGE)
 - Glitched-line early OAM WUnlock: no AGE gain — reverted
+- Re-diagnosed (write-port trace: PPU line dot at each `ld [hl+],a`; probes are +4 dots apart, so every sample is a 1-in-4-dot boundary test). Required DMG-C DELAY=2 verdicts (A=accepted, B=blocked), SCX 4-7: `ABAB BABA ABAB`; SCX 0-3 differ only in the Mode-3-end samples (1,3,5,7). I.e. samples 0-3 behave like DELAY 1 (earlier phase), samples 4-7 like DELAY 3 (later phase), samples 8-11 like DELAY 1 again
+- Current model fails 40 samples = 8 SCX x ~5: s0 (line-0 glitched Mode-3 start, raw dot 79: we block, DMG-C accepts), s1/s3 (Mode-3 end, dot 255: we accept at SCX 0/1, DMG-C blocks), s4/s6 (Mode-2 lock at 142→143 f0 and 153→0 f1 edge, dot 455: we accept, DMG-C blocks), s5/s7 (SCX 0 and SCX 4-7 flips in opposite directions)
+- **Why no principled fix**: the same event type needs opposite shifts — Mode-2 write lock at 142→143 is "late" (>455) for f1 s10 and for 0→1 s2/s8, but "early" (≤455) for f0 s4 and 153→0 s6. No uniform per-event offset, per-model constant, or SCX rule can satisfy both; only a frame-count/LCD-off-history phase variable could, which is exactly AGE's TODO (a (*) line that changes when more than 2 frames are measured; not seen on CGB-B/E). Fitting it would be a per-(frame,line,SCX) table — overfit, not shipped
+- No code change; `cpuOAMWriteOpen` trace (env-gated) was temporary and reverted. Baseline stays **440/480**
 
 ### P3b/c/d — X=0 absorb / spx0 stall / flat align — FAILED
 
