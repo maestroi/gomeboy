@@ -2,61 +2,63 @@
 
 ## Verified baseline
 
-- **Main SHA:** `850e2860` (#290 merged) — corpus **313/329**, 16 XFAIL, gate green
+- **Main SHA:** `039583f7` (#292 merged) — corpus still **313/329** XFAIL (sprite scores up but not full PASS), gate green
 - **Date:** 2026-11-28
-- **Branch:** `accuracy/gb-sprite-stat-m3`
+- **Branch:** `accuracy/gb-next-xfail`
 
 ## Completed
 
 ### P1 — DS AGE window STAT WX=0 (#290)
 
-- 765/768 → **768/768**; both DS window ROMs required PASS
-- Rule: under DS, even-SCX early Mode-0 STAT expose at lx==168/EnterHBlank is suppressed for WX=0 when `SCX&7 != 0`
+- 765/768 → **768/768**
 - PR: https://github.com/maestroi/gomeboy/pull/290
 
-### P3a — Sprite ready-path fine-SCX Mode-3 bubble (this branch)
+### P3a — Sprite ready-path fine-SCX Mode-3 bubble (#292)
 
 - Ready-path sprite fetch inserts 1 Mode-3 idle when `SCX&7 != 0`
 - AGE sprites: DMG **512→536**, CGB **533→553**, DS **802→867**
-- Guards: mooneye `intr_2_mode0_timing_sprites` PASS (SCX=0), tellinglys CGB PASS, `Test_Regressions` green
-- Residual: NOP=0 SPX 4–7 / 12–15 still Mode0 on fine SCX **0** only (1 sample each)
+- Guards: mooneye sprites PASS, tellinglys CGB (flaky but not regressed), gate green
+- PR: https://github.com/maestroi/gomeboy/pull/292
+- Residual: NOP=0 SPX≥4 still Mode0 on fine SCX **0** only (cannot +1 at SCX=0 — breaks mooneye)
 
 ## Blocked / failed experiments
 
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
-- All 40 misses are probe DELAY=2; AGE notes LCD-off history dependence
-- Glitched-line early OAM WUnlock: unit OK, AGE unchanged — reverted
+- All 40 misses are probe DELAY=2; AGE `oam-write.inc` marks that line `(*)` LCD-off history dependent (TODO even in AGE)
+- Glitched-line early OAM WUnlock: no AGE gain — reverted
 
-### P3b — X=0 absorb SCX discard — FAILED
+### P3b/c/d — X=0 absorb / spx0 stall / flat align — FAILED
 
-- On X=0 fetch complete, consume `min(remaining SCX discard, 5)` from `scxDiscarded`
-- Broke `cgb-acid-hell` — reverted
+- See prior notes; tellinglys or mooneye regressions
 
-### P3c — Sprite X=0 SCX stall (`min(SCX&7,5)`) — FAILED
+### P4 — STAT interrupt IRQ at lx==168 — FAILED
 
-- AGE +5/+4/+6 but **regressed tellinglys CGB** — reverted
+- AGE stat-int: always Mode2 (`82`) vs expected alternating Mode0/2 (`80`/`82`)
+- Moving Mode-0 IRQ to lx==168: +2/+5 samples but **regressed** `halt-m0-interrupt`×3 + `hblank_ly_scx_timing-GS` — reverted
+- Need longer post-IRQ Mode-0 without earlier IRQ edge
 
-### P3d — Flat `objFetchAlign=1` every sprite — FAILED
+### P6 — Mealybug WX=6
 
-- AGE 512→540 / 533→561 / 802→871 but **mooneye sprites + tellinglys CGB** fail — reverted
+- DMG: 6945 px diff — actual is solid BG “B”s; expected staircase + black desync bands (partial desync fill from #289)
+- CGB expected PNGs are **placeholders** (“Expected result not currently available”) — cannot XPASS until real refs exist
 
-## P3 — Sprite Mode-3 STAT (ACTIVE, residual)
+### P5 — LCD-align-LY
 
-| Profile | Score |
-|---|---|
-| DMG NS | 536/640 |
-| CGBBC/CGBDE NS | 553/640 |
-| CGBBC/CGBDE DS | 867/1024 |
-
-Remaining: fine SCX=0 samples for SPX≥4 (Mode3 still 1 dot short). Cannot flat-add on SCX=0 (breaks mooneye). Next: SCX=0-safe edge (STAT visibility / prelude timing), then other XFAIL families if blocked.
-
-Repro: `go test -tags test ./tests -run '^TestAgeSpriteSTATRawDiagnostics$' -count=1 -v`
+- 40/40 probes mismatch (`value=00 inverted`); LY edge after LCD-on phase alignment
 
 ## Remaining XFAIL (16)
 
-OAM(1) + sprites(5) + STAT int(5) + LCD LY(2) + Mealybug wx6(3)
+| Family | Count | Notes |
+|---|---|---|
+| sprites | 5 | SCX=0 residual + incomplete matrix |
+| STAT int | 5 | Mode0/2 edge after IRQ |
+| Mealybug wx6 | 3 | DMG desync incomplete; CGB refs missing |
+| LCD-align-LY | 2 | LCD-on LY phase |
+| OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
 
-Land P3a PR; probe SCX=0 residual without lengthening mooneye's SCX=0 sprite table; if blocked, switch to STAT-interrupt or LCD-align-LY family.
+1. DMG Mealybug WX=6: finish LCD/PPU desync so black bands + window staircase match reference
+2. Sprite SCX=0 residual only with mooneye-safe mechanism
+3. Skip inventing CGB Mealybug refs; treat as blocked until upstream images exist
