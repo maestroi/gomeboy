@@ -1000,7 +1000,7 @@ func (p *PPU) enterHBlankDelay() uint64 {
 	// AGE sprite STAT (SCX=LY): extend CPU-visible Mode 3 through a longer
 	// enterHBlankDelay. Mooneye sprites keep SCX=0 so they are unaffected.
 	if p.spritesFetchedLine && p.scx != 0 {
-		// Empirically peak AGE matrices: NS +2 → 638/640, DS +2 → 931/1024.
+		// Empirically peak AGE matrices with SCX≠0 ready-path stall: NS 640/640, DS 935/1024.
 		d += 2
 	}
 	return d
@@ -1166,12 +1166,12 @@ func (p *PPU) handleVisualLine() {
 			if p.fetcherState < BGWinGetTileDataHighT2 || p.bgFIFO.Size == 0 {
 				p.stepPixelFetcher()
 			} else {
-				// Ready-path Mode-3 bubble when fine SCX is nonzero.
+				// Ready-path Mode-3 bubble when SCX is nonzero.
 				// Mooneye intr_2_mode0_timing_sprites keeps SCX=0, so
 				// this does not disturb its M-cycle table; AGE sprite
-				// STAT sets SCX=LY and needs the extra dot on fine
-				// phases that currently fall to Mode 0 too early.
-				if p.scx&7 != 0 {
+				// STAT sets SCX=LY (incl. coarse-aligned multiples of 8)
+				// and needs the extra dot so Mode 0 is not sampled early.
+				if p.scx != 0 {
 					p.objAlignStall = 1
 				}
 				p.stepPixelFetcher()

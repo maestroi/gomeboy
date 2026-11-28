@@ -290,8 +290,7 @@
       "collection": "stat-mode-sprites",
       "name": "stat-mode-sprites-dmgC-cgbBCE@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE@CGBDE",
@@ -299,8 +298,7 @@
       "collection": "stat-mode-sprites",
       "name": "stat-mode-sprites-dmgC-cgbBCE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE@DMG",
@@ -308,8 +306,7 @@
       "collection": "stat-mode-sprites",
       "name": "stat-mode-sprites-dmgC-cgbBCE@DMG",
       "model": "DMG",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/stat-mode-sprites/stat-mode-sprites-ds-cgbBCE@CGBBC",

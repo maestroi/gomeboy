@@ -2,10 +2,10 @@
 
 ## Verified baseline
 
-- **Main SHA:** `039583f7` (#292 merged) — corpus still **313/329** XFAIL (sprite scores up but not full PASS), gate green
-- **Date:** 2026-11-28
 - **Branch:** `accuracy/gb-next-xfail`
-- **In-flight:** STAT-int Mode-1/Mode-2 IRQ hold → **318/329** (5 XPASS), pending commit
+- **Date:** 2026-11-28
+- **Corpus:** **321/329** (8 XFAIL) after NS sprite XPASS
+- **In-flight:** DS sprite residual (935/1024); lcd-align / Mealybug / OAM
 
 ## Completed
 
@@ -20,7 +20,13 @@
 - AGE sprites: DMG **512→536**, CGB **533→553**, DS **802→867**
 - Guards: mooneye sprites PASS, tellinglys CGB (flaky but not regressed), gate green
 - PR: https://github.com/maestroi/gomeboy/pull/292
-- Residual: NOP=0 on AGE SCX=LY coarse-aligned lines (LY=8,16,…); cannot +1 at SCX=0 (mooneye) or blanket SCX≠0 (tellinglys)
+
+### P3h — NS sprite SCX≠0 ready-path stall — DONE (640/640)
+
+- Widen ready-path bubble from `SCX&7!=0` to `SCX!=0` (AGE SCX=LY coarse-aligned lines)
+- Combined with Mode-3 hold + enterHBlankDelay +2: NS **640/640**, DS **935/1024**
+- XPASS: all 3 `stat-mode-sprites-dmgC-cgbBCE@*` (318→321); mooneye sprites PASS; tellinglys still flaky-ok
+- Earlier “blanket SCX≠0 regresses tellinglys” was without Mode-3 hold — with hold, gate accepts
 
 ### P4 — STAT interrupt — DONE (40/40 / 80/80)
 
@@ -32,27 +38,19 @@
 
 ## Blocked / failed experiments
 
-### P3e — AGE SCX=LY coarse-aligned bubble — FAILED
+### P3e — AGE SCX=LY coarse-aligned bubble alone — FAILED (superseded by P3h)
 
-- `SCX==LY && SCX!=0` ready-path +1: AGE **+4/+8/+4** samples but **regresses tellinglys** (DMG+CGB) — reverted
-- Blanket `SCX!=0` also regresses tellinglys; always-on ready bubble breaks mooneye
+- Alone, `SCX!=0` ready-path +1 without Mode-3 hold flaked tellinglys; with hold (P3h) NS XPASS
 
 ### P3f — SameBoy always-on ready-path pre-OAM stall — FAILED
 
 - Moved stall before object fetch (SameBoy display.c "TODO" sleep) and always-on: AGE **536→540 / 553→561 / 867→871** but **regresses mooneye intr_2_mode0_timing_sprites** — reverted
 - Pre-fetch with `SCX&7!=0` gate only: same AGE scores as post-fetch stall (phase change, no sample gain)
-- Residual still needs a mooneye-safe mechanism that is not flat +1 per ready sprite
 
-- Gating on Mode-2 STAT Bit5 still regresses tellinglys; gating on `SCX` written in Mode 2 gave **no AGE gain** (Mode may not read as OAM at IRQ write) and still flaked tellinglys — reverted
-- Telliglys is LY/joypad-entropy sensitive to even rare Mode-3 length changes
+### P3g — Sprite-line Mode-3 hold + enterHBlankDelay — DONE (enabler for P3h)
 
-
-### P3g — Sprite-line Mode-3 hold + enterHBlankDelay — PARTIAL
-
-- NS: keep Mode 3 until EnterHBlank when `spritesFetchedLine && scx!=0`; delay +=2
-- DS: delay +=3 (Mode 3 already held through delay)
-- AGE samples **536→638 / 553→638 / 867→931**; NS residual 2 samples (NOP=1 SPX=3/11); still XFAIL
-- Mooneye `intr_2_mode0_timing_sprites` PASS; delay +2 NS/DS is the peak (larger overshoots)
+- NS/DS: keep Mode 3 until EnterHBlank when `spritesFetchedLine && scx!=0`; delay +=2
+- Peak alone: NS 638/640, DS 931/1024; with P3h stall → NS 640/640, DS 935/1024
 
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
@@ -93,19 +91,19 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 - Gated `lyBusGlitch` between HBlankUpdateLY and HBlankUpdateVisibleLY returning `busLY&p.ly`: **regresses** `ly-cgbE` / `ly-dmgC-cgbBC`; lcd-align bad-row set unchanged (samples miss the 2-dot gap without phase fudge)
 - Mealybug clear-poison-on-WX-rewrite: 6945→7478 (worse) — reverted
 
-## Remaining XFAIL (11)
+## Remaining XFAIL (8)
 
 | Family | Count | Notes |
 |---|---|---|
-| sprites | 5 | SCX=0 residual + incomplete matrix |
+| sprites DS | 2 | 935/1024; DS Mode-3 end phase / penalty shape |
 | Mealybug wx6 | 3 | DMG desync incomplete; CGB refs missing |
-| LCD-align-LY | 2 | KEY1 STOP freeze / LY phase |
+| LCD-align-LY | 2 | KEY1 residual LY phase |
 | OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
 
-1. Sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
-2. LCD-align-LY: integrated KEY1 STOP freeze+halt (SameBoy `speed_switch_freeze` + `halt_countdown`)
-3. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink first
+1. DS sprite residual (935→1024) without regressing NS/mooneye/window
+2. LCD-align-LY residual after KEY1
+3. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink
 4. Skip inventing CGB Mealybug refs
 5. OAM DELAY=2 last if still blocked
