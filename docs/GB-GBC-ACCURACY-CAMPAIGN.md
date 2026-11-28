@@ -83,7 +83,7 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 
 ## Next action
 
-1. LCD-align-LY: 40/40 first-sample inverted — LCD-on LY phase
+1. LCD-align-LY: implement SameBoy KEY1 STOP freeze/halt (`speed_switch_freeze`/`halt_countdown`); naive Tick(10 lines) during STOP did not help
 2. Sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
 3. STAT-int Mode-1: needs LY=0 Mode-0 duration fix distinct from Mode-0-IRQ hold
 4. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink first
