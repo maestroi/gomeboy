@@ -57,6 +57,57 @@ func TestDoubleSpeedCGBHBlankSTATReadFineScrollParity(t *testing.T) {
 	}
 }
 
+// WX=0 under double speed keeps Mode 3 through enterHBlankDelay at even
+// SCX when fine scroll is nonzero (window pixels absorb the discard).
+// Fine SCX 0 and ordinary WX opens still expose Mode 0 at the buffered
+// final-pixel edge.
+func TestDoubleSpeedWX0WindowSTATFineScrollHBlank(t *testing.T) {
+	for _, model := range []types.Model{types.CGBBC, types.CGBDE} {
+		for _, tc := range []struct {
+			name       string
+			wx, scx    uint8
+			winOpen    bool
+			wantMode3  bool
+		}{
+			{name: "WX0/SCX0", wx: 0, scx: 0, winOpen: true, wantMode3: false},
+			{name: "WX0/SCX2", wx: 0, scx: 2, winOpen: true, wantMode3: true},
+			{name: "WX0/SCX4", wx: 0, scx: 4, winOpen: true, wantMode3: true},
+			{name: "WX0/SCX6", wx: 0, scx: 6, winOpen: true, wantMode3: true},
+			{name: "WX0/SCX1", wx: 0, scx: 1, winOpen: true, wantMode3: true},
+			{name: "WX7/SCX2", wx: 7, scx: 2, winOpen: true, wantMode3: false},
+			{name: "WX0-closed/SCX2", wx: 0, scx: 2, winOpen: false, wantMode3: false},
+		} {
+			t.Run(fmt.Sprintf("%s/%s", model, tc.name), func(t *testing.T) {
+				s := scheduler.NewScheduler()
+				b := gbio.NewBus(s, make([]byte, 0x8000))
+				b.Map(model)
+				p := New(b, s)
+				p.enabled = true
+				p.cgbMode = true
+				s.ChangeSpeed(true)
+				p.wx = tc.wx
+				p.scx = tc.scx
+				p.winTriggerWx = tc.winOpen
+				p.mode, p.modeToInt = ModeVRAM, ModeVRAM
+				p.lineState = EnterHBlank
+				p.lx = 168
+				s.ScheduleEvent(scheduler.PPUHandleVisualLine, p.enterHBlankDelay())
+
+				want := byte(ModeHBlank)
+				if tc.wantMode3 || tc.scx&1 != 0 {
+					want = ModeVRAM
+				}
+				if got := b.Read(types.STAT) & 3; got != want {
+					t.Fatalf("STAT mode=%d, want %d", got, want)
+				}
+				if p.mode != ModeVRAM {
+					t.Fatalf("internal mode changed early: %d", p.mode)
+				}
+			})
+		}
+	}
+}
+
 // The initial shortened LCD-on line enters the same EnterHBlank state
 // before it has generated any pixels, and waits for its entire startup
 // Mode-3 interval. It must not expose Mode 0 early at even SCX.
