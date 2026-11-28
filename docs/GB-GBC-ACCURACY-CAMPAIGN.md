@@ -36,6 +36,13 @@
 
 - `SCX==LY && SCX!=0` ready-path +1: AGE **+4/+8/+4** samples but **regresses tellinglys** (DMG+CGB) — reverted
 - Blanket `SCX!=0` also regresses tellinglys; always-on ready bubble breaks mooneye
+
+### P3f — SameBoy always-on ready-path pre-OAM stall — FAILED
+
+- Moved stall before object fetch (SameBoy display.c "TODO" sleep) and always-on: AGE **536→540 / 553→561 / 867→871** but **regresses mooneye intr_2_mode0_timing_sprites** — reverted
+- Pre-fetch with `SCX&7!=0` gate only: same AGE scores as post-fetch stall (phase change, no sample gain)
+- Residual still needs a mooneye-safe mechanism that is not flat +1 per ready sprite
+
 - Gating on Mode-2 STAT Bit5 still regresses tellinglys; gating on `SCX` written in Mode 2 gave **no AGE gain** (Mode may not read as OAM at IRQ write) and still flaked tellinglys — reverted
 - Telliglys is LY/joypad-entropy sensitive to even rare Mode-3 length changes
 
