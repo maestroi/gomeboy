@@ -72,13 +72,12 @@ Forensics (Mode-2 IRQ ROM `m3_wx_6_change`):
 
 Baseline remains **6945** px DMG with poison/desync from #289. Experiments reverted.
 
-### P5 — LCD-align-LY — BLOCKED (STOP/KEY1 freeze)
+### P5 — LCD-align-LY — PARTIAL (SameBoy KEY1 landed, still XFAIL)
 
-- Offset-0 normal-speed groups **PASS** (LY_VALUES match EXPECTED)
-- All failures are after `SWITCH_SPEED`: offset-1+ DS/NS groups
-- DS offset-1 actual LY ≈ `0A 0B 0C 0D …` vs expected `00 00 01 02 8F 98 …` — **~10 lines late**
-- Fixed inverted `ChangeSpeed` reschedule (was halving PPU remaining on enter-DS; now keeps device-dot lengths). Did **not** move lcd-align LY
-- Landed KEY1 enter-DS halt of **0x20008 device dots** (Tick(2)×N in DS; clear hasFrame/hasInt across frames). Moves LY ~20→~0x8F; still XFAIL. Next: SameBoy `countdown=6` + `freeze=5`. Note: `+456*10+7` can match off1-DS d0 LY row but all five DELAY variants collapse to the same plateau and off1-NS stays ~0x14 — not an XPASS
+- Offset-0 normal-speed groups **PASS**
+- Landed SameBoy-faithful KEY1 STOP: `countdown=6`, `freeze=5` via `TickFrozen`, halt `0x20008`, plus device-stamp rebase on `ChangeSpeed`/`TickFrozen` (`internal/cpu/speed_switch.go`, scheduler)
+- DELAY sweep no longer collapses; DS/NS groups start near LY 0. Residual row mismatches need ~+5 DS / −2 NS fudge plus LY&(LY+1) glitch — not committed (regress ly-* / tellinglys)
+- Still XFAIL lcd-align-ly CGBBC+CGBDE; no magic KX offsets in tree
 
 ## Remaining XFAIL (11)
 
