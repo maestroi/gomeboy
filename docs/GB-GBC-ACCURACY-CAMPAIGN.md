@@ -47,11 +47,12 @@
 - Telliglys is LY/joypad-entropy sensitive to even rare Mode-3 length changes
 
 
-### P3g — Sprite-line Mode-3 hold through enterHBlankDelay — PARTIAL
+### P3g — Sprite-line Mode-3 hold + enterHBlankDelay — PARTIAL
 
-- NS: keep Mode 3 until EnterHBlank when `spritesFetchedLine && scx!=0` (AGE SCX=LY; mooneye SCX=0 safe)
-- AGE NS samples **536→566 / 553→566**; DS unchanged **867**; still XFAIL
-- Mooneye `intr_2_mode0_timing_sprites` PASS; tellinglys DMG flaky at baseline rate
+- NS: keep Mode 3 until EnterHBlank when `spritesFetchedLine && scx!=0`; delay +=2
+- DS: delay +=3 (Mode 3 already held through delay)
+- AGE samples **536→638 / 553→638 / 867→903**; NS residual 2 samples (NOP=1 SPX=3/11); still XFAIL
+- Mooneye `intr_2_mode0_timing_sprites` PASS; +3 NS overshoots to 616
 
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
