@@ -40,8 +40,9 @@
 ### P4 — STAT interrupt IRQ at lx==168 — FAILED
 
 - AGE stat-int: always Mode2 (`82`) vs expected alternating Mode0/2 (`80`/`82`)
-- Moving Mode-0 IRQ to lx==168: +2/+5 samples but **regressed** `halt-m0-interrupt`×3 + `hblank_ly_scx_timing-GS` — reverted
-- Need longer post-IRQ Mode-0 without earlier IRQ edge
+- Moving Mode-0 IRQ to lx==168 (set mode+IRQ there): +2/+5 samples but **regressed** `halt-m0-interrupt`×3 + `hblank_ly_scx_timing-GS` — reverted
+- Calling `statUpdate()` at existing lx==168 HBlank arm (without moving bus unlock): same +2/+5 and **same regressions** — reverted
+- Need longer post-IRQ Mode-0 without earlier IRQ edge / without breaking halt-m0
 
 ### P6 — Mealybug WX=6 — BLOCKED (instrumented)
 
