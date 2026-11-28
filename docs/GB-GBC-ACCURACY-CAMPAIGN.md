@@ -4,8 +4,8 @@
 
 - **Branch:** `accuracy/gb-next-xfail`
 - **Date:** 2026-11-28
-- **Corpus:** **323/329** (6 XFAIL) after full sprite STAT XPASS
-- **In-flight:** lcd-align / Mealybug / OAM
+- **Corpus:** **325/329** (4 XFAIL) after lcd-align-ly XPASS
+- **In-flight:** Mealybug / OAM
 
 ## Completed
 
@@ -87,32 +87,26 @@ Baseline was **6945** px DMG. Incremental: defer poison until visible LX>=8 and 
 poison/suppress on early WX rewrite (LX<16) → **6702** px. Still XFAIL; staircase incomplete.
 Unit tests updated for deferred poison.
 
-### P5 — LCD-align-LY — PARTIAL (SameBoy KEY1 landed, still XFAIL)
+### P5 — LCD-align-LY — DONE (AGE read_ly LCD clock)
 
-- Offset-0 normal-speed groups **PASS**; raw matrix ~35 byte mismatches (mostly enter-DS groups one LY behind + missing `LY&(LY+1)` glitch rows)
-- Landed SameBoy-faithful KEY1 STOP: `countdown=6`, `freeze=5` via `TickFrozen`, halt `0x20008`, leave-DS flip-before-freeze, device-stamp rebase
-- Compact probes baseline **11/12**; freeze/delay sweep best **10/9** at freeze=5 delay=7 — still XFAIL
-- Post-enter-DS `Tick` fudge has **zero** effect (halt absorbs relative phase); `TickFrozen(10)` (NS×2 hypothesis) worsens to ~28
-- Flip-before-preflip enter-DS order worsens probes; leave-DS path mostly OK (g=2 NS passes on CGBBC)
-- Still XFAIL lcd-align-ly CGBBC+CGBDE
+- Root cause: CPU LY must follow AGE `gb_lcd::read_ly` (LCD line clock), not only the bus register written at HBlank/VBlank edges
+- **Fix:** `lcdLine`/`lcdLineStart` clock + `cpuVisibleLY` lazy reader (native CGB only): early increment, `LY&(LY+1)` glitch window, line-153→0; KEY1 STOP freeze/halt kept
+- Also: `glitchedLineRewindDots` (4 NS / 2 DS) for LCD-on abbreviated line
+- XPASS: both `lcd-align-ly-*` (323→325); `^TestAge$/^ly-` + sprites green
 
-### P5b — LY bus AND-glitch — PARTIAL / insufficient
+### P5b — LY bus AND-glitch alone — insufficient (superseded by P5)
 
-- Lazy LY reader returning `bus&p.ly` during `HBlankUpdateOAM` does **not** regress `^TestAge$/^ly-` (earlier note used a filter that also matched lcd-align)
-- Alone does **not** fix lcd-align: edge samples still miss the 2-dot glitch window (phase), so AND never observed on failing delays
-- Mealybug clear-poison-on-WX-rewrite: 6945→7478 (worse) — reverted
+- HBlankUpdateOAM `bus&p.ly` never hit lcd-align sample phase without the LCD clock model
 
-## Remaining XFAIL (6)
+## Remaining XFAIL (4)
 
 | Family | Count | Notes |
 |---|---|---|
-| Mealybug wx6 | 3 | DMG desync incomplete; CGB refs missing |
-| LCD-align-LY | 2 | KEY1 residual LY phase |
+| Mealybug wx6 | 3 | DMG 6702 px; CGB refs missing |
 | OAM write DMG | 1 | DELAY=2 history (*) |
 
 ## Next action
 
-1. LCD-align-LY residual after KEY1
-2. Mealybug: SameBoy `lcd_x` + early WX+6 — needs suppress/poison rethink
-3. Skip inventing CGB Mealybug refs
-4. OAM DELAY=2 last if still blocked
+1. Mealybug DMG staircase (SameBoy `lcd_x` / open LX) toward 0
+2. Skip inventing CGB Mealybug refs
+3. OAM DELAY=2 last if still blocked

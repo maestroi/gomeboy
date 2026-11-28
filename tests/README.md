@@ -2,12 +2,12 @@
 
 This report is generated from the structured per-test result set used by CI and evaluated against `tests/regression-baseline.json`. PASS and XFAIL match the checked-in baseline; REGRESSION, XPASS, new, missing, or model-change entries require review.
 
-![progress](https://progress-bar.xyz/97/?scale=100&title=passing%20322,%20failing%207&width=500)
+![progress](https://progress-bar.xyz/98/?scale=100&title=passing%20324,%20failing%205&width=500)
 
 | Status | Count |
 | --- | ---: |
-| PASS | 322 |
-| XFAIL | 6 |
+| PASS | 324 |
+| XFAIL | 4 |
 | REGRESSION | 1 |
 | XPASS | 0 |
 | New tests | 0 |
@@ -52,7 +52,7 @@ is compared against a reference image from a known good emulator.
 | Test Suite | Pass Rate | Tests Passed | Tests Failed | Tests Total |
 | --- | --- | --- | --- | --- |
 | acid2 | 100% | 4 | 0 | 4 |
-| age | 94% | 52 | 3 | 55 |
+| age | 98% | 54 | 1 | 55 |
 | blarrg | 100% | 43 | 0 | 43 |
 | bully | 100% | 2 | 0 | 2 |
 | little-things-gb | 100% | 4 | 0 | 4 |
@@ -96,8 +96,8 @@ is compared against a reference image from a known good emulator.
 #### lcd-align-ly
 | Test | Expected | Actual | Status | Context |
 | --- | --- | --- | --- | --- |
-| lcd-align-ly-cgbBC@CGBBC | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
-| lcd-align-ly-cgbE@CGBDE | fail | fail | xfail | Known AGE v7.0 failure at pinned cd3f654d13bf baseline |
+| lcd-align-ly-cgbBC@CGBBC | pass | pass | pass |  |
+| lcd-align-ly-cgbE@CGBDE | pass | pass | pass |  |
 
 #### ly
 | Test | Expected | Actual | Status | Context |

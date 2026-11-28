@@ -111,8 +111,7 @@
       "collection": "lcd-align-ly",
       "name": "lcd-align-ly-cgbBC@CGBBC",
       "model": "CGBBC",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/lcd-align-ly/lcd-align-ly-cgbE@CGBDE",
@@ -120,8 +119,7 @@
       "collection": "lcd-align-ly",
       "name": "lcd-align-ly-cgbE@CGBDE",
       "model": "CGBDE",
-      "expected": "fail",
-      "reason": "Known AGE v7.0 failure at pinned cd3f654d13bf baseline"
+      "expected": "pass"
     },
     {
       "id": "age/ly/ly-cgbE@CGBDE",

@@ -182,21 +182,28 @@ type PPU struct {
 	// Extra Mode-3 bubble after a ready-path sprite fetch when fine
 	// SCX is nonzero (AGE sprite STAT). Mooneye's sprite Mode-0 table
 	// keeps SCX=0, so it is unaffected.
-	objAlignStall uint8
+	objAlignStall      uint8
 	spritesFetchedLine bool // any OBJ fetch started this line
 
 	// Internal rendering state
 	lineState          LineState          // Visible line progression
 	offscreenLineState OffscreenLineState // VBlank handling
 	glitchedLineState  GlitchedLineState  // First-line startup behaviour
-	objBuffer          []Object           // Scanline object buffer
-	oamScanIndex       uint8              // Next OAM entry inspected during Mode 2
-	oamScanYBus        uint8              // Last Y byte observed by the Mode 2 OAM bus
-	oamScanXBus        uint8              // Last X byte observed by the Mode 2 OAM bus
+	// glitchedLineRewindDots is the LCD-enable line shortening in dots.
+	glitchedLineRewindDots uint64
+	objBuffer              []Object // Scanline object buffer
+	oamScanIndex           uint8    // Next OAM entry inspected during Mode 2
+	oamScanYBus            uint8    // Last Y byte observed by the Mode 2 OAM bus
+	oamScanXBus            uint8    // Last X byte observed by the Mode 2 OAM bus
 
 	// Timing counters
 	lineDot  uint64 // Cycle at which the current line began
 	frameDot uint64 // Cycle at which the current frame began
+
+	// LCD line clock sampled by CPU LY reads: lcdLine's dot 0 is at
+	// lcdLineStart. Offscreen line states start four dots before it.
+	lcdLine      uint8
+	lcdLineStart uint64
 
 	// First LCD-on scanline: CPU OAM reads become accessible
 	// separately from VRAM reads and OAM writes (B/C NCM: one dot,
@@ -330,7 +337,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			}
 
 			// when the LCD is off, LY reads 0, and STAT mode reads 0 (HBlank)
-			p.b.Set(types.LY, 0)
+			p.setVisibleLY(0)
 			p.ly, p.mode = 0, 0
 			p.lyForComparison = 0
 			p.wly = 255
@@ -365,6 +372,13 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 			}
 
 			p.glitchedLineState = StartGlitchedLine
+			// The abbreviated scanline is cut short by four CPU T-cycles
+			// at the speed LCDC.7 was written, even if a KEY1 switch
+			// lands before its pixel transfer begins.
+			p.glitchedLineRewindDots = 4
+			if p.s.DoubleSpeed() {
+				p.glitchedLineRewindDots = 2
+			}
 			p.statUpdate()
 
 			if p.cgbMode {
@@ -439,6 +453,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		}
 		return p.b.Get(types.LY)
 	})
+	b.ReserveLazyReader(types.LY, p.cpuVisibleLY)
 	b.ReserveAddress(types.LYC, func(v byte) byte {
 		p.lyCompare = v
 		p.statUpdate()
@@ -621,6 +636,7 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 	})
 
 	s.RegisterDeviceStamp(&p.lineDot)
+	s.RegisterDeviceStamp(&p.lcdLineStart)
 	s.RegisterDeviceStamp(&p.frameDot)
 	s.RegisterEvent(scheduler.PPUHandleVisualLine, p.handleVisualLine)
 	s.RegisterEvent(scheduler.PPUHandleGlitchedLine0, p.handleGlitchedLine0)
@@ -690,6 +706,7 @@ func (p *PPU) handleGlitchedLine0() {
 		// appear to turn on instantly, therefore we update lineDot
 		// here rather than in writes to LCDC. TODO verify how&why
 		p.lineDot = p.s.Cycle()
+		p.setLCDLine(0, -int(p.glitchedLineRewindDots))
 	case GlitchedLineOAMWBlock:
 		p.b.WLock(io.OAM)
 	case GlitchedLineEndOAM:
@@ -764,7 +781,11 @@ func (p *PPU) handleGlitchedLine0() {
 			startupTransferDots += scxDiscardDots
 		}
 		p.lineState = EnterHBlank
-		p.lineDot -= 4
+		rewind := p.glitchedLineRewindDots
+		if p.s.DoubleSpeed() {
+			rewind *= 2
+		}
+		p.lineDot -= rewind
 		p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, startupTransferDots)
 		return
 	}
@@ -1030,6 +1051,7 @@ func (p *PPU) handleVisualLine() {
 			p.objBuffer = p.objBuffer[:0]
 
 			p.lineDot = p.s.Cycle()
+			p.setLCDLine(p.ly, 0)
 			p.lyForComparison = uint16(p.ly)
 			p.mode, p.modeToInt = ModeOAM, ModeOAM
 			p.statUpdate()
@@ -1381,7 +1403,7 @@ func (p *PPU) handleVisualLine() {
 	case HBlankUpdateOAM: // dot 452 these 4 dots overlap with the beginning of OAM scan (to handle STAT delay)
 		p.b.WBlock(io.OAM, p.cgbMode && !p.s.DoubleSpeed())
 	case HBlankUpdateVisibleLY: // dot 454
-		p.b.Set(types.LY, p.ly)
+		p.setVisibleLY(p.ly)
 	case HBlankEnd: // dot 455
 		p.b.RBlock(io.OAM, !p.s.DoubleSpeed())
 		if p.ly != 0 {
@@ -1530,11 +1552,12 @@ func (p *PPU) handleOffscreenLine() {
 	switch p.offscreenLineState {
 	case StartVBlank: // dot 0
 		p.lineDot = p.s.Cycle()
+		p.setLCDLine(p.ly, 4)
 		p.lyForComparison = 0xffff
 		p.bgpStallSession = false
 		p.statUpdate()
 	case VBlankUpdateLY: // dot 2
-		p.b.Set(types.LY, p.ly)
+		p.setVisibleLY(p.ly)
 		// CGB models appear to trigger the OAM stat int during
 		// vblank 2 dots earlier than DMG models?
 		// [mooneye/misc/ppu/vblank_stat_intr-C]
@@ -1569,15 +1592,16 @@ func (p *PPU) handleOffscreenLine() {
 		return
 	case StartVBlankLastLine: // dot 0
 		p.lineDot = p.s.Cycle()
+		p.setLCDLine(153, 4)
 		p.lyForComparison = 0xffff
 		p.statUpdate()
 	case Line153LYUpdate:
-		p.b.Set(types.LY, 153)
+		p.setVisibleLY(153)
 	case Line153LY0:
 		// B/C normal-speed hardware exposes LY=0 from dot 6. D/E and
 		// double-speed CGB retain LY=153 for two more dots.
 		if !p.lateLine153LYZero() {
-			p.b.Set(types.LY, 0)
+			p.setVisibleLY(0)
 		}
 		p.lyForComparison = 153
 		p.statUpdate()
@@ -1588,7 +1612,7 @@ func (p *PPU) handleOffscreenLine() {
 			// while maintaining the established dot-8 LY compare
 			// and dot-12 comparison reset schedule.
 			if p.b.Model() != types.CGBDE || p.s.DoubleSpeed() {
-				p.b.Set(types.LY, 0)
+				p.setVisibleLY(0)
 			}
 			p.lyForComparison = 153
 		} else {
@@ -1601,7 +1625,7 @@ func (p *PPU) handleOffscreenLine() {
 			return
 		}
 	case Line153CGBDENormalLYRelease: // dot 9, normal-speed D/E only
-		p.b.Set(types.LY, 0)
+		p.setVisibleLY(0)
 		p.offscreenLineState = Line153LYC0
 		p.s.ScheduleEvent(scheduler.PPUHandleOffscreenLine, 3)
 		return

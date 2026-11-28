@@ -52,9 +52,9 @@ type State struct {
 	FetcherState         FetcherState
 	FetcherTileNo        uint8
 	FetcherTileAttr      uint8
-	FetcherData           [2]uint8
-	FetcherTileNoAddress  uint16
-	TileSelectGlitch bool
+	FetcherData          [2]uint8
+	FetcherTileNoAddress uint16
+	TileSelectGlitch     bool
 
 	// Object fetcher
 	ObjectFetcherState ObjectFetcherState
@@ -68,6 +68,7 @@ type State struct {
 	LineState          LineState
 	OffscreenLineState OffscreenLineState
 	GlitchedLineState  GlitchedLineState
+	GlitchedLineRewind uint64
 	ObjBuffer          []Object
 	OAMScanIndex       uint8
 	OAMScanYBus        uint8
@@ -135,9 +136,9 @@ func (p *PPU) Snapshot() State {
 		FetcherState:             p.fetcherState,
 		FetcherTileNo:            p.fetcherTileNo,
 		FetcherTileAttr:          p.fetcherTileAttr,
-		FetcherData:               p.fetcherData,
-		FetcherTileNoAddress:      p.fetcherTileNoAddress,
-		TileSelectGlitch:          p.tileSelectGlitch,
+		FetcherData:              p.fetcherData,
+		FetcherTileNoAddress:     p.fetcherTileNoAddress,
+		TileSelectGlitch:         p.tileSelectGlitch,
 		ObjectFetcherState:       p.objectFetcherState,
 		ObjFetcherTileNo:         p.objFetcherTileNo,
 		ObjFetcherTileAttr:       p.objFetcherTileAttr,
@@ -147,6 +148,7 @@ func (p *PPU) Snapshot() State {
 		LineState:                p.lineState,
 		OffscreenLineState:       p.offscreenLineState,
 		GlitchedLineState:        p.glitchedLineState,
+		GlitchedLineRewind:       p.glitchedLineRewindDots,
 		ObjBuffer:                append([]Object(nil), p.objBuffer...),
 		OAMScanIndex:             p.oamScanIndex,
 		OAMScanYBus:              p.oamScanYBus,
@@ -219,6 +221,10 @@ func (p *PPU) Restore(s State) {
 	p.lineState = s.LineState
 	p.offscreenLineState = s.OffscreenLineState
 	p.glitchedLineState = s.GlitchedLineState
+	p.glitchedLineRewindDots = s.GlitchedLineRewind
+	if p.glitchedLineRewindDots == 0 {
+		p.glitchedLineRewindDots = 4
+	}
 	p.objBuffer = append(p.objBuffer[:0], s.ObjBuffer...)
 	p.oamScanIndex = s.OAMScanIndex
 	p.oamScanYBus = s.OAMScanYBus
