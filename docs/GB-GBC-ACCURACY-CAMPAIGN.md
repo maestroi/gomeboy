@@ -19,9 +19,14 @@
 - AGE sprites: DMG **512→536**, CGB **533→553**, DS **802→867**
 - Guards: mooneye sprites PASS, tellinglys CGB (flaky but not regressed), gate green
 - PR: https://github.com/maestroi/gomeboy/pull/292
-- Residual: NOP=0 SPX≥4 still Mode0 on fine SCX **0** only (cannot +1 at SCX=0 — breaks mooneye)
+- Residual: NOP=0 on AGE SCX=LY coarse-aligned lines (LY=8,16,…); cannot +1 at SCX=0 (mooneye) or blanket SCX≠0 (tellinglys)
 
 ## Blocked / failed experiments
+
+### P3e — AGE SCX=LY coarse-aligned bubble — FAILED
+
+- `SCX==LY && SCX!=0` ready-path +1: AGE **+4/+8/+4** samples but **regresses tellinglys** (DMG+CGB) — reverted
+- Blanket `SCX!=0` also regresses tellinglys; always-on ready bubble breaks mooneye
 
 ### P2 — DMG OAM-write DELAY=2 (440/480) — BLOCKED
 
@@ -67,7 +72,7 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 
 ## Next action
 
-1. Sprite SCX=0 residual with mooneye-safe mechanism (not flat +1)
+1. Continue sprite residual without blanket SCX≠0 / SCX=0 bubbles
 2. STAT-int longer Mode-0 after IRQ without moving edge earlier
 3. Mealybug: SameBoy `lcd_x` desync + early WX+6 path (only when a clear incremental win is available)
 4. Skip inventing CGB Mealybug refs
