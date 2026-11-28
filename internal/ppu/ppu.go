@@ -163,6 +163,10 @@ type PPU struct {
 	objFetcherData     [2]uint8           // OBJ tile pattern data (low + high bytes)
 	fetcherObj         bool               // True when fetching an OBJ instead of BG/Window
 	fetchingObj        Object             // Active OBJ being fetched
+	// Extra Mode-3 bubble after a ready-path sprite fetch when fine
+	// SCX is nonzero (AGE sprite STAT). Mooneye's sprite Mode-0 table
+	// keeps SCX=0, so it is unaffected.
+	objAlignStall uint8
 
 	// Internal rendering state
 	lineState          LineState          // Visible line progression
@@ -1080,12 +1084,29 @@ func (p *PPU) handleVisualLine() {
 			}
 		}
 
+		// BG-ready-path sprite alignment: burn remaining dots before
+		// the next pixel / SCX discard (dmg-timing-spec penalty model).
+		if p.objAlignStall > 0 {
+			p.objAlignStall--
+			p.stepPixelFetcher()
+			p.s.ScheduleEvent(scheduler.PPUHandleVisualLine, 1)
+			return
+		}
+
 		// are there any pending objects on this X coordinate?
 		if len(p.objBuffer) > 0 && (p.objEnabled || p.cgbMode) && p.objBuffer[0].x == p.lx {
 			// do we need to finish the current BG/Window fetch?
 			if p.fetcherState < BGWinGetTileDataHighT2 || p.bgFIFO.Size == 0 {
 				p.stepPixelFetcher()
 			} else {
+				// Ready-path Mode-3 bubble when fine SCX is nonzero.
+				// Mooneye intr_2_mode0_timing_sprites keeps SCX=0, so
+				// this does not disturb its M-cycle table; AGE sprite
+				// STAT sets SCX=LY and needs the extra dot on fine
+				// phases that currently fall to Mode 0 too early.
+				if p.scx&7 != 0 {
+					p.objAlignStall = 1
+				}
 				p.stepPixelFetcher()
 				p.fetcherObj = true
 				p.objectFetcherState = OBJGetTileNoT1
@@ -2138,6 +2159,7 @@ func (p *PPU) resetFetcher() {
 	p.winFetcherX = 0
 	p.winTriggerWx = false
 	p.windowMode3Stall = 0
+	p.objAlignStall = 0
 	// Keep wx6SuppressLine across Mode-3 start: a Mode-2 WX=6 write on
 	// this same scanline must still suppress. Clear at HBlank instead.
 

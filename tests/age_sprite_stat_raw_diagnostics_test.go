@@ -141,6 +141,18 @@ func TestAgeSpriteSTATRawDiagnostics(t *testing.T) {
 				if badGroups > 0 {
 					t.Logf("AGE sprite STAT divergence: rom=%s model=%s NOP=%d SPX=%d-%d groups_bad=%d/8 samples_bad=%d first_bad=%v",
 						tc.rom, tc.model, row/2, (row%2)*8, (row%2)*8+7, badGroups, badSamples, firstBadBySPX)
+					if row < 4 {
+						for spx := 0; spx < groupsPerRow; spx++ {
+							if firstBadBySPX[spx] < 0 { continue }
+							var exp, obs [8]byte
+							for j := 0; j < bytesPerGroup; j++ {
+								offset := (row*groupsPerRow+spx)*bytesPerGroup+j
+								exp[j] = g.ROM[bestROM+offset]
+								obs[j] = g.Bus.Get(bestRAM+uint16(offset))
+							}
+							t.Logf("  SPX=%d expected=% x observed=% x", (row%2)*8+spx, exp, obs)
+						}
+					}
 				}
 			}
 		})
