@@ -73,7 +73,8 @@ Baseline remains **6945** px DMG with poison/desync from #289. Experiments rever
 
 ## Next action
 
-1. Continue sprite residual without blanket SCX≠0 / SCX=0 bubbles
-2. STAT-int longer Mode-0 after IRQ without moving edge earlier
-3. Mealybug: SameBoy `lcd_x` desync + early WX+6 path (only when a clear incremental win is available)
-4. Skip inventing CGB Mealybug refs
+1. Continue sprite residual without blanket SCX≠0 / SCX=0 / SCX==LY bubbles (tellinglys-sensitive)
+2. STAT-int: longer Mode-0 *after* IRQ without moving the edge (halt-m0 sensitive)
+3. Mealybug: SameBoy `lcd_x` + early WX+6 — additive probe left score at 6945 and needs suppress/poison rethink first
+4. LCD-align-LY: 40/40 first-sample inverted — LCD-on LY phase (not a one-dot tweak)
+5. Skip inventing CGB Mealybug refs
