@@ -38,10 +38,18 @@
 - Moving Mode-0 IRQ to lx==168: +2/+5 samples but **regressed** `halt-m0-interrupt`×3 + `hblank_ly_scx_timing-GS` — reverted
 - Need longer post-IRQ Mode-0 without earlier IRQ edge
 
-### P6 — Mealybug WX=6
+### P6 — Mealybug WX=6 — BLOCKED (instrumented)
 
-- DMG: 6945 px diff — actual is solid BG “B”s; expected staircase + black desync bands (partial desync fill from #289)
-- CGB expected PNGs are **placeholders** (“Expected result not currently available”) — cannot XPASS until real refs exist
+Forensics (Mode-2 IRQ ROM `m3_wx_6_change`):
+
+- Mode-2 writes `WX=6` at LX=168 (lx not yet reset); Mode-3 `WX=LY` lands at **LX=8 or 11**, `WX=80` at LX≈100–107
+- Current poison at LX=7 (WX still 6) blocks **all** later opens → no staircase; LY=6 black matches via desync fill
+- Dropping poison + exact-column opens: window opens at `WX=LY` (LY≥7) but **WLY is short** if glitch lines do not advance WLY; even with WLY++ on glitch suppress, LY=12 still lacks EXP whites (tile row / LCD desync still wrong)
+- Disabling suppress entirely: **6945 → 13799** (worse)
+- SameBoy model: equality open + early `WX == position+6` with `lcd_x--` + end-of-line last-color fill; `wx_just_changed` for 1 T-cycle on DMG WX writes. Not yet implemented end-to-end
+- CGB expected PNGs remain **placeholders** — cannot XPASS
+
+Baseline remains **6945** px DMG with poison/desync from #289. Experiments reverted.
 
 ### P5 — LCD-align-LY
 
@@ -59,6 +67,7 @@
 
 ## Next action
 
-1. DMG Mealybug WX=6: finish LCD/PPU desync so black bands + window staircase match reference
-2. Sprite SCX=0 residual only with mooneye-safe mechanism
-3. Skip inventing CGB Mealybug refs; treat as blocked until upstream images exist
+1. Sprite SCX=0 residual with mooneye-safe mechanism (not flat +1)
+2. STAT-int longer Mode-0 after IRQ without moving edge earlier
+3. Mealybug: SameBoy `lcd_x` desync + early WX+6 path (only when a clear incremental win is available)
+4. Skip inventing CGB Mealybug refs
