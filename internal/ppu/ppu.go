@@ -613,6 +613,8 @@ func New(b *io.Bus, s *scheduler.Scheduler) *PPU {
 		})
 	})
 
+	s.RegisterDeviceStamp(&p.lineDot)
+	s.RegisterDeviceStamp(&p.frameDot)
 	s.RegisterEvent(scheduler.PPUHandleVisualLine, p.handleVisualLine)
 	s.RegisterEvent(scheduler.PPUHandleGlitchedLine0, p.handleGlitchedLine0)
 	s.RegisterEvent(scheduler.PPUHandleOffscreenLine, p.handleOffscreenLine)

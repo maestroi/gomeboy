@@ -24,6 +24,11 @@ type Scheduler struct {
 	doubleSpeed bool // whether the scheduler is running at double speed
 
 	Halted bool
+
+	// deviceStamps are absolute cycle timestamps owned by devices (e.g. the
+	// PPU's line start) that are later compared against Cycle() to measure
+	// elapsed device time. They are remapped on speed changes and PPU freezes.
+	deviceStamps []*uint64
 }
 
 func (s *Scheduler) OverrideDiv(div uint16) {
@@ -357,10 +362,68 @@ func (s *Scheduler) ChangeSpeed(speed bool) {
 		s.DescheduleEvent(p.typ)
 	}
 
+	s.rebaseStamps(speed)
 	s.doubleSpeed = speed
 
 	for _, p := range list {
 		s.ScheduleEvent(p.typ, p.dots)
+	}
+}
+
+// TickFrozen advances the CPU-visible clock (DIV, timers, DMA, ...) by c
+// cycles while the PPU is frozen: every queued PPU event and registered
+// device timestamp is pushed back by the same amount, so the PPU observes no
+// time passing. This models SameBoy's speed_switch_freeze, which realigns the
+// PPU during a KEY1 speed switch.
+func (s *Scheduler) TickFrozen(c uint64) {
+	type frozen struct {
+		typ   EventType
+		cycle uint64
+	}
+	var list []frozen
+	for event := s.root; event != nil && event.cycle != math.MaxUint64; event = event.next {
+		if event.eventType >= PPUHandleVisualLine && event.eventType <= PPUHandleOffscreenLine {
+			list = append(list, frozen{event.eventType, event.cycle})
+		}
+	}
+	for _, f := range list {
+		s.DescheduleEvent(f.typ)
+	}
+	s.Tick(c)
+	for _, f := range list {
+		s.insertAbsolute(f.typ, f.cycle+c)
+	}
+	for _, p := range s.deviceStamps {
+		if *p != 0 {
+			*p += c
+		}
+	}
+}
+
+// RegisterDeviceStamp registers an absolute cycle timestamp so that it stays
+// meaningful across KEY1 speed changes (ChangeSpeed) and PPU freezes
+// (TickFrozen). A zero stamp is treated as unset and left alone.
+func (s *Scheduler) RegisterDeviceStamp(stamp *uint64) {
+	s.deviceStamps = append(s.deviceStamps, stamp)
+}
+
+// rebaseStamps rescales every registered stamp around the current cycle so
+// that "cycles elapsed since stamp" keeps measuring the same number of
+// device dots at the new speed (the elapsed span is x2 entering double speed
+// and /2 leaving it).
+func (s *Scheduler) rebaseStamps(toDouble bool) {
+	now := int64(s.cycles)
+	for _, p := range s.deviceStamps {
+		if *p == 0 {
+			continue
+		}
+		delta := now - int64(*p)
+		if toDouble {
+			delta *= 2
+		} else {
+			delta /= 2
+		}
+		*p = uint64(now - delta)
 	}
 }
 
