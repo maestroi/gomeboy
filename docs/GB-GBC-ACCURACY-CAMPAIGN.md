@@ -21,6 +21,11 @@
 - All 40 misses are probe DELAY=2; AGE notes LCD-off history dependence
 - Glitched-line early OAM WUnlock: unit OK, AGE unchanged — reverted
 
+### P3b — X=0 absorb SCX discard — FAILED
+
+- On X=0 fetch complete, consume `min(remaining SCX discard, 5)` from `scxDiscarded`
+- Broke `cgb-acid-hell` (and ran XFAIL Mealybug as fail in Test_All) — reverted
+
 ### P3 — Sprite X=0 SCX stall — FAILED (partial AGE gain, regression)
 
 - Tried post-fetch `objX0Stall = min(SCX&7,5)` after X=0 sprite (AGE `spx0_delay`)
