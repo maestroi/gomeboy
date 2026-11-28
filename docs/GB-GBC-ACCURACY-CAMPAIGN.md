@@ -57,6 +57,12 @@ Repro: `go test -tags test ./tests -run '^TestAgeSpriteSTATRawDiagnostics$' -cou
 
 OAM(1) + sprites(5) + STAT int(5) + LCD LY(2) + Mealybug wx6(3)
 
+## P4 — STAT interrupt (BLOCKED probe)
+
+- Matrix always reads Mode 2 (`82`) where expected Mode 0 (`80`) after Mode-0 IRQ + delay
+- Raising Mode-0 IRQ at lx==168 (instead of EnterHBlank) helped AGE slightly (26→28 / 52→57) but **regressed** `halt-m0-interrupt` (3) + `hblank_ly_scx_timing-GS` — reverted
+- Need a fix that lengthens post-IRQ Mode-0 without moving the IRQ edge earlier than enterHBlankDelay
+
 ## Next action
 
-Land P3a PR; probe SCX=0 residual without lengthening mooneye's SCX=0 sprite table; if blocked, switch to STAT-interrupt or LCD-align-LY family.
+P3a PR #292 CI green — merge when ready. Next: SCX=0 sprite residual (STAT visibility, not IRQ edge), or Mealybug WX=6 / LCD-align-LY.
